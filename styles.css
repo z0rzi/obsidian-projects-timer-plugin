@@ -1,0 +1,203 @@
+:root {
+	--card-bug-color: #b82626;
+	--card-now-color: #f7d522;
+}
+
+
+.kanban-container{position:relative;box-sizing:border-box;width:auto}.kanban-container *{box-sizing:border-box}.kanban-container:after{clear:both;display:block;content:""}.kanban-board{position:relative;float:left;background:#e2e4e6;transition:all .3s cubic-bezier(.23,1,.32,1)}.kanban-board.disabled-board{opacity:.3}.kanban-board.is-moving.gu-mirror{transform:rotate(3deg)}.kanban-board.is-moving.gu-mirror .kanban-drag{overflow:hidden;padding-right:50px}.kanban-board header{font-size:16px;padding:15px}.kanban-board header .kanban-title-board{font-weight:700;margin:0;padding:0;display:inline}.kanban-board header .kanban-title-button{float:right}.kanban-board .kanban-drag{min-height:200px;padding:20px}.kanban-board:after{clear:both;display:block;content:""}.kanban-item{background:#fff;padding:15px;margin-bottom:20px;transition:all .3s cubic-bezier(.23,1,.32,1)}.kanban-item:hover{cursor:move}.kanban-item:last-child{margin:0}.kanban-item.is-moving.gu-mirror{transform:rotate(3deg);height:auto!important}.gu-mirror{position:fixed!important;margin:0!important;z-index:9999!important}.gu-hide{display:none!important}.gu-unselectable{-webkit-user-select:none!important;-moz-user-select:none!important;-ms-user-select:none!important;user-select:none!important}.gu-transit{opacity:.2!important;transform:rotate(0)!important}.drag_handler{background:#fff;border-radius:50%;width:24px;height:24px;position:relative;float:left;top:-3px;margin-right:4px}.drag_handler:hover{cursor:move}.drag_handler_icon{position:relative;display:block;background:#000;width:24px;height:2px;top:12px;transition:.5s ease-in-out}.drag_handler_icon:after,.drag_handler_icon:before{background:#000;content:'';display:block;width:100%;height:100%;position:absolute;transition:.5s ease-in-out}.drag_handler_icon:before{top:6px}.drag_handler_icon:after{bottom:6px}
+
+/* ── Responsive flex layout (overrides jKanban floats) ── */
+.tasks-kanban-view-container .kanban-container {
+	background: transparent;
+	padding: 8px;
+	width: 100% !important;
+	min-height: 100%;
+	display: flex !important;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+.tasks-kanban-view-container .kanban-board {
+	background: var(--background-secondary, #1e1e1e);
+	border: 1px solid var(--background-modifier-border, #333);
+	border-radius: 8px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+	color: var(--text-normal, #e0e0e0);
+	flex: 1 1 260px;
+	min-width: 0;
+	max-width: 100%;
+	width: auto !important;
+	float: none !important;
+	margin-left: 0 !important;
+	margin-right: 0 !important;
+	margin-bottom: 0 !important;
+}
+
+.tasks-kanban-view-container .kanban-board header {
+	background: var(--background-modifier-border, #333);
+	border-bottom: 1px solid var(--background-modifier-border, #333);
+	border-radius: 8px 8px 0 0;
+	font-size: 14px;
+	font-weight: 600;
+	padding: 12px 14px;
+}
+
+.tasks-kanban-view-container .kanban-title-board {
+	color: var(--text-normal, #e0e0e0);
+}
+
+.tasks-kanban-view-container .kanban-title-button {
+	background: var(--interactive-accent, #5c7cfa);
+	border: none;
+	border-radius: 4px;
+	color: #fff;
+	cursor: pointer;
+	font-size: 12px;
+	padding: 4px 8px;
+}
+
+.tasks-kanban-view-container .kanban-title-button:hover {
+	filter: brightness(1.15);
+}
+
+.tasks-kanban-view-container .kanban-drag {
+	background: transparent;
+	padding: 12px 14px;
+}
+
+.tasks-kanban-view-container .kanban-item {
+	--card-color: var(--text-accent, #9d82ea);
+	background: var(--background-primary, #262626);
+	border: 1px solid var(--background-modifier-border, #333);
+	border-radius: 6px;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+	color: var(--text-normal, #e0e0e0);
+	font-size: 13px;
+	line-height: 1.4;
+	margin-bottom: 8px;
+	padding: 10px 12px;
+	overflow: hidden;
+	transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.tasks-kanban-view-container .kanban-item[data-type="bug"] {
+    /* Yellow */
+	--card-color: var(--card-bug-color);
+	border-left: 4px solid var(--card-color);
+}
+.tasks-kanban-view-container .kanban-item[data-type="now"] {
+	--card-color: var(--card-now-color);
+	border-left: 4px solid var(--card-color);
+}
+.tasks-kanban-view-container .kanban-item[data-type="wait"] {
+	opacity: 0.6;
+}
+
+.tasks-kanban-view-container .kanban-item:hover {
+	box-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+	transform: translateY(-1px);
+}
+
+.tasks-kanban-view-container .kanban-item:last-child {
+	margin-bottom: 0;
+}
+
+/* Drag states */
+.tasks-kanban-view-container .gu-mirror,
+.tasks-kanban-view-container .kanban-board.is-moving.gu-mirror,
+.tasks-kanban-view-container .kanban-item.is-moving.gu-mirror {
+	background: var(--background-primary, #262626);
+	border: 1px solid var(--interactive-accent, #5c7cfa);
+	box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+	color: var(--text-normal, #e0e0e0);
+	opacity: 0.95;
+}
+
+.tasks-kanban-view-container .gu-transit {
+	opacity: 0.3 !important;
+}
+
+/* Dragula cursor helpers */
+.tasks-kanban-view-container .gu-unselectable {
+	cursor: grabbing;
+}
+
+/* Board-specific header accents */
+.tasks-kanban-view-container .kanban-board-doing header {
+	background: var(--interactive-accent, #5c7cfa);
+	color: #fff;
+}
+
+.tasks-kanban-view-container .kanban-board-doing .kanban-title-board {
+	color: #fff;
+}
+
+/* Description text inside cards */
+.tasks-kanban-view-container .kanban-item small {
+	color: var(--text-faint, #999);
+	display: block;
+	margin-top: 4px;
+}
+
+/* Title of the card */
+.tasks-kanban-view-container .kanban-item span { 
+	color: var(--text-normal, #e0e0e0); 
+	font-family: var(--font-monospace);
+} 
+
+/* ── Card action buttons ── */
+.tasks-kanban-view-container .kanban-item {
+	position: relative;
+}
+
+.tasks-kanban-view-container .kanban-card-actions {
+	position: absolute;
+	bottom: 6px;
+	right: 6px;
+	display: flex;
+	gap: 4px;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+	z-index: 2;
+}
+
+.tasks-kanban-view-container .kanban-item:hover .kanban-card-actions {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.tasks-kanban-view-container .kanban-play-btn,
+.tasks-kanban-view-container .kanban-done-btn {
+	width: 24px;
+	height: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--background-modifier-hover, rgba(255, 255, 255, 0.08));
+	border-radius: 50%;
+	color: var(--text-muted, #999);
+	cursor: pointer;
+	transition: color 0.15s ease, background 0.15s ease;
+}
+
+.tasks-kanban-view-container .kanban-play-btn:hover,
+.tasks-kanban-view-container .kanban-done-btn:hover {
+	background: var(--interactive-accent, #5c7cfa);
+	color: #fff;
+}
+
+/* P4 and P5 boards cap their height with scrollable drag areas */
+.tasks-kanban-view-container .kanban-board[data-id="p5"],
+.tasks-kanban-view-container .kanban-board[data-id="p4"] {
+	opacity: 0.7;
+	display: flex;
+	flex-direction: column;
+	align-self: flex-start;
+}
+
+.tasks-kanban-view-container .kanban-board[data-id="p5"] .kanban-drag,
+.tasks-kanban-view-container .kanban-board[data-id="p4"] .kanban-drag {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	min-height: 0;
+}

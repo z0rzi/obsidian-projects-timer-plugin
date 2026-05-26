@@ -1,0 +1,11 @@
+{
+	"id": "projects-timer",
+	"name": "Projects Timer",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Track time and manage projects and tasks within Obsidian.",
+	"author": "",
+	"authorUrl": "",
+	"fundingUrl": "",
+	"isDesktopOnly": false
+}

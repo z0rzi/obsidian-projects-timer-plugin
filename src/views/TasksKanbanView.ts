@@ -1,0 +1,506 @@
+import { ItemView, WorkspaceLeaf, Notice, setIcon } from "obsidian";
+import "jkanban";
+import type ProjectsTimerPlugin from "../main";
+import { Task } from "../types";
+import { Subscription } from "rxjs";
+import { AddActivityModal } from "../ui/AddActivityModal";
+
+declare global {
+	interface Window {
+		jKanban: new (options: any) => any;
+	}
+}
+
+export const TASKS_KANBAN_VIEW_TYPE = "tasks-kanban-view";
+
+let idCounter = 0;
+
+const PLAY_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+const DONE_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+
+function cardHtml(id: string, title: string, description: string): string {
+	const safeTitle = title.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	const safeDescription = description
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/\n/g, "<br/>");
+
+	const highlightedTitle = safeTitle.replace(
+		/\[(.+?)\]/g,
+		'<span style="color: var(--text-faint)">[<span style="color: var(--card-color);">$1</span>]</span>',
+	);
+
+	return `
+		<span>${highlightedTitle}</span>
+		<br>
+		<small>${safeDescription}</small>
+		<span class="kanban-card-actions">
+			<span class="kanban-done-btn" data-task-id="${id}">${DONE_ICON}</span>
+			<span class="kanban-play-btn" data-task-id="${id}">${PLAY_ICON}</span>
+		</span>
+		`;
+}
+
+type BoardDef = { id: string; title: string; class: string; items: any[] };
+
+export class TasksKanbanView extends ItemView {
+	private kanbanInstance: any;
+	private rootId: string;
+	private clickHandler: ((evt: MouseEvent) => void) | null = null;
+	private taskSub: Subscription | null = null;
+	private currentTasks: Map<number, Task> = new Map();
+	private isRendering = false;
+	private footerEl: HTMLElement | null = null;
+	timerState: {
+		task: Task | null;
+		startedAt: Date | null;
+		stop: () => void;
+	} | null = null;
+
+	constructor(
+		leaf: WorkspaceLeaf,
+		private plugin: ProjectsTimerPlugin,
+	) {
+		super(leaf);
+		this.rootId = `kanban-root-${++idCounter}`;
+	}
+
+	getViewType(): string {
+		return TASKS_KANBAN_VIEW_TYPE;
+	}
+
+	getDisplayText(): string {
+		return "Tasks Kanban";
+	}
+
+	getIcon(): string {
+		return "square-kanban";
+	}
+
+	async onOpen() {
+		const container = this.containerEl.children[1];
+		if (!container) return;
+		container.empty();
+		container.addClass("tasks-kanban-view-container");
+		(container as HTMLElement).style.display = "flex";
+		(container as HTMLElement).style.flexDirection = "column";
+
+		const kanbanContainer = container.createDiv("kanban-container-wrapper");
+		kanbanContainer.style.flexGrow = "1";
+		kanbanContainer.style.width = "100%";
+		kanbanContainer.style.overflowY = "auto";
+		kanbanContainer.style.overflowX = "hidden";
+
+		const kanbanRoot = kanbanContainer.createDiv();
+		kanbanRoot.id = this.rootId;
+
+		this.footerEl = container.createDiv("kanban-timer-footer");
+		this.footerEl.style.flexGrow = "0";
+		this.footerEl.style.width = "100%";
+
+		this.taskSub = this.plugin.allTasks.subscribe((tasks) => {
+			this.updateBoards(tasks);
+		});
+	}
+
+	private updateBoards(tasks: Task[]) {
+		if (this.isRendering) {
+			requestAnimationFrame(() => this.updateBoards(tasks));
+			return;
+		}
+
+		// Only re-render if something actually changed (by id and content hash)
+		let changed = false;
+		if (tasks.length !== this.currentTasks.size) {
+			changed = true;
+		} else {
+			for (const task of tasks) {
+				const existing = this.currentTasks.get(task.id);
+				if (
+					!existing ||
+					existing.priority !== task.priority ||
+					existing.title !== task.title ||
+					existing.description !== task.description ||
+					existing.file !== task.file ||
+					existing.line !== task.line
+				) {
+					changed = true;
+					break;
+				}
+			}
+		}
+
+		if (!changed) return;
+
+		this.currentTasks.clear();
+		for (const task of tasks) {
+			this.currentTasks.set(task.id, task);
+		}
+
+		// Defer to avoid re-entrancy and layout thrash
+		requestAnimationFrame(() => {
+			this.renderBoards(tasks);
+		});
+	}
+
+	private renderBoards(tasks: Task[]) {
+		const rootEl = document.getElementById(this.rootId);
+		if (!rootEl) return;
+
+		this.isRendering = true;
+
+		// Clean up previous state
+		if (this.kanbanInstance) {
+			this.kanbanInstance = null;
+		}
+		if (this.clickHandler) {
+			rootEl.removeEventListener("click", this.clickHandler, true);
+			this.clickHandler = null;
+		}
+		rootEl.innerHTML = "";
+
+		const boards: BoardDef[] = [
+			{
+				id: "doing",
+				title: "doing",
+				class: "kanban-board-doing",
+				items: [],
+			},
+			{
+				id: "p1",
+				title: "P1",
+				class: "kanban-board-priority",
+				items: [],
+			},
+			{
+				id: "p2",
+				title: "P2",
+				class: "kanban-board-priority",
+				items: [],
+			},
+			{
+				id: "p3",
+				title: "P3",
+				class: "kanban-board-priority",
+				items: [],
+			},
+			{
+				id: "p4",
+				title: "P4",
+				class: "kanban-board-priority",
+				items: [],
+			},
+			{
+				id: "p5",
+				title: "P5",
+				class: "kanban-board-priority",
+				items: [],
+			},
+		];
+
+		const typeOrder = ["now", "bug", "task", "wait"];
+		tasks.sort((a, b) => {
+			const aType = typeOrder.indexOf(a.type);
+			const bType = typeOrder.indexOf(b.type);
+			if (aType === bType) return 0;
+			return aType > bType ? 1 : -1;
+		});
+
+		for (const task of tasks) {
+			if (task.priority === -1) continue;
+			let boardId: string;
+			if (task.priority === 0) boardId = "doing";
+			else if (task.priority >= 5) boardId = "p5";
+			else if (task.priority >= 4) boardId = "p4";
+			else if (task.priority >= 3) boardId = "p3";
+			else if (task.priority >= 2) boardId = "p2";
+			else boardId = "p1";
+
+			const board = boards.find((b) => b.id === boardId);
+			if (!board) continue;
+
+			board.items.push({
+				id: `task-${task.id}`,
+				title: cardHtml(
+					String(task.id),
+					task.title,
+					task.description.trim(),
+				),
+				type: task.type,
+			});
+		}
+
+		this.kanbanInstance = new window.jKanban({
+			element: `#${this.rootId}`,
+			gutter: "10px",
+			widthBoard: "260px",
+			responsivePercentage: false,
+			dragItems: true,
+			dragBoards: false,
+			boards: boards.map((b) => ({
+				id: b.id,
+				title: b.title,
+				class: b.class,
+				item: b.items,
+			})),
+			click: (el: HTMLElement) => {
+				const eid = el.getAttribute("data-eid");
+				if (!eid) return;
+				const id = parseInt(eid.replace("task-", ""), 10);
+				const task = this.currentTasks.get(id);
+				if (!task) return;
+				const leaf = this.app.workspace.getLeaf(false);
+				if (leaf) {
+					leaf.openFile(task.file, { eState: { line: task.line } });
+				}
+			},
+			dropEl: async (
+				el: HTMLElement,
+				target: HTMLElement,
+				source: HTMLElement,
+				sibling: HTMLElement,
+			) => {
+				const targetBoard = target.closest(".kanban-board");
+				const targetBoardId = targetBoard?.getAttribute("data-id");
+				if (!targetBoardId) return;
+
+				const eid = el.getAttribute("data-eid");
+				if (!eid) return;
+				const taskId = parseInt(eid.replace("task-", ""), 10);
+				const task = this.currentTasks.get(taskId);
+				if (!task) return;
+
+				let newPriority: number;
+				if (targetBoardId === "doing") {
+					newPriority = 0;
+				} else {
+					const m = targetBoardId.match(/^p(\d)$/);
+					if (m) {
+						newPriority = +m[1]!;
+					} else {
+						return;
+					}
+				}
+
+				let newTag: string;
+				if (task.type === "bug") newTag = "#bug";
+				else if (task.type === "now") newTag = "#now";
+				else if (task.type === "wait") newTag = "#wait";
+				else newTag = "#task";
+
+				newTag += ` p${newPriority ?? 1}`;
+
+				this.updateTaskTag(task, newTag);
+			},
+		});
+
+		this.clickHandler = (evt: MouseEvent) => {
+			const target = evt.target as HTMLElement;
+
+			const playBtn = target.closest(
+				".kanban-play-btn",
+			) as HTMLElement | null;
+			if (playBtn) {
+				evt.stopPropagation();
+				const taskId = playBtn.getAttribute("data-task-id");
+				if (taskId) {
+					const task = this.currentTasks.get(+taskId);
+					if (task) this.startTimerForTask(task);
+				}
+				return;
+			}
+
+			const doneBtn = target.closest(
+				".kanban-done-btn",
+			) as HTMLElement | null;
+			if (doneBtn) {
+				evt.stopPropagation();
+				const rawId = doneBtn.getAttribute("data-task-id");
+				if (!rawId) return;
+				const task = this.currentTasks.get(Number(rawId));
+				if (!task) return;
+				const strDate = new Date().toISOString().split("T")[0];
+				this.updateTaskTag(task, "#done " + strDate);
+			}
+		};
+		rootEl.addEventListener("click", this.clickHandler, true);
+
+		// Allow next update after a tick
+		requestAnimationFrame(() => {
+			this.isRendering = false;
+		});
+	}
+
+	private async updateTaskTag(task: Task, newTag: string) {
+		try {
+			const content = await this.app.vault.read(task.file);
+			const lines = content.split("\n");
+			const line = lines[task.line];
+			if (!line) return;
+
+			const newLine = `${newTag} ${task.title.trim()}`;
+			if (line === newLine) return;
+
+			lines[task.line] = newLine;
+			await this.app.vault.modify(task.file, lines.join("\n"));
+		} catch (e) {
+			new Notice("Failed to update task tag");
+		}
+	}
+
+	startTimerForTask(task: Task): void {
+		console.log("🐻", task);
+		if (this.timerState?.stop) this.timerState.stop();
+		this.timerState = {
+			task,
+			startedAt: new Date(),
+			stop: () => {},
+		};
+
+		const playButtons =
+			this.containerEl.querySelectorAll(".kanban-play-btn");
+		playButtons.forEach((btn: HTMLElement) => (btn.style.display = "none"));
+
+		this.renderTimer();
+	}
+
+	renderTimer(): void {
+		if (!this.footerEl) return;
+		this.footerEl.empty();
+
+		if (!this.timerState || !this.timerState.task) {
+			this.timerState = null;
+			return;
+		}
+
+		const timerEl = this.footerEl.createDiv("kanban-timer-bar");
+		timerEl.style.display = "flex";
+		timerEl.style.alignItems = "center";
+		timerEl.style.gap = "8px";
+		timerEl.style.padding = "12px";
+		timerEl.style.paddingBottom = "0px";
+		timerEl.style.width = "100%";
+		timerEl.style.boxSizing = "border-box";
+		timerEl.style.borderTop = "1px solid var(--background-modifier-border)";
+
+		const titleEl = timerEl.createSpan();
+		titleEl.textContent = this.timerState.task.title;
+		titleEl.style.flex = "1";
+		titleEl.style.overflow = "hidden";
+		titleEl.style.textOverflow = "ellipsis";
+		titleEl.style.whiteSpace = "nowrap";
+
+		const minusBtn = timerEl.createSpan("kanban-timer-btn");
+		setIcon(minusBtn, "minus");
+		minusBtn.style.cursor = "pointer";
+		minusBtn.addEventListener("click", () => {
+			if (this.timerState?.startedAt) {
+				let newStart = new Date(
+					this.timerState.startedAt.getTime() + 10 * 60 * 1000,
+				);
+				if (newStart > new Date()) newStart = new Date();
+				this.timerState.startedAt = newStart;
+				updateTimer();
+			}
+		});
+
+		const timerTimeEl = timerEl.createSpan("kanban-timer-time");
+		timerTimeEl.style.fontVariantNumeric = "tabular-nums";
+		timerTimeEl.style.minWidth = "60px";
+		timerTimeEl.style.textAlign = "center";
+		timerTimeEl.style.color = "var(--text-faint)";
+
+		const updateTimer = () => {
+			if (!this.timerState?.startedAt) return;
+			const elapsed = Date.now() - this.timerState.startedAt.getTime();
+			const totalSeconds = Math.max(0, Math.floor(elapsed / 1000));
+			const hours = Math.floor(totalSeconds / 3600);
+			const minutes = Math.floor((totalSeconds % 3600) / 60);
+			const seconds = totalSeconds % 60;
+			const pad = (n: number) => String(n).padStart(2, "0");
+			timerTimeEl.innerHTML = `${hours > 0 ? pad(hours) + ":" : ""}${pad(minutes)}:${pad(seconds)}`;
+		};
+		updateTimer();
+		const iid = window.setInterval(updateTimer, 1000);
+
+		const plusBtn = timerEl.createSpan("kanban-timer-btn");
+		setIcon(plusBtn, "plus");
+		plusBtn.style.cursor = "pointer";
+		plusBtn.addEventListener("click", () => {
+			if (this.timerState?.startedAt) {
+				this.timerState.startedAt = new Date(
+					this.timerState.startedAt.getTime() - 10 * 60 * 1000,
+				);
+			}
+			updateTimer();
+		});
+
+		const pauseBtn = timerEl.createSpan("kanban-timer-btn");
+		setIcon(pauseBtn, "pause");
+		pauseBtn.style.cursor = "pointer";
+		pauseBtn.style.color = "#f56565";
+		pauseBtn.style.backgroundColor = "#f5656522";
+		pauseBtn.style.padding = "5px";
+		pauseBtn.style.paddingBottom = "1px";
+		pauseBtn.style.borderRadius = "50%";
+		pauseBtn.addEventListener("click", () => {
+			if (!this.timerState?.startedAt || !this.timerState.task) return;
+
+			const elapsedMs = Date.now() - this.timerState.startedAt.getTime();
+			const elapsedMins = Math.max(1, Math.round(elapsedMs / 60000));
+			const task = this.timerState.task;
+
+			if (this.timerState.stop) this.timerState.stop();
+
+			if (elapsedMins < 10) {
+				new Notice("Time too short to record");
+				return;
+			}
+
+			const roundedMins = Math.round(elapsedMins / 10) * 10;
+
+			new AddActivityModal(
+				this.app,
+				(duration, description, projectFile) => {
+					this.plugin.addActivityToFile(
+						projectFile,
+						duration,
+						description,
+					);
+				},
+				(raw) => this.plugin.parseTime(raw),
+				roundedMins,
+				task.projectFile,
+			).open();
+		});
+
+		this.timerState.stop = () => {
+			clearInterval(iid);
+			const state = this.timerState;
+			if (state) {
+				state.startedAt = null;
+				state.task = null;
+			}
+			const playButtons =
+				this.containerEl.querySelectorAll(".kanban-play-btn");
+			playButtons.forEach(
+				(btn: HTMLElement) => (btn.style.display = "flex"),
+			);
+			this.renderTimer();
+		};
+	}
+
+	async onClose() {
+		if (this.timerState?.stop) this.timerState.stop();
+		if (this.taskSub) {
+			this.taskSub.unsubscribe();
+			this.taskSub = null;
+		}
+		const rootEl = document.getElementById(this.rootId);
+		if (rootEl && this.clickHandler) {
+			rootEl.removeEventListener("click", this.clickHandler, true);
+		}
+		this.clickHandler = null;
+		this.kanbanInstance = null;
+	}
+}
