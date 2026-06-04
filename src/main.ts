@@ -427,6 +427,81 @@ export default class ProjectsTimerPlugin extends Plugin {
 			},
 		);
 
+		this.registerMarkdownCodeBlockProcessor(
+			"timesource",
+			async (source: string, container: HTMLElement, ctx) => {
+				const filepath = ctx.sourcePath;
+				const file = this.app.vault.getFileByPath(filepath);
+				if (!file) return;
+
+				const cache = this.app.metadataCache.getFileCache(file);
+				const status = cache?.frontmatter?.status;
+
+				if (!status) {
+					const errorEl = container.createEl("div");
+					errorEl.style.color = "var(--text-error)";
+					errorEl.style.fontWeight = "bold";
+					errorEl.style.marginBottom = "8px";
+					errorEl.style.padding = "8px";
+					errorEl.style.border = "1px solid var(--text-error)";
+					errorEl.style.borderRadius = "4px";
+					errorEl.style.backgroundColor = "rgba(var(--color-red-rgb), 0.1)";
+					errorEl.innerText = "Error: 'status' is missing from the file properties (frontmatter).";
+				}
+
+				const lines = source.split("\n").map(l => l.trim()).filter(Boolean);
+				
+				if (lines.length > 0) {
+					const list = container.createEl("ul");
+					list.style.listStyle = "none";
+					list.style.padding = "0";
+					list.style.margin = "0";
+
+					for (const line of lines) {
+						const parts = line.split(";").map(p => p.trim());
+						if (parts.length < 2) continue;
+
+						const raw = parts[0] ?? "";
+						const durationStr = parts[1] ?? "";
+						const duration = this.parseTime(durationStr);
+						
+						const linkMatch = raw.match(/\[\[(.+?)\]\]/);
+						let label = raw;
+						if (linkMatch) {
+							label = linkMatch[1]!;
+						}
+						
+						const resolvedFile = this.findFileFromLink(label);
+						
+						const li = list.createEl("li");
+						li.style.marginBottom = "4px";
+
+						if (!resolvedFile) {
+							const errorMsg = li.createEl("span", { text: `⚠️ Project not found: ${label}` });
+							errorMsg.style.color = "var(--text-error)";
+							errorMsg.style.marginRight = "8px";
+						} else {
+							const content = await this.app.vault.cachedRead(resolvedFile);
+							if (!content.includes("```project")) {
+								const errorMsg = li.createEl("span", { text: `⚠️ No project block in ${label}` });
+								errorMsg.style.color = "var(--text-error)";
+								errorMsg.style.marginRight = "8px";
+							} else {
+								const link = li.createEl("a", { text: label });
+								link.href = label;
+								link.addEventListener("click", (e: MouseEvent) => {
+									e.preventDefault();
+									this.app.workspace.openLinkText(label, filepath);
+								});
+							}
+						}
+
+						li.createEl("span", { text: ` — ${this.formatDuration(duration)}` });
+					}
+				}
+			}
+		);
+
 		this.addCommand({
 			id: "open-tasks-kanban",
 			name: "Open Tasks Kanban",
