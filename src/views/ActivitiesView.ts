@@ -57,7 +57,7 @@ export class ActivitiesView extends ItemView {
 
 		for (const file of projectFiles) {
 			try {
-				const { activities } = await this.plugin.parseProject({
+				const activities = await this.plugin.parseActivities({
 					file,
 				});
 				for (const act of activities) {

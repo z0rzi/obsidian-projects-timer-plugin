@@ -72,8 +72,8 @@ export class ProjectsListView extends ItemView {
 		const projects: ProjectData[] = [];
 		for (const file of projectFiles) {
 			try {
-				const { sources, activities } =
-					await this.plugin.parseProject({ file });
+				const activities = await this.plugin.parseActivities({ file });
+				const sources = this.plugin.timeSourcesCache.get(file.path) || [];
 				const lastDate =
 					activities.length > 0
 						? activities

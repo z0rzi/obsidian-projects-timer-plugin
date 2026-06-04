@@ -153,8 +153,84 @@ export default class ProjectsTimerPlugin extends Plugin {
 		return null;
 	}
 
+	timeSourcesCache: Map<string, TimeSource[]> = new Map();
+	isBuildingCache = false;
+
+	async buildTimeSourceCache() {
+		if (this.isBuildingCache) return;
+		this.isBuildingCache = true;
+		try {
+			this.timeSourcesCache.clear();
+			const tsFolder = this.settings.timeSourceLocation;
+			if (!tsFolder) return;
+
+			const files = this.app.vault.getAllLoadedFiles().filter(
+				(f): f is TFile => f instanceof TFile && f.path.startsWith(tsFolder) && f.path.endsWith(".md")
+			);
+
+			for (const file of files) {
+				const cache = this.app.metadataCache.getFileCache(file);
+				const status = cache?.frontmatter?.status;
+
+				const content = await this.app.vault.cachedRead(file);
+				const lines = content.split('\n');
+				
+				let inTsBlock = false;
+				for (const line of lines) {
+					if (line.startsWith("```timesource")) {
+						inTsBlock = true;
+						continue;
+					}
+					if (inTsBlock && line.startsWith("```")) {
+						inTsBlock = false;
+						continue;
+					}
+					if (inTsBlock) {
+						const parts = line.split(";").map(p => p.trim());
+						if (parts.length >= 2) {
+							const raw = parts[0] ?? "";
+							const linkMatch = raw.match(/\[\[(.+?)\]\]/);
+							let label = raw;
+							let resolvedFile = null;
+							if (linkMatch) {
+								label = linkMatch[1]!;
+								resolvedFile = this.findFileFromLink(label);
+							}
+							
+							const duration = this.parseTime(parts[1] ?? "");
+							const targetPath = resolvedFile ? resolvedFile.path : label;
+							
+							if (!this.timeSourcesCache.has(targetPath)) {
+								this.timeSourcesCache.set(targetPath, []);
+							}
+							
+							this.timeSourcesCache.get(targetPath)!.push({
+								label,
+								resolvedFile,
+								duration,
+								sourceFile: file,
+								status: status || ""
+							});
+						}
+					}
+				}
+			}
+		} finally {
+			this.isBuildingCache = false;
+		}
+	}
+
 	async onload() {
 		await this.loadSettings();
+
+		this.app.workspace.onLayoutReady(async () => {
+			await this.buildTimeSourceCache();
+		});
+
+		this.registerEvent(this.app.metadataCache.on("changed", () => this.buildTimeSourceCache()));
+		this.registerEvent(this.app.vault.on("create", () => this.buildTimeSourceCache()));
+		this.registerEvent(this.app.vault.on("delete", () => this.buildTimeSourceCache()));
+		this.registerEvent(this.app.vault.on("rename", () => this.buildTimeSourceCache()));
 
 		this.registerView(
 			TASKS_KANBAN_VIEW_TYPE,
@@ -217,15 +293,15 @@ export default class ProjectsTimerPlugin extends Plugin {
 					).open();
 				};
 
-				const { sources: timeSources, activities } =
-					await this.parseProject({
-						blockContent: source,
-					});
+				const timeSources = this.timeSourcesCache.get(file.path) || [];
+				const activities = await this.parseActivities({ blockContent: source });
 
-				const totalAvailable = timeSources.reduce(
-					(s, t) => s + t.duration,
-					0,
-				);
+				const totalAvailable = timeSources.reduce((s, t) => {
+					if (t.status === "accepted" || t.status === "paid") {
+						return s + t.duration;
+					}
+					return s;
+				}, 0);
 				const totalWorked = activities.reduce(
 					(s, a) => s + a.duration,
 					0,
@@ -256,66 +332,66 @@ export default class ProjectsTimerPlugin extends Plugin {
 				progressInner.style.borderRadius = "3px";
 
 				// Time sources list
-				const sourcesHeading = container.createEl("b", {
-					text: "Sources",
-				});
-				sourcesHeading.style.display = "block";
-				sourcesHeading.style.marginTop = "16px";
-				sourcesHeading.style.marginBottom = "6px";
+				if (timeSources.length > 0) {
+					const sourcesHeading = container.createEl("b", {
+						text: "Sources",
+					});
+					sourcesHeading.style.display = "block";
+					sourcesHeading.style.marginTop = "16px";
+					sourcesHeading.style.marginBottom = "6px";
 
-				const sourcesList = container.createEl("ul");
-				sourcesList.style.listStyle = "none";
-				sourcesList.style.padding = "0";
-				sourcesList.style.margin = "0";
+					const sourcesList = container.createEl("ul");
+					sourcesList.style.listStyle = "none";
+					sourcesList.style.padding = "0";
+					sourcesList.style.margin = "0";
 
-				for (const src of timeSources) {
-					const li = sourcesList.createEl("li");
-					li.style.marginBottom = "2px";
+					for (const src of timeSources) {
+						if (src.status === "refused") continue;
 
-					const shouldStrikeOut = /done|completed|finished/i.test(
-						src.info_text,
-					);
+						const li = sourcesList.createEl("li");
+						li.style.marginBottom = "2px";
 
-					if (src.resolvedFile) {
-						const link = li.createEl("a", { text: src.label });
-						if (shouldStrikeOut) {
-							link.style.textDecoration = "line-through";
-							link.style.color = "var(--text-faint)";
-							link.style.fontStyle = "italic";
-						}
-						link.href = src.label;
+						const isNotAccepted = src.status === "not_accepted";
+						const isPaid = src.status === "paid";
+
+						const linkText = src.sourceFile.basename;
+						const link = li.createEl("a", { text: linkText });
+						link.href = linkText;
 						link.addEventListener("click", (e: MouseEvent) => {
 							e.preventDefault();
 							this.app.workspace.openLinkText(
-								src.label,
+								linkText,
 								filepath,
 							);
 						});
-					} else {
-						const text = li.createEl("span", { text: src.label });
-						if (shouldStrikeOut) {
-							text.style.textDecoration = "line-through";
-							text.style.color = "var(--text-faint)";
-							text.style.fontStyle = "italic";
+
+						if (isNotAccepted) {
+							link.style.color = "var(--text-faint)";
+							link.style.fontStyle = "italic";
+						}
+
+						const durationSpan = li.createEl("span", {
+							text: ` — ${this.formatDuration(src.duration)}`,
+						});
+						
+						if (isNotAccepted) {
+							durationSpan.style.color = "var(--text-faint)";
+						}
+						
+						if (isPaid) {
+							const paidSpan = li.createEl("span", {
+								text: " (Paid)",
+							});
+							paidSpan.style.color = "var(--text-success)";
+							paidSpan.style.fontSize = "0.8em";
+							paidSpan.style.marginLeft = "4px";
 						}
 					}
 
-					li.createEl("span", {
-						text: ` — ${this.formatDuration(src.duration)}`,
-					});
-
-					if (src.info_text) {
-						const infoSpan = li.createEl("span", {
-							text: ` ~ ${src.info_text}`,
-						});
-						infoSpan.style.color = "var(--text-faint)";
-						infoSpan.style.fontStyle = "italic";
-					}
+					const divider = container.createEl("hr");
+					divider.style.marginBottom = "15px";
+					divider.style.marginTop = "15px";
 				}
-
-				const divider = container.createEl("hr");
-				divider.style.marginBottom = "15px";
-				divider.style.marginTop = "15px";
 
 				// Activities table
 				const activitiesHeading = container.createEl("b", {
@@ -721,13 +797,10 @@ export default class ProjectsTimerPlugin extends Plugin {
 			);
 	}
 
-	async parseProject(infos: {
+	async parseActivities(infos: {
 		file?: TFile;
 		blockContent?: string;
-	}): Promise<{
-		sources: TimeSource[];
-		activities: Activity[];
-	}> {
+	}): Promise<Activity[]> {
 		if (!infos.file && !infos.blockContent) {
 			throw new Error("No file or block content provided");
 		}
@@ -754,40 +827,8 @@ export default class ProjectsTimerPlugin extends Plugin {
 			.split("\n")
 			.map((l) => l.trim())
 			.filter(Boolean);
-		const sepIdx = lines.indexOf("---");
 
-		const timeSourceLines = sepIdx >= 0 ? lines.slice(0, sepIdx) : [];
-		const activityLines = sepIdx >= 0 ? lines.slice(sepIdx + 1) : [];
-
-		const timeSources: TimeSource[] = timeSourceLines
-			.map((line) => {
-				const parts = line.split(";").map((p) => p.trim());
-				if (parts.length < 2) return null;
-
-				const raw = parts[0] ?? "";
-				const linkMatch = raw.match(/\[\[(.+?)\]\]/);
-
-				if (linkMatch) {
-					const label = linkMatch[1]!;
-					let resolvedFile = this.findFileFromLink(label);
-					return {
-						label,
-						resolvedFile,
-						duration: this.parseTime(parts[1] ?? ""),
-						info_text: parts[2],
-					};
-				}
-
-				return {
-					label: raw,
-					resolvedFile: null,
-					duration: this.parseTime(parts[1] ?? ""),
-					info_text: parts[2],
-				};
-			})
-			.filter(Boolean) as TimeSource[];
-
-		const activities: Activity[] = activityLines
+		const activities: Activity[] = lines
 			.map((line) => {
 				const parts = line.split(";").map((p) => p.trim());
 				if (parts.length < 3) return null;
@@ -799,10 +840,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 			})
 			.filter(Boolean) as Activity[];
 
-		return {
-			sources: timeSources,
-			activities,
-		};
+		return activities;
 	}
 
 	async updateStatusBar() {
@@ -825,9 +863,9 @@ export default class ProjectsTimerPlugin extends Plugin {
 		const projectFiles = this.getProjectFiles();
 
 		for (const file of projectFiles) {
-			const res = await this.parseProject({ file });
+			const activities = await this.parseActivities({ file });
 
-			for (const act of res.activities) {
+			for (const act of activities) {
 				const isToday = act.date === todayStr;
 				const d = new Date(act.date + "T00:00:00");
 				const isThisWeek = d >= weekStart;

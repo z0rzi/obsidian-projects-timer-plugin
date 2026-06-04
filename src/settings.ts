@@ -11,6 +11,7 @@ import ProjectsTimerPlugin from "./main";
 
 export interface ProjectsTimerSettings {
 	projectsLocation: string;
+	timeSourceLocation: string;
 	projectTemplate: string;
 	tasksKanbanFile: string;
 	hoursPerDay: number;
@@ -20,6 +21,7 @@ export interface ProjectsTimerSettings {
 
 export const DEFAULT_SETTINGS: ProjectsTimerSettings = {
 	projectsLocation: "",
+	timeSourceLocation: "",
 	projectTemplate: "",
 	tasksKanbanFile: "",
 	hoursPerDay: 8,
@@ -114,6 +116,18 @@ export class ProjectsTimerSettingTab extends PluginSettingTab {
 			this.plugin.settings.projectsLocation,
 			async (value) => {
 				this.plugin.settings.projectsLocation = value;
+				await this.plugin.saveSettings();
+			},
+			true,
+		);
+
+		this.addPathSetting(
+			"Time Source location",
+			"The directory which contains the time source files",
+			"TimeSources/",
+			this.plugin.settings.timeSourceLocation,
+			async (value) => {
+				this.plugin.settings.timeSourceLocation = value;
 				await this.plugin.saveSettings();
 			},
 			true,

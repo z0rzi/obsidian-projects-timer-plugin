@@ -15,8 +15,8 @@ export interface TimeSource {
 	label: string;
 	resolvedFile: TFile | null;
 	duration: number; // in minutes
-	/** Just for visual purposes, will add the text after the label */
-	info_text: string;
+	sourceFile: TFile;
+	status: string;
 }
 
 export interface Activity {
