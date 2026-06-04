@@ -1,6 +1,10 @@
 import { ItemView, WorkspaceLeaf, setIcon, TFile } from "obsidian";
 import type ProjectsTimerPlugin from "../main";
 import { Activity } from "../types";
+import {
+	ExportActivitiesModal,
+	ExportOptions,
+} from "../ui/ExportActivitiesModal";
 
 export const ACTIVITIES_VIEW_TYPE = "activities-view";
 
@@ -40,9 +44,16 @@ export class ActivitiesView extends ItemView {
 		await this.render();
 	}
 
+	private getOneYearAgoDateString(): string {
+		const oneYearAgo = new Date();
+		oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+		return this.plugin.formatDate(oneYearAgo);
+	}
+
 	private async collectActivities(): Promise<ProjectActivity[]> {
 		const projectFiles = this.plugin.getProjectFiles();
 		const allActivities: ProjectActivity[] = [];
+		const cutoff = this.getOneYearAgoDateString();
 
 		for (const file of projectFiles) {
 			try {
@@ -50,6 +61,7 @@ export class ActivitiesView extends ItemView {
 					file,
 				});
 				for (const act of activities) {
+					if (act.date < cutoff) continue;
 					allActivities.push({
 						...act,
 						projectName: file.basename,
@@ -69,11 +81,11 @@ export class ActivitiesView extends ItemView {
 		const allFiles = this.app.vault
 			.getAllLoadedFiles()
 			.filter(
-				(f): f is TFile =>
-					f instanceof TFile && f.path.endsWith(".md"),
+				(f): f is TFile => f instanceof TFile && f.path.endsWith(".md"),
 			);
 
 		const items: DoneItem[] = [];
+		const cutoff = this.getOneYearAgoDateString();
 
 		for (const file of allFiles) {
 			const content = await this.app.vault.cachedRead(file);
@@ -83,10 +95,11 @@ export class ActivitiesView extends ItemView {
 				const line = lines[i];
 				if (!line || !line.includes("#done")) continue;
 
-				const dateMatch = line.match(
-					/#done\b.*?(\d{4}-\d{2}-\d{2})/,
-				);
+				const dateMatch = line.match(/#done\b.*?(\d{4}-\d{2}-\d{2})/);
 				const date = dateMatch ? dateMatch[1]! : "";
+
+				// Skip done items with a date older than 1 year ago, or with no date
+				if (!date || date < cutoff) continue;
 
 				let text = line;
 				if (date) {
@@ -112,6 +125,8 @@ export class ActivitiesView extends ItemView {
 		const container = this.containerEl.children[1];
 		if (!container) return;
 		container.empty();
+
+		this.selectedActivities.clear();
 
 		(container as HTMLElement).style.display = "flex";
 		(container as HTMLElement).style.flexDirection = "column";
@@ -149,6 +164,8 @@ export class ActivitiesView extends ItemView {
 
 		this.renderColumn(columns, "Recent activities", activities);
 		this.renderColumn(columns, "Completed tasks", doneItems);
+
+		this.renderFooter(container as HTMLElement);
 	}
 
 	private renderColumn(
@@ -191,6 +208,55 @@ export class ActivitiesView extends ItemView {
 		}
 	}
 
+	private getActivityHash(activity: ProjectActivity) {
+		return `${activity.date}_${activity.duration}_${activity.description}`;
+	}
+
+	selectedActivities = new Set<ProjectActivity>();
+	activitiesAssignations = new Map<
+		string,
+		{
+			domButton: HTMLElement;
+			domRow: HTMLElement;
+			key: string;
+			activity: ProjectActivity;
+		}
+	>();
+
+	private footerEl: HTMLElement | null = null;
+	private groupCountEl: HTMLElement | null = null;
+	private clearBtn: HTMLButtonElement | null = null;
+	private groupButtonsContainer: HTMLElement | null = null;
+
+	private attribution2color = new Map<string, string>();
+	private getAttributionBgColor(key: string) {
+		if (this.attribution2color.has(key)) {
+			return this.attribution2color.get(key)!;
+		}
+
+		// const allAttributions = new Set(this.activitiesAssignations.values());
+		const allColors = new Set([
+			"#2f2935",
+			"#352929",
+			"#353229",
+			"#29352a",
+			"#293135",
+			"#2c2935",
+		]);
+
+		for (const [, color] of this.attribution2color) {
+			allColors.delete(color);
+		}
+
+		if (!allColors.size) {
+			return "var(--text-faint)";
+		}
+
+		const color = allColors.values().next().value;
+		this.attribution2color.set(key, color);
+		return color;
+	}
+
 	private renderActivityRow(container: HTMLElement, item: ProjectActivity) {
 		const row = container.createDiv();
 		row.style.display = "flex";
@@ -202,11 +268,17 @@ export class ActivitiesView extends ItemView {
 		row.style.fontSize = "0.9em";
 		row.style.transition = "background-color 0.15s";
 
+		const hash = this.getActivityHash(item);
+
 		row.addEventListener("mouseenter", () => {
-			row.style.backgroundColor = "var(--background-modifier-hover)";
+			if (!this.activitiesAssignations.has(hash)) {
+				row.style.backgroundColor = "var(--background-modifier-hover)";
+			}
 		});
 		row.addEventListener("mouseleave", () => {
-			row.style.backgroundColor = "";
+			if (!this.activitiesAssignations.has(hash)) {
+				row.style.backgroundColor = "";
+			}
 		});
 		row.addEventListener("click", () => {
 			const leaf = this.app.workspace.getLeaf(false);
@@ -215,7 +287,10 @@ export class ActivitiesView extends ItemView {
 			}
 		});
 
-		const descEl = row.createSpan({ text: item.description });
+		const topDiv = row.createDiv();
+		topDiv.style.display = "flex";
+
+		const descEl = topDiv.createSpan({ text: item.description });
 		descEl.style.overflow = "hidden";
 		descEl.style.textOverflow = "ellipsis";
 		descEl.style.display = "-webkit-box";
@@ -223,6 +298,79 @@ export class ActivitiesView extends ItemView {
 		descEl.style.webkitBoxOrient = "vertical";
 		descEl.style.color = "var(--text-normal)";
 		descEl.style.lineHeight = "1.4";
+
+		const attribution = this.activitiesAssignations.get(hash);
+		const attribButton = topDiv.createEl("button", {
+			text: attribution?.key ?? "?",
+		});
+		if (attribution) {
+			attribution.domRow = row;
+			attribution.domButton = attribButton;
+		}
+		attribButton.style.marginLeft = "auto";
+		attribButton.style.padding = "4px 8px";
+		attribButton.style.borderRadius = "4px";
+		attribButton.style.backgroundColor = "transparent";
+		attribButton.style.border = "1px solid var(--text-faint)";
+		attribButton.style.borderStyle = "dashed";
+		attribButton.style.cursor = "pointer";
+		attribButton.style.transition = "background-color 0.15s";
+
+		let isListening = false;
+		const onDocKey = (evt: KeyboardEvent) => {
+			console.log('🥖', evt.key);
+			if (evt.key === "Escape") {
+				attribButton.innerHTML = "?";
+				row.style.backgroundColor = "";
+
+				document.removeEventListener("keydown", onDocKey);
+				this.activitiesAssignations.delete(hash);
+				this.updateFooter();
+				isListening = false;
+				return;
+			}
+			if (evt.key.length === 1) {
+			this.activitiesAssignations.set(hash, {
+						domRow: row,
+						domButton: attribButton,
+						key: evt.key,
+						activity: item,
+					});
+				attribButton.innerHTML = evt.key;
+				row.style.backgroundColor = this.getAttributionBgColor(evt.key);
+				this.updateFooter();
+			} else {
+				attribButton.innerHTML = "?";
+				row.style.backgroundColor = "";
+			}
+			document.removeEventListener("keydown", onDocKey);
+			isListening = false;
+		};
+		attribButton.addEventListener("click", (clickEvt) => {
+			clickEvt.stopPropagation();
+			clickEvt.preventDefault();
+			if (isListening) return;
+
+			isListening = true;
+			document.addEventListener("keydown", onDocKey);
+			attribButton.innerHTML = "…";
+		});
+		attribButton.addEventListener("blur", () => {
+			if (!isListening) return;
+			document.removeEventListener("keydown", onDocKey);
+			isListening = false;
+			// restauring previous value
+			const attribution = this.activitiesAssignations.get(hash);
+			if (attribution) {
+				attribButton.innerHTML = attribution.key;
+				row.style.backgroundColor = this.getAttributionBgColor(
+					attribution.key,
+				);
+			} else {
+				attribButton.innerHTML = "?";
+				row.style.backgroundColor = "";
+			}
+		});
 
 		const bottomLine = row.createDiv();
 		bottomLine.style.fontFamily = "var(--font-monospace)";
@@ -247,7 +395,6 @@ export class ActivitiesView extends ItemView {
 		const projectEl = bottomLine.createSpan({ text: item.projectName });
 		projectEl.style.marginLeft = "auto";
 		projectEl.style.flexShrink = "0";
-
 	}
 
 	private renderDoneRow(container: HTMLElement, item: DoneItem) {
@@ -300,6 +447,233 @@ export class ActivitiesView extends ItemView {
 		dateEl.style.color = "var(--text-faint)";
 		dateEl.style.fontSize = "0.8em";
 		dateEl.style.fontVariantNumeric = "tabular-nums";
+	}
+
+	private renderFooter(container: HTMLElement) {
+		this.footerEl = container.createDiv();
+		this.footerEl.style.display = "flex";
+		this.footerEl.style.alignItems = "center";
+		this.footerEl.style.gap = "8px";
+		this.footerEl.style.padding = "10px 0";
+		this.footerEl.style.borderTop =
+			"1px solid var(--background-modifier-border)";
+		this.footerEl.style.flexShrink = "0";
+		this.footerEl.style.marginTop = "8px";
+
+		this.groupCountEl = this.footerEl.createSpan({
+			text: "0 groups",
+		});
+		this.groupCountEl.style.color = "var(--text-muted)";
+		this.groupCountEl.style.fontSize = "0.85em";
+		this.groupCountEl.style.marginRight = "auto";
+
+		this.clearBtn = this.footerEl.createEl("button", {
+			text: "Clear Selected",
+		});
+		this.clearBtn.disabled = true;
+		this.clearBtn.addEventListener("click", () => this.clearSelection());
+
+		this.groupButtonsContainer = this.footerEl.createDiv();
+		this.groupButtonsContainer.style.display = "flex";
+		this.groupButtonsContainer.style.gap = "6px";
+
+		this.updateFooter();
+	}
+
+	private getGroupKeys(): string[] {
+		const keys = new Set<string>();
+		for (const [, entry] of this.activitiesAssignations) {
+			keys.add(entry.key);
+		}
+		return Array.from(keys).sort();
+	}
+
+	private getActivitiesForGroup(key: string): ProjectActivity[] {
+		const activities: ProjectActivity[] = [];
+		for (const [, entry] of this.activitiesAssignations) {
+			if (entry.key === key) {
+				activities.push(entry.activity);
+			}
+		}
+		return activities;
+	}
+
+	private updateFooter() {
+		const groupKeys = this.getGroupKeys();
+		const count = groupKeys.length;
+
+		if (this.groupCountEl) {
+			this.groupCountEl.setText(`${count} group${count !== 1 ? "s" : ""}`);
+		}
+		if (this.clearBtn) {
+			this.clearBtn.disabled = count === 0;
+		}
+
+		// Rebuild group export buttons
+		if (this.groupButtonsContainer) {
+			this.groupButtonsContainer.empty();
+			for (const key of groupKeys) {
+				const btn = this.groupButtonsContainer.createEl("button", {
+					text: `Export group '${key}'`,
+				});
+				btn.addEventListener("click", () =>
+					this.openExportModal(key),
+				);
+			}
+		}
+	}
+
+	private clearSelection() {
+		this.selectedActivities.clear();
+		this.activitiesAssignations.clear();
+		this.updateFooter();
+		// Re-render to reset row visual states
+		this.render();
+	}
+
+	private openExportModal(groupKey: string) {
+		const activities = this.getActivitiesForGroup(groupKey);
+		if (activities.length === 0) return;
+
+		new ExportActivitiesModal(
+			this.app,
+			(options: ExportOptions) => {
+				this.generateCsv(options, activities);
+			},
+			(raw: string) => this.plugin.parseTime(raw),
+		).open();
+	}
+
+	private generateCsv(options: ExportOptions, activities: ProjectActivity[]) {
+		if (activities.length === 0) return;
+
+		let durations: number[];
+		if (options.totalTimeMins != null) {
+			durations = this.redistributeTime(
+				activities.map((a) => a.duration),
+				options.totalTimeMins,
+			);
+		} else {
+			durations = activities.map((a) => a.duration);
+		}
+
+		const lines: string[] = [];
+
+		// Mission reference as first data row if provided
+		if (options.missionReference) {
+			lines.push(options.missionReference);
+		}
+
+		// Header row
+		lines.push("Date;Duration;Description;Project");
+
+		// Data rows
+		for (let i = 0; i < activities.length; i++) {
+			const act = activities[i]!;
+			const duration = durations[i]!;
+			lines.push(
+				`${act.date};${this.formatDurationFr(duration)};${act.description};${act.projectName}`,
+			);
+		}
+
+		const csvContent = lines.join("\n");
+		const dateStr = new Date().toISOString().split("T")[0];
+		const refPart = options.missionReference
+			? `_${options.missionReference}`
+			: "";
+		const filename = `Activity_report${refPart}_${dateStr}.csv`;
+
+		this.downloadCsv(csvContent, filename);
+	}
+
+	private formatDurationFr(mins: number): string {
+		const hoursPerDay = this.plugin.settings.hoursPerDay;
+		const days = Math.floor(mins / 60 / hoursPerDay);
+		if (days >= 2) {
+			mins -= days * 60 * hoursPerDay;
+		}
+		const h = Math.floor(mins / 60);
+		const m = mins % 60;
+		let out = "";
+		if (days > 0) out += `${days}j `;
+		if (h && m) return out + `${h}h${m}m`;
+		if (h) return out + `${h}h`;
+		if (m) return out + `${m}m`;
+		if (out.length) return out.trim();
+		return "0m";
+	}
+
+	private downloadCsv(content: string, filename: string) {
+		const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
+	}
+
+	/**
+	 * Redistributes activity durations proportionally to match a target total time.
+	 * Rounds each activity to the nearest 10 minutes, then adjusts to match the exact total.
+	 */
+	private redistributeTime(
+		originalDurations: number[],
+		targetTotalMins: number,
+	): number[] {
+		const originalTotal = originalDurations.reduce((s, d) => s + d, 0);
+		if (originalTotal === 0) return originalDurations.map(() => 0);
+
+		// Step 1 & 2 & 3: Calculate proportional time and round to nearest 10
+		const rawDurations = originalDurations.map(
+			(d) => (d / originalTotal) * targetTotalMins,
+		);
+		const roundedDurations = rawDurations.map(
+			(d) => Math.round(d / 10) * 10,
+		);
+
+		// Step 4: Adjust for rounding differences
+		const roundedTotal = roundedDurations.reduce((s, d) => s + d, 0);
+		let diff = targetTotalMins - roundedTotal;
+
+		if (diff !== 0) {
+			// Calculate rounding errors: positive means rounded up, negative means rounded down
+			const errors = rawDurations.map(
+				(raw, i) => roundedDurations[i]! - raw,
+			);
+
+			// Create index array sorted by error
+			// If we need to add time (diff > 0): add 10min to activities rounded down the most (most negative error)
+			// If we need to remove time (diff < 0): remove 10min from activities rounded up the most (most positive error)
+			const indices = originalDurations.map((_, i) => i);
+			if (diff > 0) {
+				// Sort by error ascending (most negative first)
+				indices.sort((a, b) => errors[a]! - errors[b]!);
+			} else {
+				// Sort by error descending (most positive first)
+				indices.sort((a, b) => errors[b]! - errors[a]!);
+			}
+
+			let remaining = Math.abs(diff);
+			let idx = 0;
+			while (remaining >= 10 && idx < indices.length) {
+				const i = indices[idx]!;
+				if (diff > 0) {
+					roundedDurations[i]! += 10;
+				} else {
+					// Don't go below 0
+					if (roundedDurations[i]! >= 10) {
+						roundedDurations[i]! -= 10;
+					}
+				}
+				remaining -= 10;
+				idx++;
+			}
+		}
+
+		return roundedDurations;
 	}
 
 	async onClose() {}
