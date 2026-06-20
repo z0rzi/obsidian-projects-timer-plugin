@@ -17,7 +17,7 @@ import {
 	ProjectsTimerSettings,
 	ProjectsTimerSettingTab,
 } from "./settings";
-import { Activity, Task, TimeSource } from "./types";
+import { Activity, Task, TASKS_TYPES, TimeSource } from "./types";
 import { AddActivityModal } from "./ui/AddActivityModal";
 import {
 	TASKS_KANBAN_VIEW_TYPE,
@@ -63,19 +63,19 @@ export default class ProjectsTimerPlugin extends Plugin {
 
 		const hoursPerDay = this.settings.hoursPerDay;
 
-		time.replace(/\d+d/, (rawdays) => {
+		time.replace(/[0-9\.]+d/, (rawdays) => {
 			hours = +rawdays.slice(0, -1) * hoursPerDay;
 			return "d";
 		})
-			.replace(/\d+h/, (rawhours) => {
+			.replace(/[0-9\.]+h/, (rawhours) => {
 				hours = +rawhours.slice(0, -1);
 				return "h";
 			})
-			.replace(/h\d+/, (rawmins) => {
+			.replace(/h[0-9\.]+/, (rawmins) => {
 				mins = +rawmins.slice(1);
 				return "";
 			})
-			.replace(/\d+m/, (rawmins) => {
+			.replace(/[0-9\.]+m/, (rawmins) => {
 				mins = +rawmins.slice(0, -1);
 				return "";
 			});
@@ -164,17 +164,23 @@ export default class ProjectsTimerPlugin extends Plugin {
 			const tsFolder = this.settings.timeSourceLocation;
 			if (!tsFolder) return;
 
-			const files = this.app.vault.getAllLoadedFiles().filter(
-				(f): f is TFile => f instanceof TFile && f.path.startsWith(tsFolder) && f.path.endsWith(".md")
-			);
+			const files = this.app.vault
+				.getAllLoadedFiles()
+				.filter(
+					(f): f is TFile =>
+						f instanceof TFile &&
+						f.path.startsWith(tsFolder) &&
+						f.path.endsWith(".md"),
+				);
 
 			for (const file of files) {
 				const cache = this.app.metadataCache.getFileCache(file);
 				const status = cache?.frontmatter?.status;
+				const completed = cache?.frontmatter?.tasks_completed ?? false;
 
 				const content = await this.app.vault.cachedRead(file);
-				const lines = content.split('\n');
-				
+				const lines = content.split("\n");
+
 				let inTsBlock = false;
 				for (const line of lines) {
 					if (line.startsWith("```timesource")) {
@@ -186,7 +192,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 						continue;
 					}
 					if (inTsBlock) {
-						const parts = line.split(";").map(p => p.trim());
+						const parts = line.split(";").map((p) => p.trim());
 						if (parts.length >= 2) {
 							const raw = parts[0] ?? "";
 							const linkMatch = raw.match(/\[\[(.+?)\]\]/);
@@ -196,20 +202,23 @@ export default class ProjectsTimerPlugin extends Plugin {
 								label = linkMatch[1]!;
 								resolvedFile = this.findFileFromLink(label);
 							}
-							
+
 							const duration = this.parseTime(parts[1] ?? "");
-							const targetPath = resolvedFile ? resolvedFile.path : label;
-							
+							const targetPath = resolvedFile
+								? resolvedFile.path
+								: label;
+
 							if (!this.timeSourcesCache.has(targetPath)) {
 								this.timeSourcesCache.set(targetPath, []);
 							}
-							
+
 							this.timeSourcesCache.get(targetPath)!.push({
 								label,
 								resolvedFile,
 								duration,
 								sourceFile: file,
-								status: status || ""
+								status: status || "",
+								completed,
 							});
 						}
 					}
@@ -227,10 +236,20 @@ export default class ProjectsTimerPlugin extends Plugin {
 			await this.buildTimeSourceCache();
 		});
 
-		this.registerEvent(this.app.metadataCache.on("changed", () => this.buildTimeSourceCache()));
-		this.registerEvent(this.app.vault.on("create", () => this.buildTimeSourceCache()));
-		this.registerEvent(this.app.vault.on("delete", () => this.buildTimeSourceCache()));
-		this.registerEvent(this.app.vault.on("rename", () => this.buildTimeSourceCache()));
+		this.registerEvent(
+			this.app.metadataCache.on("changed", () =>
+				this.buildTimeSourceCache(),
+			),
+		);
+		this.registerEvent(
+			this.app.vault.on("create", () => this.buildTimeSourceCache()),
+		);
+		this.registerEvent(
+			this.app.vault.on("delete", () => this.buildTimeSourceCache()),
+		);
+		this.registerEvent(
+			this.app.vault.on("rename", () => this.buildTimeSourceCache()),
+		);
 
 		this.registerView(
 			TASKS_KANBAN_VIEW_TYPE,
@@ -294,7 +313,9 @@ export default class ProjectsTimerPlugin extends Plugin {
 				};
 
 				const timeSources = this.timeSourcesCache.get(file.path) || [];
-				const activities = await this.parseActivities({ blockContent: source });
+				const activities = await this.parseActivities({
+					blockContent: source,
+				});
 
 				const totalAvailable = timeSources.reduce((s, t) => {
 					if (t.status === "accepted" || t.status === "paid") {
@@ -351,41 +372,68 @@ export default class ProjectsTimerPlugin extends Plugin {
 						const li = sourcesList.createEl("li");
 						li.style.marginBottom = "2px";
 
-						const isNotAccepted = src.status === "not_accepted";
-						const isPaid = src.status === "paid";
+						let style = {
+							additionalText: "",
+							css: {} as Record<string, string>,
+						};
+
+						if (src.status === "paid") {
+							style.additionalText = "(paid)";
+						} else if (src.status === "pending") {
+							// Not counting this time source
+							style = {
+								additionalText: "(not accepted)",
+								css: {
+									color: "var(--text-faint)",
+									fontStyle: "italic",
+								},
+							};
+						}
+
+						if (src.completed) {
+							style.additionalText += " (completed)";
+							style.css.textDecoration = "line-through";
+							style.css.color = "var(--text-faint)";
+						}
 
 						const linkText = src.sourceFile.basename;
 						const link = li.createEl("a", { text: linkText });
 						link.href = linkText;
 						link.addEventListener("click", (e: MouseEvent) => {
 							e.preventDefault();
-							this.app.workspace.openLinkText(
-								linkText,
-								filepath,
-							);
+							this.app.workspace.openLinkText(linkText, filepath);
 						});
 
-						if (isNotAccepted) {
-							link.style.color = "var(--text-faint)";
-							link.style.fontStyle = "italic";
+						link.addEventListener("mouseover", (event: MouseEvent) => {
+							event.preventDefault();
+							this.app.workspace.trigger("hover-link", {
+								event,
+								source: "preview",
+								hoverParent: { hoverPopover: null },
+								targetEl: link,
+								linktext: linkText,
+								sourcePath: filepath,
+							});
+						});
+
+						if (style.css) {
+							Object.assign(link.style, style.css);
+						}
+
+						if (style.additionalText) {
+							const additionalTextSpan = li.createEl("span", {
+								text: style.additionalText,
+							});
+							additionalTextSpan.style.marginLeft = "4px";
+							additionalTextSpan.style.color =
+								"var(--text-faint)";
+							additionalTextSpan.style.fontSize = "0.8em";
 						}
 
 						const durationSpan = li.createEl("span", {
-							text: ` — ${this.formatDuration(src.duration)}`,
+							text: ` ~ ${this.formatDuration(src.duration)}`,
 						});
-						
-						if (isNotAccepted) {
-							durationSpan.style.color = "var(--text-faint)";
-						}
-						
-						if (isPaid) {
-							const paidSpan = li.createEl("span", {
-								text: " (Paid)",
-							});
-							paidSpan.style.color = "var(--text-success)";
-							paidSpan.style.fontSize = "0.8em";
-							paidSpan.style.marginLeft = "4px";
-						}
+						durationSpan.style.color = "var(--text-faint)";
 					}
 
 					const divider = container.createEl("hr");
@@ -445,61 +493,94 @@ export default class ProjectsTimerPlugin extends Plugin {
 					errorEl.style.padding = "8px";
 					errorEl.style.border = "1px solid var(--text-error)";
 					errorEl.style.borderRadius = "4px";
-					errorEl.style.backgroundColor = "rgba(var(--color-red-rgb), 0.1)";
-					errorEl.innerText = "Error: 'status' is missing from the file properties (frontmatter).";
+					errorEl.style.backgroundColor =
+						"rgba(var(--color-red-rgb), 0.1)";
+					errorEl.innerText =
+						"Error: 'status' is missing from the file properties (frontmatter).";
 				}
 
-				const lines = source.split("\n").map(l => l.trim()).filter(Boolean);
-				
-				if (lines.length > 0) {
-					const list = container.createEl("ul");
-					list.style.listStyle = "none";
-					list.style.padding = "0";
-					list.style.margin = "0";
+				const lines = source
+					.split("\n")
+					.map((l) => l.trim())
+					.filter(Boolean);
 
-					for (const line of lines) {
-						const parts = line.split(";").map(p => p.trim());
-						if (parts.length < 2) continue;
+				if (lines.length === 0) return;
 
-						const raw = parts[0] ?? "";
-						const durationStr = parts[1] ?? "";
-						const duration = this.parseTime(durationStr);
-						
-						const linkMatch = raw.match(/\[\[(.+?)\]\]/);
-						let label = raw;
-						if (linkMatch) {
-							label = linkMatch[1]!;
-						}
-						
-						const resolvedFile = this.findFileFromLink(label);
-						
-						const li = list.createEl("li");
-						li.style.marginBottom = "4px";
+				const title = container.createEl("b", {
+					text: "Time distribution",
+				});
+				title.style.display = "block";
+				title.style.marginBottom = "6px";
 
-						if (!resolvedFile) {
-							const errorMsg = li.createEl("span", { text: `⚠️ Project not found: ${label}` });
+				const list = container.createEl("ul");
+				// list.style.listStyle = "none";
+				list.style.padding = "0";
+				list.style.margin = "0";
+
+				for (const line of lines) {
+					const parts = line.split(";").map((p) => p.trim());
+					if (parts.length < 2) continue;
+
+					const raw = parts[0] ?? "";
+					const durationStr = parts[1] ?? "";
+					const duration = this.parseTime(durationStr);
+
+					const linkMatch = raw.match(/\[\[(.+?)\]\]/);
+					let label = raw;
+					if (linkMatch) {
+						label = linkMatch[1]!;
+					}
+
+					const resolvedFile = this.findFileFromLink(label);
+
+					const li = list.createEl("li");
+					li.style.marginBottom = "4px";
+
+					if (!resolvedFile) {
+						const errorMsg = li.createEl("span", {
+							text: `⚠️ Project not found: ${label}`,
+						});
+						errorMsg.style.color = "var(--text-error)";
+						errorMsg.style.marginRight = "8px";
+					} else {
+						const content =
+							await this.app.vault.cachedRead(resolvedFile);
+						if (!content.includes("```project")) {
+							const errorMsg = li.createEl("span", {
+								text: `⚠️ No project block in ${label}`,
+							});
 							errorMsg.style.color = "var(--text-error)";
 							errorMsg.style.marginRight = "8px";
 						} else {
-							const content = await this.app.vault.cachedRead(resolvedFile);
-							if (!content.includes("```project")) {
-								const errorMsg = li.createEl("span", { text: `⚠️ No project block in ${label}` });
-								errorMsg.style.color = "var(--text-error)";
-								errorMsg.style.marginRight = "8px";
-							} else {
-								const link = li.createEl("a", { text: label });
-								link.href = label;
-								link.addEventListener("click", (e: MouseEvent) => {
-									e.preventDefault();
-									this.app.workspace.openLinkText(label, filepath);
-								});
-							}
-						}
+							const link = li.createEl("a", { text: label });
+							link.href = label;
+							link.addEventListener("click", (e: MouseEvent) => {
+								e.preventDefault();
+								this.app.workspace.openLinkText(
+									label,
+									filepath,
+								);
+							});
 
-						li.createEl("span", { text: ` — ${this.formatDuration(duration)}` });
+							link.addEventListener("mouseover", (event: MouseEvent) => {
+								event.preventDefault();
+								this.app.workspace.trigger("hover-link", {
+									event,
+									source: "preview",
+									hoverParent: { hoverPopover: null },
+									targetEl: link,
+									linktext: label,
+									sourcePath: filepath,
+								});
+							});
+						}
 					}
+
+					li.createEl("span", {
+						text: ` — ${this.formatDuration(duration)}`,
+					});
 				}
-			}
+			},
 		);
 
 		this.addCommand({
@@ -701,23 +782,18 @@ export default class ProjectsTimerPlugin extends Plugin {
 				continue;
 			}
 
-			const isTask = line.startsWith("#task ");
-			const isBug = line.startsWith("#bug ");
-			const isNow = line.startsWith("#now ");
-			const isWait = line.startsWith("#wait ");
+			let taskType = null as null | typeof TASKS_TYPES[number];
+			for (const ttype of TASKS_TYPES) {
+				if (line.startsWith('#' + ttype.tag + ' ')) {
+					taskType = ttype;
+				}
+			}
 
-			if (isTask || isBug || isNow || isWait) {
+			if (taskType) {
 				if (currentTask) {
 					tasks.push(currentTask as Task);
 					currentTask = null;
 				}
-
-				let type: Task["type"];
-				if (isTask) type = "task";
-				else if (isBug) type = "bug";
-				else if (isNow) type = "now";
-				else if (isWait) type = "wait";
-				else type = "task";
 
 				let priority = 1;
 
@@ -737,7 +813,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 					projectFile: projectFile ?? undefined,
 					description: "",
 					line: lineNr,
-					type,
+					type: taskType.tag,
 				};
 				this.taskCounter++;
 				continue;
@@ -782,7 +858,6 @@ export default class ProjectsTimerPlugin extends Plugin {
 
 	private findProjectBlock(contentLines: string[]) {
 		let startLine = 0;
-		let insertLine = 0;
 		let lineEnd = 0;
 		for (let i = 0; i < contentLines.length; i++) {
 			const line = contentLines[i];
@@ -791,22 +866,18 @@ export default class ProjectsTimerPlugin extends Plugin {
 				startLine = i + 1;
 				continue;
 			}
-			if (startLine && line.startsWith("---")) {
-				insertLine = i + 1;
-			}
 			if (startLine && line === "```") {
 				lineEnd = i;
 				break;
 			}
 		}
 
-		if (!startLine || !insertLine || !lineEnd) {
+		if (!startLine || !lineEnd) {
 			return null;
 		}
 
 		return {
 			startLine,
-			insertLine,
 			lineEnd,
 		};
 	}
@@ -845,7 +916,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 			return;
 		}
 
-		const { startLine, insertLine } = lines;
+		const { startLine } = lines;
 
 		if (!startLine) {
 			new Notice("No project block found in this file");
@@ -855,7 +926,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 		const today = new Date().toISOString().split("T")[0];
 		const newLine = `${today};${durationMins};${description}`;
 
-		contentLines.splice(insertLine, 0, newLine);
+		contentLines.splice(startLine, 0, newLine);
 
 		await this.app.vault.modify(file, contentLines.join("\n"));
 	}
@@ -876,8 +947,13 @@ export default class ProjectsTimerPlugin extends Plugin {
 		file?: TFile;
 		blockContent?: string;
 	}): Promise<Activity[]> {
-		if (!infos.file && !infos.blockContent) {
+		if (infos.file == null && infos.blockContent == null) {
 			throw new Error("No file or block content provided");
+		}
+
+		if (infos.file == null && infos.blockContent == "") {
+			// No activities yet.
+			return [];
 		}
 
 		let blockContent = infos.blockContent ?? "";

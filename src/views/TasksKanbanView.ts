@@ -1,7 +1,7 @@
 import { ItemView, WorkspaceLeaf, Notice, setIcon } from "obsidian";
 import "jkanban";
 import type ProjectsTimerPlugin from "../main";
-import { Task } from "../types";
+import { Task, TASKS_TYPES } from "../types";
 import { Subscription } from "rxjs";
 import { AddActivityModal } from "../ui/AddActivityModal";
 
@@ -84,6 +84,28 @@ export class TasksKanbanView extends ItemView {
 		container.addClass("tasks-kanban-view-container");
 		(container as HTMLElement).style.display = "flex";
 		(container as HTMLElement).style.flexDirection = "column";
+
+		const searchEl = container.createDiv("kanban-timer-header");
+		searchEl.style.width = "100%";
+		searchEl.style.padding = "0px 10px";
+		const filterInput = searchEl.createEl("input");
+		filterInput.style.width = "100%";
+		filterInput.type = "text";
+		filterInput.placeholder = "Filter tasks";
+		filterInput.addEventListener("input", () => {
+			const search = filterInput.value.toLowerCase();
+			const allTasks = this.plugin.allTasks.getValue();
+			if (!search.trim()) {
+				this.updateBoards(allTasks);
+				return;
+			}
+			const filteredTasks = allTasks.filter(
+				(task) =>
+					task.title.toLowerCase().includes(search) ||
+					task.description.toLowerCase().includes(search),
+			);
+			this.updateBoards(filteredTasks);
+		});
 
 		const kanbanContainer = container.createDiv("kanban-container-wrapper");
 		kanbanContainer.style.flexGrow = "1";
@@ -198,7 +220,7 @@ export class TasksKanbanView extends ItemView {
 			},
 		];
 
-		const typeOrder = ["now", "bug", "task", "wait"];
+		const typeOrder = TASKS_TYPES.map((t) => t.tag);
 		tasks.sort((a, b) => {
 			const aType = typeOrder.indexOf(a.type);
 			const bType = typeOrder.indexOf(b.type);
@@ -229,6 +251,35 @@ export class TasksKanbanView extends ItemView {
 				type: task.type,
 			});
 		}
+
+		// Applying card styles dynamically
+		setTimeout(() => {
+			let styleStr = "";
+
+			for (const cardType of TASKS_TYPES) {
+				const props = [] as string[];
+				if (cardType.color) {
+					props.push(`
+						--card-color: ${cardType.color};
+						border-left: 4px solid var(--card-color);
+					`);
+				}
+				if (cardType.faint) {
+					props.push('opacity: 0.6;')
+				}
+
+				styleStr += `
+					.tasks-kanban-view-container .kanban-item[data-type="${cardType.tag}"] {
+						${props.join('\n')}
+					}
+				`;
+			}
+			styleStr += "";
+
+			const root = document.getElementById(this.rootId);
+			const style = root?.createEl("style");
+			style?.setText(styleStr);
+		}, 10);
 
 		this.kanbanInstance = new window.jKanban({
 			element: `#${this.rootId}`,
@@ -282,12 +333,7 @@ export class TasksKanbanView extends ItemView {
 					}
 				}
 
-				let newTag: string;
-				if (task.type === "bug") newTag = "#bug";
-				else if (task.type === "now") newTag = "#now";
-				else if (task.type === "wait") newTag = "#wait";
-				else newTag = "#task";
-
+				let newTag = task.type ? `#${task.type}` : "#task";
 				newTag += ` p${newPriority ?? 1}`;
 
 				this.updateTaskTag(task, newTag);
