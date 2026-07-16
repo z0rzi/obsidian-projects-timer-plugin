@@ -4,7 +4,7 @@ import type ProjectsTimerPlugin from "../main";
 import { ProjectCard, Task, TASKS_TYPES } from "../types";
 import { Subscription } from "rxjs";
 import { AddActivityModal } from "../ui/AddActivityModal";
-import { toggleCheckboxLine } from "../projectCards";
+import { setFrontmatterPriority, toggleCheckboxLine } from "../projectCards";
 
 declare global {
 	interface Window {
@@ -338,16 +338,28 @@ export class TasksKanbanView extends ItemView {
 				if (cardType.color) {
 					props.push(`
 						--card-color: ${cardType.color};
-						border-left: 4px solid var(--card-color);
 					`);
 				}
-				if (cardType.faint) {
-					props.push('opacity: 0.6;')
+				if (cardType.css) {
+					props.push(cardType.css);
 				}
 
 				styleStr += `
 					.tasks-kanban-view-container .kanban-item[data-type="${cardType.tag}"] {
-						${props.join('\n')}
+						position: relative;
+						${props.join('\n')};
+					}
+					.tasks-kanban-view-container .kanban-item[data-type="${cardType.tag}"]::before {
+						content: "${cardType.tag}";
+						display: block;
+						position: absolute;
+						top: 0;
+						right: 0;
+						font-style: italic;
+						font-size: 0.8em;
+						color: white;
+						opacity: 0.2;
+						padding: 5px;
 					}
 				`;
 			}
@@ -417,9 +429,6 @@ export class TasksKanbanView extends ItemView {
 
 				const eid = el.getAttribute("data-eid");
 				if (!eid) return;
-				const taskId = parseInt(eid.replace("task-", ""), 10);
-				const task = this.currentTasks.get(taskId);
-				if (!task) return;
 
 				let newPriority: number;
 				if (targetBoardId === "doing") {
@@ -432,6 +441,18 @@ export class TasksKanbanView extends ItemView {
 						return;
 					}
 				}
+
+				if (eid.startsWith("project-")) {
+					const cardId = parseInt(eid.replace("project-", ""), 10);
+					const card = this.currentProjectCards.get(cardId);
+					if (!card) return;
+					this.updateProjectPriority(card, newPriority);
+					return;
+				}
+
+				const taskId = parseInt(eid.replace("task-", ""), 10);
+				const task = this.currentTasks.get(taskId);
+				if (!task) return;
 
 				let newTag = task.type ? `#${task.type}` : "#task";
 				newTag += ` p${newPriority ?? 1}`;
@@ -572,6 +593,18 @@ export class TasksKanbanView extends ItemView {
 			type: "project" as Task["type"],
 		};
 		this.startTimerForTask(pseudoTask);
+	}
+
+	private async updateProjectPriority(card: ProjectCard, newPriority: number) {
+		try {
+			const content = await this.app.vault.read(card.file);
+			const newContent = setFrontmatterPriority(content, newPriority);
+			if (newContent === content) return;
+
+			await this.app.vault.modify(card.file, newContent);
+		} catch (e) {
+			new Notice("Failed to update project priority");
+		}
 	}
 
 	startTimerForTask(task: Task): void {
