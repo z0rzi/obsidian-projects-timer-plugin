@@ -21,6 +21,19 @@ export type Task = {
 	type: TaskTagLabel;
 };
 
+export type ProjectCardItem = {
+	text: string;
+	line: number;
+	checked: boolean;
+};
+
+export type ProjectCard = {
+	id: number;
+	file: TFile;
+	priority: number;
+	items: ProjectCardItem[];
+};
+
 export interface TimeSource {
 	label: string;
 	resolvedFile: TFile | null;
