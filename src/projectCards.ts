@@ -89,3 +89,29 @@ export function parseProjectCard(params: {
 
 	return { id, file, priority, items: selectPreviewItems(items) };
 }
+
+export function toggleCheckboxLine(line: string): string | null {
+	const checkboxPattern = /^- \[( |x|X)\] (.+)$/;
+	const match = line.match(checkboxPattern);
+	if (!match) return null;
+
+	const newState = match[1]!.toLowerCase() === "x" ? " " : "x";
+	return `- [${newState}] ${match[2]}`;
+}
+
+export function setFrontmatterPriority(
+	content: string,
+	newPriority: number,
+): string {
+	const lines = content.split("\n");
+	const closingIdx = lines.indexOf("---", 1);
+
+	for (let i = 1; i < closingIdx; i++) {
+		if (lines[i]?.match(/^priority\s*:/)) {
+			lines[i] = `priority: ${newPriority}`;
+			break;
+		}
+	}
+
+	return lines.join("\n");
+}
