@@ -159,6 +159,10 @@ Write this ad hoc script to your scratch directory as `verify-project-cards.ts` 
 ```ts
 import { findTasksHeadingSection, extractCheckboxItems, selectPreviewItems, parseProjectCard } from "/home/zorzi/Work/VAULT/.obsidian/plugins/projects-timer/src/projectCards";
 
+function assert(cond: unknown, message: string): asserts cond {
+	if (!cond) throw new Error(`FAILED: ${message}`);
+}
+
 const content = `---
 priority: 2
 ---
@@ -181,16 +185,16 @@ priority: 2
 
 const lines = content.split("\n");
 const section = findTasksHeadingSection(lines);
-console.assert(section !== null, "section should be found");
-console.assert(lines[section!.start]?.trim() === "", "section starts right after the heading");
+assert(section !== null, "section should be found");
+assert(lines[section!.start]?.trim() === "", "section starts right after the heading");
 
 const items = extractCheckboxItems(lines, section!.start, section!.end);
-console.assert(items.length === 4, `expected 4 checkbox items, got ${items.length}`);
-console.assert(items[0]!.text === "Do something", `unexpected text: ${items[0]!.text}`);
+assert(items.length === 4, `expected 4 checkbox items, got ${items.length}`);
+assert(items[0]!.text === "Do something", `unexpected text: ${items[0]!.text}`);
 
 const preview = selectPreviewItems(items);
-console.assert(preview.length === 3, `expected 3 preview items, got ${preview.length}`);
-console.assert(preview[2]!.text === "Third task", `expected Third task last, got ${preview[2]!.text}`);
+assert(preview.length === 3, `expected 3 preview items, got ${preview.length}`);
+assert(preview[2]!.text === "Third task", `expected Third task last, got ${preview[2]!.text}`);
 
 // All checked -> fallback to tail of checked items
 const allDoneItems = [
@@ -200,7 +204,7 @@ const allDoneItems = [
 	{ text: "d", line: 3, checked: true },
 ];
 const allDonePreview = selectPreviewItems(allDoneItems);
-console.assert(
+assert(
 	allDonePreview.map((i) => i.text).join(",") === "b,c,d",
 	`expected tail b,c,d, got ${allDonePreview.map((i) => i.text).join(",")}`,
 );
@@ -212,7 +216,7 @@ const card = parseProjectCard({
 	frontmatter: { priority: 1 },
 	id: 1,
 });
-console.assert(card !== null && card.items.length === 0, "card with no Tasks heading should have empty items");
+assert(card !== null && card.items.length === 0, "card with no Tasks heading should have empty items");
 
 // archived hides the card
 const archivedCard = parseProjectCard({
@@ -221,7 +225,7 @@ const archivedCard = parseProjectCard({
 	frontmatter: { priority: 2, archived: true },
 	id: 2,
 });
-console.assert(archivedCard === null, "archived project should not produce a card");
+assert(archivedCard === null, "archived project should not produce a card");
 
 // missing priority hides the card
 const noPriorityCard = parseProjectCard({
@@ -230,13 +234,13 @@ const noPriorityCard = parseProjectCard({
 	frontmatter: {},
 	id: 3,
 });
-console.assert(noPriorityCard === null, "project without priority should not produce a card");
+assert(noPriorityCard === null, "project without priority should not produce a card");
 
 console.log("All checks passed");
 ```
 
 Run: `npx jiti /tmp/verify-project-cards.ts` (adjust path to wherever you saved it)
-Expected: `All checks passed` printed, no `Assertion failed` lines.
+Expected: `All checks passed` printed, exit code 0. Any failed `assert` throws immediately and exits non-zero with a `FAILED: ...` message — fix the implementation, not the check, unless the check itself is wrong.
 
 - [ ] **Step 4: Type-check and lint**
 
@@ -306,19 +310,19 @@ import { findTasksHeadingSection, extractCheckboxItems, selectPreviewItems, pars
 And append at the end, before `console.log("All checks passed")`:
 
 ```ts
-console.assert(toggleCheckboxLine("- [ ] Do something") === "- [x] Do something", "toggle unchecked -> checked");
-console.assert(toggleCheckboxLine("- [x] Done") === "- [ ] Done", "toggle checked -> unchecked");
-console.assert(toggleCheckboxLine("Not a checkbox") === null, "non-checkbox line returns null");
+assert(toggleCheckboxLine("- [ ] Do something") === "- [x] Do something", "toggle unchecked -> checked");
+assert(toggleCheckboxLine("- [x] Done") === "- [ ] Done", "toggle checked -> unchecked");
+assert(toggleCheckboxLine("Not a checkbox") === null, "non-checkbox line returns null");
 
 const fmContent = "---\npriority: 1\narchived: false\n---\n\n## Tasks\n";
 const updated = setFrontmatterPriority(fmContent, 4);
-console.assert(updated.includes("priority: 4"), "priority line updated");
-console.assert(!updated.includes("priority: 1"), "old priority value gone");
-console.assert(updated.includes("archived: false"), "other frontmatter lines untouched");
+assert(updated.includes("priority: 4"), "priority line updated");
+assert(!updated.includes("priority: 1"), "old priority value gone");
+assert(updated.includes("archived: false"), "other frontmatter lines untouched");
 ```
 
 Run: `npx jiti /tmp/verify-project-cards.ts` (same path as Task 1)
-Expected: `All checks passed` printed, no `Assertion failed` lines.
+Expected: `All checks passed` printed, exit code 0.
 
 - [ ] **Step 3: Type-check and lint**
 
