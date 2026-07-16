@@ -92,9 +92,8 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
 export function parseProjectCard(params: {
 	file: TFile;
 	content: string;
-	id: number;
 }): ProjectCard | null {
-	const { file, content, id } = params;
+	const { file, content } = params;
 	const frontmatter = parseFrontmatter(content);
 
 	if (frontmatter.archived === true) return null;
@@ -108,7 +107,7 @@ export function parseProjectCard(params: {
 		? extractCheckboxItems(lines, section.start, section.end)
 		: [];
 
-	return { id, file, priority, items: selectPreviewItems(items) };
+	return { id: file.path, file, priority, items: selectPreviewItems(items) };
 }
 
 export function toggleCheckboxLine(line: string): string | null {

@@ -94,9 +94,10 @@ export class TasksKanbanView extends ItemView {
 	private clickHandler: ((evt: MouseEvent) => void) | null = null;
 	private taskSub: Subscription | null = null;
 	private projectCardSub: Subscription | null = null;
-	private currentTasks: Map<number, Task> = new Map();
-	private currentProjectCards: Map<number, ProjectCard> = new Map();
+	private currentTasks: Map<string, Task> = new Map();
+	private currentProjectCards: Map<string, ProjectCard> = new Map();
 	private isRendering = false;
+	private lastSnapshot: string | null = null;
 	private footerEl: HTMLElement | null = null;
 	timerState: {
 		task: Task | null;
@@ -183,50 +184,10 @@ export class TasksKanbanView extends ItemView {
 
 		const projectCards = this.plugin.allProjectCards.getValue();
 
-		// Only re-render if something actually changed (by id and content hash)
-		let changed = false;
-		if (tasks.length !== this.currentTasks.size) {
-			changed = true;
-		} else {
-			for (const task of tasks) {
-				const existing = this.currentTasks.get(task.id);
-				if (
-					!existing ||
-					existing.priority !== task.priority ||
-					existing.title !== task.title ||
-					existing.description !== task.description ||
-					existing.file !== task.file ||
-					existing.line !== task.line
-				) {
-					changed = true;
-					break;
-				}
-			}
-		}
-
-		if (!changed && projectCards.length !== this.currentProjectCards.size) {
-			changed = true;
-		} else if (!changed) {
-			for (const card of projectCards) {
-				const existing = this.currentProjectCards.get(card.id);
-				if (
-					!existing ||
-					existing.priority !== card.priority ||
-					existing.items.length !== card.items.length ||
-					existing.items.some(
-						(item, idx) =>
-							item.text !== card.items[idx]?.text ||
-							item.checked !== card.items[idx]?.checked ||
-							item.line !== card.items[idx]?.line,
-					)
-				) {
-					changed = true;
-					break;
-				}
-			}
-		}
-
-		if (!changed) return;
+		// Only re-render if the board content actually changed
+		const snapshot = this.buildSnapshot(tasks, projectCards);
+		if (snapshot === this.lastSnapshot) return;
+		this.lastSnapshot = snapshot;
 
 		this.currentTasks.clear();
 		for (const task of tasks) {
@@ -241,6 +202,24 @@ export class TasksKanbanView extends ItemView {
 		requestAnimationFrame(() => {
 			this.renderBoards(tasks, projectCards);
 		});
+	}
+
+	private buildSnapshot(tasks: Task[], projectCards: ProjectCard[]): string {
+		const taskPart = tasks
+			.map(
+				(task) =>
+					`${task.id}:${task.priority}:${task.title}:${task.description}:${task.line}`,
+			)
+			.join("|");
+		const cardPart = projectCards
+			.map(
+				(card) =>
+					`${card.id}:${card.priority}:${card.items
+						.map((item) => `${item.line}:${item.checked ? 1 : 0}:${item.text}`)
+						.join(",")}`,
+			)
+			.join("|");
+		return `${taskPart}##${cardPart}`;
 	}
 
 	private renderBoards(tasks: Task[], projectCards: ProjectCard[]) {
@@ -414,14 +393,14 @@ export class TasksKanbanView extends ItemView {
 				if (!eid) return;
 
 				if (eid.startsWith("project-")) {
-					const id = parseInt(eid.replace("project-", ""), 10);
+					const id = eid.replace("project-", "");
 					const card = this.currentProjectCards.get(id);
 					if (!card) return;
 					this.openFileAtLine(card.file);
 					return;
 				}
 
-				const id = parseInt(eid.replace("task-", ""), 10);
+				const id = eid.replace("task-", "");
 				const task = this.currentTasks.get(id);
 				if (!task) return;
 				this.openFileAtLine(task.file, task.line);
@@ -452,14 +431,14 @@ export class TasksKanbanView extends ItemView {
 				}
 
 				if (eid.startsWith("project-")) {
-					const cardId = parseInt(eid.replace("project-", ""), 10);
+					const cardId = eid.replace("project-", "");
 					const card = this.currentProjectCards.get(cardId);
 					if (!card) return;
 					this.updateProjectPriority(card, newPriority);
 					return;
 				}
 
-				const taskId = parseInt(eid.replace("task-", ""), 10);
+				const taskId = eid.replace("task-", "");
 				const task = this.currentTasks.get(taskId);
 				if (!task) return;
 
@@ -480,7 +459,7 @@ export class TasksKanbanView extends ItemView {
 				evt.stopPropagation();
 				const cardId = projectPlayBtn.getAttribute("data-project-id");
 				if (cardId) {
-					const card = this.currentProjectCards.get(+cardId);
+					const card = this.currentProjectCards.get(cardId);
 					if (card) this.startTimerForProjectCard(card);
 				}
 				return;
@@ -494,7 +473,7 @@ export class TasksKanbanView extends ItemView {
 				const cardId = projectCheckbox.getAttribute("data-project-id");
 				const line = projectCheckbox.getAttribute("data-line");
 				if (cardId && line) {
-					const card = this.currentProjectCards.get(+cardId);
+					const card = this.currentProjectCards.get(cardId);
 					if (card) this.updateProjectCheckbox(card, +line);
 				}
 				return;
@@ -508,7 +487,7 @@ export class TasksKanbanView extends ItemView {
 				const cardId = projectItem.getAttribute("data-project-id");
 				const line = projectItem.getAttribute("data-line");
 				if (cardId && line) {
-					const card = this.currentProjectCards.get(+cardId);
+					const card = this.currentProjectCards.get(cardId);
 					if (card) this.openFileAtLine(card.file, +line);
 				}
 				return;
@@ -521,7 +500,7 @@ export class TasksKanbanView extends ItemView {
 				evt.stopPropagation();
 				const taskId = playBtn.getAttribute("data-task-id");
 				if (taskId) {
-					const task = this.currentTasks.get(+taskId);
+					const task = this.currentTasks.get(taskId);
 					if (task) this.startTimerForTask(task);
 				}
 				return;
@@ -534,7 +513,7 @@ export class TasksKanbanView extends ItemView {
 				evt.stopPropagation();
 				const rawId = doneBtn.getAttribute("data-task-id");
 				if (!rawId) return;
-				const task = this.currentTasks.get(Number(rawId));
+				const task = this.currentTasks.get(rawId);
 				if (!task) return;
 				const strDate = new Date().toISOString().split("T")[0];
 				this.updateTaskTag(task, "#done " + strDate);
@@ -596,7 +575,7 @@ export class TasksKanbanView extends ItemView {
 
 	private startTimerForProjectCard(card: ProjectCard) {
 		const pseudoTask: Task = {
-			id: -card.id,
+			id: `project:${card.id}`,
 			title: card.file.basename,
 			description: "",
 			file: card.file,

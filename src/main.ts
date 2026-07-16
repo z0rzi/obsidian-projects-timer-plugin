@@ -44,9 +44,6 @@ function makeTaskHash(task: Task) {
 export default class ProjectsTimerPlugin extends Plugin {
 	settings: ProjectsTimerSettings;
 
-	taskCounter = 1;
-	projectCardCounter = 1;
-
 	revenueSpan: HTMLElement;
 	todayWorkedSpan: HTMLElement;
 	weekWorkedSpan: HTMLElement;
@@ -828,7 +825,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 				});
 
 				currentTask = {
-					id: this.taskCounter,
+					id: `${file.path}:${lineNr}`,
 					title,
 					priority,
 					file,
@@ -837,7 +834,6 @@ export default class ProjectsTimerPlugin extends Plugin {
 					line: lineNr,
 					type: taskType.tag,
 				};
-				this.taskCounter++;
 				continue;
 			}
 
@@ -876,9 +872,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 		const card = parseProjectCard({
 			file,
 			content,
-			id: this.projectCardCounter,
 		});
-		if (card) this.projectCardCounter++;
 
 		return card;
 	}

@@ -14,7 +14,7 @@ export const TASKS_TYPES = [
 export type TaskTagLabel = typeof TASKS_TYPES[number]['tag']
 
 export type Task = {
-	id: number;
+	id: string;
 	title: string;
 	description: string;
 	projectFile?: TFile;
@@ -31,7 +31,7 @@ export type ProjectCardItem = {
 };
 
 export type ProjectCard = {
-	id: number;
+	id: string;
 	file: TFile;
 	priority: number;
 	items: ProjectCardItem[];
