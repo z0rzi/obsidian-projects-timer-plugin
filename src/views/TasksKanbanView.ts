@@ -1,7 +1,7 @@
 import { ItemView, WorkspaceLeaf, Notice, setIcon } from "obsidian";
 import "jkanban";
 import type ProjectsTimerPlugin from "../main";
-import { Task, TASKS_TYPES } from "../types";
+import { ProjectCard, Task, TASKS_TYPES } from "../types";
 import { Subscription } from "rxjs";
 import { AddActivityModal } from "../ui/AddActivityModal";
 
@@ -41,6 +41,43 @@ function cardHtml(id: string, title: string, description: string): string {
 		`;
 }
 
+function projectCardHtml(card: ProjectCard): string {
+	const safeTitle = card.file.basename
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;");
+
+	const itemsHtml = card.items
+		.map((item) => {
+			const safeText = item.text
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;");
+			return `
+				<div class="kanban-project-item" data-project-id="${card.id}" data-line="${item.line}">
+					<span class="kanban-project-item-checkbox" data-project-id="${card.id}" data-line="${item.line}">${item.checked ? "☑" : "☐"}</span>
+					<span class="kanban-project-item-text">${safeText}</span>
+				</div>
+			`;
+		})
+		.join("");
+
+	return `
+		<span>${safeTitle}</span>
+		${itemsHtml}
+		<span class="kanban-card-actions">
+			<span class="kanban-play-btn" data-project-id="${card.id}">${PLAY_ICON}</span>
+		</span>
+		`;
+}
+
+function priorityToBoardId(priority: number): string {
+	if (priority === 0) return "doing";
+	if (priority >= 5) return "p5";
+	if (priority >= 4) return "p4";
+	if (priority >= 3) return "p3";
+	if (priority >= 2) return "p2";
+	return "p1";
+}
+
 type BoardDef = { id: string; title: string; class: string; items: any[] };
 
 export class TasksKanbanView extends ItemView {
@@ -48,7 +85,9 @@ export class TasksKanbanView extends ItemView {
 	private rootId: string;
 	private clickHandler: ((evt: MouseEvent) => void) | null = null;
 	private taskSub: Subscription | null = null;
+	private projectCardSub: Subscription | null = null;
 	private currentTasks: Map<number, Task> = new Map();
+	private currentProjectCards: Map<number, ProjectCard> = new Map();
 	private isRendering = false;
 	private footerEl: HTMLElement | null = null;
 	timerState: {
@@ -123,6 +162,9 @@ export class TasksKanbanView extends ItemView {
 		this.taskSub = this.plugin.allTasks.subscribe((tasks) => {
 			this.updateBoards(tasks);
 		});
+		this.projectCardSub = this.plugin.allProjectCards.subscribe(() => {
+			this.updateBoards(this.plugin.allTasks.getValue());
+		});
 	}
 
 	private updateBoards(tasks: Task[]) {
@@ -130,6 +172,8 @@ export class TasksKanbanView extends ItemView {
 			requestAnimationFrame(() => this.updateBoards(tasks));
 			return;
 		}
+
+		const projectCards = this.plugin.allProjectCards.getValue();
 
 		// Only re-render if something actually changed (by id and content hash)
 		let changed = false;
@@ -152,20 +196,46 @@ export class TasksKanbanView extends ItemView {
 			}
 		}
 
+		if (!changed && projectCards.length !== this.currentProjectCards.size) {
+			changed = true;
+		} else if (!changed) {
+			for (const card of projectCards) {
+				const existing = this.currentProjectCards.get(card.id);
+				if (
+					!existing ||
+					existing.priority !== card.priority ||
+					existing.items.length !== card.items.length ||
+					existing.items.some(
+						(item, idx) =>
+							item.text !== card.items[idx]?.text ||
+							item.checked !== card.items[idx]?.checked ||
+							item.line !== card.items[idx]?.line,
+					)
+				) {
+					changed = true;
+					break;
+				}
+			}
+		}
+
 		if (!changed) return;
 
 		this.currentTasks.clear();
 		for (const task of tasks) {
 			this.currentTasks.set(task.id, task);
 		}
+		this.currentProjectCards.clear();
+		for (const card of projectCards) {
+			this.currentProjectCards.set(card.id, card);
+		}
 
 		// Defer to avoid re-entrancy and layout thrash
 		requestAnimationFrame(() => {
-			this.renderBoards(tasks);
+			this.renderBoards(tasks, projectCards);
 		});
 	}
 
-	private renderBoards(tasks: Task[]) {
+	private renderBoards(tasks: Task[], projectCards: ProjectCard[]) {
 		const rootEl = document.getElementById(this.rootId);
 		if (!rootEl) return;
 
@@ -230,13 +300,7 @@ export class TasksKanbanView extends ItemView {
 
 		for (const task of tasks) {
 			if (task.priority === -1) continue;
-			let boardId: string;
-			if (task.priority === 0) boardId = "doing";
-			else if (task.priority >= 5) boardId = "p5";
-			else if (task.priority >= 4) boardId = "p4";
-			else if (task.priority >= 3) boardId = "p3";
-			else if (task.priority >= 2) boardId = "p2";
-			else boardId = "p1";
+			const boardId = priorityToBoardId(task.priority);
 
 			const board = boards.find((b) => b.id === boardId);
 			if (!board) continue;
@@ -249,6 +313,18 @@ export class TasksKanbanView extends ItemView {
 					task.description.trim(),
 				),
 				type: task.type,
+			});
+		}
+
+		for (const card of projectCards) {
+			const boardId = priorityToBoardId(card.priority);
+			const board = boards.find((b) => b.id === boardId);
+			if (!board) continue;
+
+			board.items.push({
+				id: `project-${card.id}`,
+				title: projectCardHtml(card),
+				type: "project",
 			});
 		}
 
@@ -274,6 +350,19 @@ export class TasksKanbanView extends ItemView {
 					}
 				`;
 			}
+
+			styleStr += `
+				.tasks-kanban-view-container .kanban-project-item {
+					display: flex;
+					align-items: center;
+					gap: 4px;
+					font-size: 0.85em;
+					cursor: pointer;
+				}
+				.tasks-kanban-view-container .kanban-project-item-checkbox {
+					cursor: pointer;
+				}
+			`;
 			styleStr += "";
 
 			const root = document.getElementById(this.rootId);
@@ -541,6 +630,10 @@ export class TasksKanbanView extends ItemView {
 		if (this.taskSub) {
 			this.taskSub.unsubscribe();
 			this.taskSub = null;
+		}
+		if (this.projectCardSub) {
+			this.projectCardSub.unsubscribe();
+			this.projectCardSub = null;
 		}
 		const rootEl = document.getElementById(this.rootId);
 		if (rootEl && this.clickHandler) {
