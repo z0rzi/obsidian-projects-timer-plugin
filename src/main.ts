@@ -17,7 +17,8 @@ import {
 	ProjectsTimerSettings,
 	ProjectsTimerSettingTab,
 } from "./settings";
-import { Activity, Task, TASKS_TYPES, TimeSource } from "./types";
+import { Activity, ProjectCard, Task, TASKS_TYPES, TimeSource } from "./types";
+import { parseProjectCard } from "./projectCards";
 import { AddActivityModal } from "./ui/AddActivityModal";
 import {
 	TASKS_KANBAN_VIEW_TYPE,
@@ -44,6 +45,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 	settings: ProjectsTimerSettings;
 
 	taskCounter = 1;
+	projectCardCounter = 1;
 
 	revenueSpan: HTMLElement;
 	todayWorkedSpan: HTMLElement;
@@ -694,6 +696,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(() => {
 			this.reloadAllTasks();
+			this.reloadAllProjectCards();
 			this.updateStatusBar();
 		});
 
@@ -743,9 +746,28 @@ export default class ProjectsTimerPlugin extends Plugin {
 			if (!file.path.endsWith(".md")) return;
 			this.updateStatusBar();
 		});
+
+		this.app.vault.on("create", async (newFile) => {
+			const card = await this.findProjectCard(newFile);
+			if (card) {
+				this.allProjectCards.next([...this.allProjectCards.value, card]);
+			}
+		});
+
+		this.app.vault.on("modify", async (file) => {
+			if (!(file instanceof TFile)) return;
+			const newCard = await this.findProjectCard(file);
+			const withoutFile = this.allProjectCards.value.filter(
+				(card) => card.file.path !== file.path,
+			);
+			this.allProjectCards.next(
+				newCard ? [...withoutFile, newCard] : withoutFile,
+			);
+		});
 	}
 
 	allTasks = new BehaviorSubject<Task[]>([]);
+	allProjectCards = new BehaviorSubject<ProjectCard[]>([]);
 
 	private async findTasksInFile(file: TAbstractFile): Promise<Task[]> {
 		if (!(file instanceof TFile)) return [];
@@ -840,6 +862,41 @@ export default class ProjectsTimerPlugin extends Plugin {
 			allTasks.push(...tasks);
 		}
 		this.allTasks.next(allTasks);
+	}
+
+	private async findProjectCard(
+		file: TAbstractFile,
+	): Promise<ProjectCard | null> {
+		if (!(file instanceof TFile)) return null;
+		if (!file.path.endsWith(".md")) return null;
+
+		const content = await this.app.vault.cachedRead(file);
+		if (!content.includes("```project")) return null;
+
+		const frontmatter = this.app.metadataCache.getFileCache(file)
+			?.frontmatter as Record<string, unknown> | undefined;
+
+		const card = parseProjectCard({
+			file,
+			content,
+			frontmatter,
+			id: this.projectCardCounter,
+		});
+		if (card) this.projectCardCounter++;
+
+		return card;
+	}
+
+	private async reloadAllProjectCards() {
+		const projectFiles = this.getProjectFiles();
+		const cards: ProjectCard[] = [];
+
+		for (const file of projectFiles) {
+			const card = await this.findProjectCard(file);
+			if (card) cards.push(card);
+		}
+
+		this.allProjectCards.next(cards);
 	}
 
 	onunload() {}
