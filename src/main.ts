@@ -870,16 +870,12 @@ export default class ProjectsTimerPlugin extends Plugin {
 		if (!(file instanceof TFile)) return null;
 		if (!file.path.endsWith(".md")) return null;
 
-		const content = await this.app.vault.cachedRead(file);
+		const content = await this.app.vault.adapter.read(file.path);
 		if (!content.includes("```project")) return null;
-
-		const frontmatter = this.app.metadataCache.getFileCache(file)
-			?.frontmatter as Record<string, unknown> | undefined;
 
 		const card = parseProjectCard({
 			file,
 			content,
-			frontmatter,
 			id: this.projectCardCounter,
 		});
 		if (card) this.projectCardCounter++;

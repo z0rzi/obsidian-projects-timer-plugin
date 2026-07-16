@@ -563,7 +563,7 @@ export class TasksKanbanView extends ItemView {
 
 	private async updateProjectCheckbox(card: ProjectCard, line: number) {
 		try {
-			const content = await this.app.vault.read(card.file);
+			const content = await this.app.vault.adapter.read(card.file.path);
 			const lines = content.split("\n");
 			const targetLine = lines[line];
 			if (!targetLine) return;
@@ -597,7 +597,7 @@ export class TasksKanbanView extends ItemView {
 
 	private async updateProjectPriority(card: ProjectCard, newPriority: number) {
 		try {
-			const content = await this.app.vault.read(card.file);
+			const content = await this.app.vault.adapter.read(card.file.path);
 			const newContent = setFrontmatterPriority(content, newPriority);
 			if (newContent === content) return;
 

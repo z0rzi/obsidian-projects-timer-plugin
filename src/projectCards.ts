@@ -68,17 +68,38 @@ export function selectPreviewItems(
 	return preview;
 }
 
+export function parseFrontmatter(content: string): Record<string, unknown> {
+	const result: Record<string, unknown> = {};
+	const lines = content.split("\n");
+	if (lines[0]?.trim() !== "---") return result;
+
+	for (let i = 1; i < lines.length; i++) {
+		const line = lines[i];
+		if (line?.trim() === "---") break;
+		const match = line?.match(/^(\w+)\s*:\s*(.+)$/);
+		if (match) {
+			const key = match[1]!;
+			let value: unknown = match[2]!.trim();
+			if (value === "true") value = true;
+			else if (value === "false") value = false;
+			else if (/^-?\d+(\.\d+)?$/.test(value as string)) value = Number(value);
+			result[key] = value;
+		}
+	}
+	return result;
+}
+
 export function parseProjectCard(params: {
 	file: TFile;
 	content: string;
-	frontmatter: Record<string, unknown> | undefined;
 	id: number;
 }): ProjectCard | null {
-	const { file, content, frontmatter, id } = params;
+	const { file, content, id } = params;
+	const frontmatter = parseFrontmatter(content);
 
-	if (frontmatter?.archived === true) return null;
+	if (frontmatter.archived === true) return null;
 
-	const priority = frontmatter?.priority;
+	const priority = frontmatter.priority;
 	if (typeof priority !== "number") return null;
 
 	const lines = content.split("\n");
