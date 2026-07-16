@@ -1,4 +1,11 @@
-import { ItemView, WorkspaceLeaf, Notice, setIcon } from "obsidian";
+import {
+	ItemView,
+	WorkspaceLeaf,
+	Notice,
+	setIcon,
+	TFile,
+	MarkdownView,
+} from "obsidian";
 import "jkanban";
 import type ProjectsTimerPlugin from "../main";
 import { ProjectCard, Task, TASKS_TYPES } from "../types";
@@ -53,8 +60,8 @@ function projectCardHtml(card: ProjectCard): string {
 				.replace(/</g, "&lt;")
 				.replace(/>/g, "&gt;");
 			return `
-				<div class="kanban-project-item" data-project-id="${card.id}" data-line="${item.line}">
-					<span class="kanban-project-item-checkbox" data-project-id="${card.id}" data-line="${item.line}">${item.checked ? "☑" : "☐"}</span>
+				<div class="kanban-project-item${item.checked ? " is-checked" : ""}" data-project-id="${card.id}" data-line="${item.line}">
+					<input type="checkbox" class="kanban-project-item-checkbox" data-project-id="${card.id}" data-line="${item.line}" ${item.checked ? "checked" : ""} />
 					<span class="kanban-project-item-text">${safeText}</span>
 				</div>
 			`;
@@ -62,7 +69,7 @@ function projectCardHtml(card: ProjectCard): string {
 		.join("");
 
 	return `
-		<span>${safeTitle}</span>
+		<span style="font-weight: bold;">${safeTitle}</span>
 		${itemsHtml}
 		<span class="kanban-card-actions">
 			<span class="kanban-play-btn" data-project-id="${card.id}">${PLAY_ICON}</span>
@@ -368,12 +375,18 @@ export class TasksKanbanView extends ItemView {
 				.tasks-kanban-view-container .kanban-project-item {
 					display: flex;
 					align-items: center;
-					gap: 4px;
+					gap: 6px;
 					font-size: 0.85em;
 					cursor: pointer;
 				}
 				.tasks-kanban-view-container .kanban-project-item-checkbox {
 					cursor: pointer;
+					margin: 0;
+					flex-shrink: 0;
+				}
+				.tasks-kanban-view-container .kanban-project-item.is-checked .kanban-project-item-text {
+					text-decoration: line-through;
+					color: var(--text-faint);
 				}
 			`;
 			styleStr += "";
@@ -404,18 +417,14 @@ export class TasksKanbanView extends ItemView {
 					const id = parseInt(eid.replace("project-", ""), 10);
 					const card = this.currentProjectCards.get(id);
 					if (!card) return;
-					const leaf = this.app.workspace.getLeaf(false);
-					if (leaf) leaf.openFile(card.file);
+					this.openFileAtLine(card.file);
 					return;
 				}
 
 				const id = parseInt(eid.replace("task-", ""), 10);
 				const task = this.currentTasks.get(id);
 				if (!task) return;
-				const leaf = this.app.workspace.getLeaf(false);
-				if (leaf) {
-					leaf.openFile(task.file, { eState: { line: task.line } });
-				}
+				this.openFileAtLine(task.file, task.line);
 			},
 			dropEl: async (
 				el: HTMLElement,
@@ -500,12 +509,7 @@ export class TasksKanbanView extends ItemView {
 				const line = projectItem.getAttribute("data-line");
 				if (cardId && line) {
 					const card = this.currentProjectCards.get(+cardId);
-					if (card) {
-						const leaf = this.app.workspace.getLeaf(false);
-						if (leaf) {
-							leaf.openFile(card.file, { eState: { line: +line } });
-						}
-					}
+					if (card) this.openFileAtLine(card.file, +line);
 				}
 				return;
 			}
@@ -559,6 +563,18 @@ export class TasksKanbanView extends ItemView {
 		} catch (e) {
 			new Notice("Failed to update task tag");
 		}
+	}
+
+	private openFileAtLine(file: TFile, line?: number) {
+		const existingLeaf = this.app.workspace
+			.getLeavesOfType("markdown")
+			.find(
+				(leaf) => (leaf.view as MarkdownView).file?.path === file.path,
+			);
+		const leaf = existingLeaf ?? this.app.workspace.getLeaf(false);
+		if (!leaf) return;
+		this.app.workspace.revealLeaf(leaf);
+		leaf.openFile(file, line !== undefined ? { eState: { line } } : undefined);
 	}
 
 	private async updateProjectCheckbox(card: ProjectCard, line: number) {
