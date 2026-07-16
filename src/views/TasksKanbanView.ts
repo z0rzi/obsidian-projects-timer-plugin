@@ -4,6 +4,7 @@ import type ProjectsTimerPlugin from "../main";
 import { ProjectCard, Task, TASKS_TYPES } from "../types";
 import { Subscription } from "rxjs";
 import { AddActivityModal } from "../ui/AddActivityModal";
+import { toggleCheckboxLine } from "../projectCards";
 
 declare global {
 	interface Window {
@@ -386,6 +387,16 @@ export class TasksKanbanView extends ItemView {
 			click: (el: HTMLElement) => {
 				const eid = el.getAttribute("data-eid");
 				if (!eid) return;
+
+				if (eid.startsWith("project-")) {
+					const id = parseInt(eid.replace("project-", ""), 10);
+					const card = this.currentProjectCards.get(id);
+					if (!card) return;
+					const leaf = this.app.workspace.getLeaf(false);
+					if (leaf) leaf.openFile(card.file);
+					return;
+				}
+
 				const id = parseInt(eid.replace("task-", ""), 10);
 				const task = this.currentTasks.get(id);
 				if (!task) return;
@@ -431,6 +442,52 @@ export class TasksKanbanView extends ItemView {
 
 		this.clickHandler = (evt: MouseEvent) => {
 			const target = evt.target as HTMLElement;
+
+			const projectPlayBtn = target.closest(
+				"span.kanban-play-btn[data-project-id]",
+			) as HTMLElement | null;
+			if (projectPlayBtn) {
+				evt.stopPropagation();
+				const cardId = projectPlayBtn.getAttribute("data-project-id");
+				if (cardId) {
+					const card = this.currentProjectCards.get(+cardId);
+					if (card) this.startTimerForProjectCard(card);
+				}
+				return;
+			}
+
+			const projectCheckbox = target.closest(
+				".kanban-project-item-checkbox",
+			) as HTMLElement | null;
+			if (projectCheckbox) {
+				evt.stopPropagation();
+				const cardId = projectCheckbox.getAttribute("data-project-id");
+				const line = projectCheckbox.getAttribute("data-line");
+				if (cardId && line) {
+					const card = this.currentProjectCards.get(+cardId);
+					if (card) this.updateProjectCheckbox(card, +line);
+				}
+				return;
+			}
+
+			const projectItem = target.closest(
+				".kanban-project-item",
+			) as HTMLElement | null;
+			if (projectItem) {
+				evt.stopPropagation();
+				const cardId = projectItem.getAttribute("data-project-id");
+				const line = projectItem.getAttribute("data-line");
+				if (cardId && line) {
+					const card = this.currentProjectCards.get(+cardId);
+					if (card) {
+						const leaf = this.app.workspace.getLeaf(false);
+						if (leaf) {
+							leaf.openFile(card.file, { eState: { line: +line } });
+						}
+					}
+				}
+				return;
+			}
 
 			const playBtn = target.closest(
 				".kanban-play-btn",
@@ -481,6 +538,40 @@ export class TasksKanbanView extends ItemView {
 		} catch (e) {
 			new Notice("Failed to update task tag");
 		}
+	}
+
+	private async updateProjectCheckbox(card: ProjectCard, line: number) {
+		try {
+			const content = await this.app.vault.read(card.file);
+			const lines = content.split("\n");
+			const targetLine = lines[line];
+			if (!targetLine) return;
+
+			const newLine = toggleCheckboxLine(targetLine);
+			if (!newLine) return;
+
+			lines[line] = newLine;
+			await this.app.vault.modify(card.file, lines.join("\n"));
+		} catch (e) {
+			new Notice("Failed to update task checkbox");
+		}
+	}
+
+	private startTimerForProjectCard(card: ProjectCard) {
+		const pseudoTask: Task = {
+			id: -card.id,
+			title: card.file.basename,
+			description: "",
+			file: card.file,
+			projectFile: card.file,
+			line: 0,
+			priority: card.priority,
+			// "project" is not yet part of the committed TaskTagLabel union
+			// (TASKS_TYPES gains a "project" entry via a separate, still-uncommitted
+			// change to src/types.ts). Cast to keep this a no-op once that lands.
+			type: "project" as Task["type"],
+		};
+		this.startTimerForTask(pseudoTask);
 	}
 
 	startTimerForTask(task: Task): void {
