@@ -4,6 +4,7 @@ import {
 	MarkdownView,
 	Modal,
 	Notice,
+	parseLinktext,
 	Plugin,
 	setIcon,
 	TAbstractFile,
@@ -128,9 +129,18 @@ export default class ProjectsTimerPlugin extends Plugin {
 		return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 	}
 
-	findFileFromLink(link: string): TFile | null {
+	findFileFromLink(link: string, sourcePath = ""): TFile | null {
 		if (link.startsWith("[[") && link.endsWith("]]"))
 			link = link.slice(2, -2);
+
+		// Drop the "|alias" and "#heading" parts of the wikilink
+		link = parseLinktext(link.split("|")[0]!.trim()).path;
+
+		const linkedFile = this.app.metadataCache.getFirstLinkpathDest(
+			link,
+			sourcePath,
+		);
+		if (linkedFile) return linkedFile;
 
 		let resolvedFile = this.app.vault.getFileByPath(link);
 		if (resolvedFile) return resolvedFile;
@@ -199,7 +209,10 @@ export default class ProjectsTimerPlugin extends Plugin {
 							let resolvedFile = null;
 							if (linkMatch) {
 								label = linkMatch[1]!;
-								resolvedFile = this.findFileFromLink(label);
+								resolvedFile = this.findFileFromLink(
+									label,
+									file.path,
+								);
 							}
 
 							const duration = this.parseTime(parts[1] ?? "");
@@ -529,8 +542,13 @@ export default class ProjectsTimerPlugin extends Plugin {
 					if (linkMatch) {
 						label = linkMatch[1]!;
 					}
+					// "path|alias": link to the path, display the alias
+					const [linktext = label, alias] = label
+						.split("|")
+						.map((p) => p.trim());
+					const displayText = alias || linktext;
 
-					const resolvedFile = this.findFileFromLink(label);
+					const resolvedFile = this.findFileFromLink(label, filepath);
 
 					const li = list.createEl("li");
 					li.style.marginBottom = "4px";
@@ -546,17 +564,17 @@ export default class ProjectsTimerPlugin extends Plugin {
 							await this.app.vault.cachedRead(resolvedFile);
 						if (!content.includes("```project")) {
 							const errorMsg = li.createEl("span", {
-								text: `⚠️ No project block in ${label}`,
+								text: `⚠️ No project block in ${displayText}`,
 							});
 							errorMsg.style.color = "var(--text-error)";
 							errorMsg.style.marginRight = "8px";
 						} else {
-							const link = li.createEl("a", { text: label });
-							link.href = label;
+							const link = li.createEl("a", { text: displayText });
+							link.href = linktext;
 							link.addEventListener("click", (e: MouseEvent) => {
 								e.preventDefault();
 								this.app.workspace.openLinkText(
-									label,
+									linktext,
 									filepath,
 								);
 							});
@@ -568,7 +586,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 									source: "preview",
 									hoverParent: { hoverPopover: null },
 									targetEl: link,
-									linktext: label,
+									linktext,
 									sourcePath: filepath,
 								});
 							});
