@@ -1,5 +1,6 @@
 import { TFile } from "obsidian";
 import { ProjectCard, ProjectCardItem } from "./types";
+import { splitBlockId } from "./blockId";
 
 export function findTasksHeadingSection(
 	lines: string[],
@@ -43,10 +44,13 @@ export function extractCheckboxItems(
 		const match = line.match(checkboxPattern);
 		if (!match) continue;
 
+		const { text, blockId } = splitBlockId(match[2]!.trim());
 		items.push({
-			text: match[2]!.trim(),
+			text,
 			line: i,
 			checked: match[1]!.toLowerCase() === "x",
+			...(blockId ? { blockId } : {}),
+			raw: line,
 		});
 	}
 
