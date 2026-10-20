@@ -166,6 +166,29 @@ describe("HTTP remote, inbox", () => {
 		expect(file.type).toBe("image/png");
 		expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([137, 80, 78, 71]);
 	});
+
+	it("fetches an uploaded image with the bearer token (uploads are not public)", async () => {
+		const png = new Uint8Array([137, 80, 78, 71]).buffer;
+		const sent: TransportRequest[] = [];
+		const transport: Transport = async (req) => {
+			sent.push(req);
+			return { status: 200, json: null, arrayBuffer: png, contentType: "image/png" };
+		};
+		expect(await remoteWith(transport).image("/uploads/abc.png")).toEqual({ data: png, type: "image/png" });
+		expect(sent[0]).toMatchObject({
+			url: "https://suivi.test/api/uploads/abc.png",
+			method: "GET",
+			headers: { Authorization: "Bearer tok" },
+		});
+	});
+
+	it("refuses anything but an upload path, and reports a missing image", async () => {
+		const { sent, transport } = fakeTransport(404, { error: "Introuvable" });
+		await expect(remoteWith(transport).image("/parametres")).rejects.toThrow();
+		await expect(remoteWith(transport).image("/uploads/../x")).rejects.toThrow();
+		expect(sent).toEqual([]);
+		await expect(remoteWith(transport).image("/uploads/gone.png")).rejects.toMatchObject({ kind: "server" });
+	});
 });
 
 describe("HTTP remote, triage", () => {

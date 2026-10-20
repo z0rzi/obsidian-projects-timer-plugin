@@ -33,6 +33,8 @@ const clientSession = process.env.SUIVI_E2E_CLIENT_SESSION ?? "";
 
 const fetchTransport: Transport = async (req) => {
 	const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+	const contentType = res.headers.get("content-type") ?? "";
+	if (contentType.startsWith("image/")) return { status: res.status, json: null, arrayBuffer: await res.arrayBuffer(), contentType };
 	const text = await res.text();
 	let json: unknown = null;
 	try {
@@ -487,7 +489,13 @@ describe.skipIf(!url || !token || !clientSession)("Reviews against a running Sui
 			fetch(`${url}${path}`, { ...init, redirect: "manual", headers: { cookie: `suivi_session=${clientSession}`, ...init.headers } });
 		const page = await (await site(`/revues/${reviewId}`)).text();
 		expect(page).toContain(`src="https://www.loom.com/embed/${loom}"`);
-		expect(page).toMatch(/<img src="\/uploads\/[\w-]+\.png"/);
+		const upload = page.match(/<img src="(\/uploads\/[\w-]+\.png)"/)?.[1];
+		expect(upload).toBeTruthy();
+		// Uploads need a session or the token: the plugin fetches them with the token.
+		expect((await fetch(`${url}${upload}`, { redirect: "manual" })).status).not.toBe(200);
+		const image = await remote.image(upload!);
+		expect(image.type).toBe("image/png");
+		expect(Buffer.from(image.data).toString("base64")).toBe(PNG);
 		expect(page).toContain("Voir le projet.");
 		expect(page).not.toContain("[[");
 

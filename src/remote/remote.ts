@@ -16,8 +16,7 @@ import type {
 
 /**
  * The plugin's only door to the Client app. Parser, kanban, Inbox and Push
- * screen depend on this interface, never on HTTP. Grows with later tickets
- * (upload).
+ * screen depend on this interface, never on HTTP.
  */
 export interface Remote {
 	push(changes: PushChange[]): Promise<PushResult[]>;
@@ -35,6 +34,11 @@ export interface Remote {
 	markRead(eventIds: number[]): Promise<void>;
 	/** Uploads an image (PNG, JPEG, GIF, WebP); returns its path in the app (`/uploads/<name>`). */
 	upload(data: ArrayBuffer, name: string): Promise<string>;
+	/**
+	 * An uploaded image (`/uploads/<name>`, as comment bodies hold it), fetched
+	 * with the token: uploads need a session or token, so the panel shows a local copy.
+	 */
+	image(path: string): Promise<{ data: ArrayBuffer; type: string }>;
 	/** Turns an item À trier into a Task; returns its shared fields as the app now has them. */
 	triage(itemId: string, as: TriageRequest): Promise<TriageResponse>;
 }
@@ -61,8 +65,19 @@ export interface TransportRequest {
 	body?: string | ArrayBuffer;
 }
 
-/** Sends one HTTP request. `json` is the parsed body, or null if it isn't JSON. */
-export type Transport = (req: TransportRequest) => Promise<{ status: number; json: unknown }>;
+/** One HTTP response. `json` is the parsed body, or null if it isn't JSON; binary bodies come as `arrayBuffer`. */
+export interface TransportResponse {
+	status: number;
+	json: unknown;
+	arrayBuffer?: ArrayBuffer;
+	contentType?: string;
+}
+
+/** Sends one HTTP request. */
+export type Transport = (req: TransportRequest) => Promise<TransportResponse>;
+
+/** An upload path as the app hands it out: `/uploads/<random>.<ext>`. */
+const UPLOAD_PATH = /^\/uploads\/[A-Za-z0-9_-]+\.[A-Za-z0-9]+$/;
 
 export interface RemoteConfig {
 	/** App URL, e.g. `https://suivi.mbz-dev.com`. */
@@ -73,13 +88,14 @@ export interface RemoteConfig {
 
 /** The `edf-suivi` HTTP API. */
 export function createHttpRemote(config: RemoteConfig, transport: Transport): Remote {
-	async function call<T>(method: HttpMethod, path: string, body?: unknown, raw?: Multipart): Promise<T> {
+	/** Sends one request to `/api<path>`; throws a RemoteError unless it got a 2xx. */
+	async function send(method: HttpMethod, path: string, body?: unknown, raw?: Multipart): Promise<TransportResponse> {
 		const base = config.url.trim().replace(/\/+$/, "");
 		const token = config.token.trim();
 		if (!base || !token) {
 			throw new RemoteError("config", "Suivi: set the app URL and API token in the plugin settings.");
 		}
-		let res: { status: number; json: unknown };
+		let res: TransportResponse;
 		try {
 			res = await transport({
 				url: `${base}/api${path}`,
@@ -97,9 +113,15 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 				`Suivi rejected the API token${error ? ` (${error})` : ""}. Check it in the plugin settings.`,
 			);
 		}
-		if (res.status < 200 || res.status >= 300 || res.json === null) {
+		if (res.status < 200 || res.status >= 300) {
 			throw new RemoteError("server", `Suivi error (HTTP ${res.status})${error ? `: ${error}` : ""}`);
 		}
+		return res;
+	}
+
+	async function call<T>(method: HttpMethod, path: string, body?: unknown, raw?: Multipart): Promise<T> {
+		const res = await send(method, path, body, raw);
+		if (res.json === null) throw new RemoteError("server", `Suivi error (HTTP ${res.status}): not JSON`);
 		return res.json as T;
 	}
 
@@ -129,6 +151,14 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		},
 		async upload(data, name) {
 			return (await call<UploadResponse>("POST", "/uploads", undefined, multipart(data, name))).url;
+		},
+		async image(path) {
+			if (!UPLOAD_PATH.test(path)) throw new RemoteError("config", `Not a Suivi upload: ${path}`);
+			const res = await send("GET", path);
+			if (!res.arrayBuffer || !res.contentType?.startsWith("image/")) {
+				throw new RemoteError("server", `Suivi sent no image for ${path}`);
+			}
+			return { data: res.arrayBuffer, type: res.contentType };
 		},
 		async triage(itemId, as) {
 			return call<TriageResponse>("POST", `/items/${encodeURIComponent(itemId)}/triage`, as);
