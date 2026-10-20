@@ -1,6 +1,6 @@
-import { MarkdownView, Notice, type Plugin, type WorkspaceLeaf } from "obsidian";
-import { obsidianTransport } from "../remote/obsidianTransport";
-import { createHttpRemote } from "../remote/remote";
+import { MarkdownView, type Plugin, type WorkspaceLeaf } from "obsidian";
+import { listeners, settingsRemote } from "../remote/settingsRemote";
+import { openView } from "../ui/openView";
 import type { ProjectsTimerSettings } from "../settings";
 import type { PluginData } from "../sync/pluginData";
 import { COMMENT_PANEL_VIEW_TYPE, CommentPanelView } from "../views/CommentPanelView";
@@ -18,23 +18,9 @@ const CURSOR_POLL_MS = 500;
  */
 export function registerComments(plugin: Plugin, data: PluginData<ProjectsTimerSettings>) {
 	const { app } = plugin;
-	const remote = createHttpRemote(
-		{
-			get url() {
-				return data.settings.suiviUrl;
-			},
-			get token() {
-				return data.settings.suiviToken;
-			},
-		},
-		obsidianTransport,
-	);
-	const listeners = new Set<(state: ThreadState) => void>();
-	const session = new ThreadSession(remote, (state) => listeners.forEach((l) => l(state)));
-	const subscribe = (listener: (state: ThreadState) => void) => {
-		listeners.add(listener);
-		return () => listeners.delete(listener);
-	};
+	const remote = settingsRemote(data.settings);
+	const { emit, subscribe } = listeners<ThreadState>();
+	const session = new ThreadSession(remote, emit);
 
 	plugin.registerView(
 		COMMENT_PANEL_VIEW_TYPE,
@@ -59,14 +45,7 @@ export function registerComments(plugin: Plugin, data: PluginData<ProjectsTimerS
 	plugin.registerEvent(app.workspace.on("active-leaf-change", () => void followCursor()));
 
 	async function openPanel() {
-		const existing = app.workspace.getLeavesOfType(COMMENT_PANEL_VIEW_TYPE)[0];
-		const leaf = existing ?? app.workspace.getRightLeaf(false);
-		if (!leaf) {
-			new Notice("Unable to open the Suivi comments panel");
-			return;
-		}
-		if (!existing) await leaf.setViewState({ type: COMMENT_PANEL_VIEW_TYPE, active: false });
-		void app.workspace.revealLeaf(leaf);
+		if (!(await openView(app, COMMENT_PANEL_VIEW_TYPE, "Suivi comments panel", { active: false }))) return;
 		last = "";
 		void followCursor();
 	}
