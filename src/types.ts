@@ -44,7 +44,10 @@ export type ProjectCard = {
 	id: string;
 	file: TFile;
 	priority: number;
+	/** Preview shown on the Project card. */
 	items: ProjectCardItem[];
+	/** Open steps carrying their own token, shown as their own cards. */
+	overrides: ProjectCardItem[];
 };
 
 export interface TimeSource {

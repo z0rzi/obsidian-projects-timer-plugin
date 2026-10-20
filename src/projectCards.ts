@@ -114,7 +114,13 @@ export function parseProjectCard(params: {
 		? extractCheckboxItems(lines, section.start, section.end)
 		: [];
 
-	return { id: file.path, file, priority, items: selectPreviewItems(items) };
+	return {
+		id: file.path,
+		file,
+		priority,
+		items: selectPreviewItems(items),
+		overrides: items.filter((item) => item.override && !item.checked),
+	};
 }
 
 export function toggleCheckboxLine(line: string): string | null {

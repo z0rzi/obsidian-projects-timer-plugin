@@ -44,3 +44,40 @@ describe("extractCheckboxItems", () => {
 		},
 	);
 });
+
+describe("parseProjectCard Overrides", () => {
+	const file = { path: "2.projects/Heatmap.md", basename: "Heatmap" } as TFile;
+	const content = (steps: string[]) =>
+		["---", "priority: 4", "---", "", "# Tasks", ...steps].join("\n");
+
+	it("lists an overriding step as an Override and keeps it on the Project card", () => {
+		const card = parseProjectCard({ file, content: content(["- [ ] p1 Titre", "- [ ] Sans token"]) })!;
+
+		expect(card.overrides.map((i) => [i.text, i.override])).toEqual([
+			["Titre", { priority: 1, status: "priority" }],
+		]);
+		expect(card.items.map((i) => i.text)).toEqual(["Titre", "Sans token"]);
+	});
+
+	it("keeps a step without token only on the Project card", () => {
+		const card = parseProjectCard({ file, content: content(["- [ ] Titre"]) })!;
+
+		expect(card.overrides).toEqual([]);
+		expect(card.items.map((i) => i.text)).toEqual(["Titre"]);
+	});
+
+	it("drops a checked Override from the Overrides, leaving it checked on the Project card", () => {
+		const card = parseProjectCard({ file, content: content(["- [x] p1 Titre"]) })!;
+
+		expect(card.overrides).toEqual([]);
+		expect(card.items.map((i) => [i.text, i.checked])).toEqual([["Titre", true]]);
+	});
+
+	it("lists every Override even past the card preview", () => {
+		const steps = ["a", "b", "c", "d"].map((t) => `- [ ] Étape ${t}`).concat("- [ ] p2 Cinquième");
+		const card = parseProjectCard({ file, content: content(steps) })!;
+
+		expect(card.items).toHaveLength(3);
+		expect(card.overrides.map((i) => i.text)).toEqual(["Cinquième"]);
+	});
+});
