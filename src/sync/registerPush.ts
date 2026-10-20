@@ -14,8 +14,11 @@ import { readSharedProject, type SharedProject } from "./sharedProject";
 import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
 import { planTaskPush, type ProjectLinks } from "./taskPlan";
 
-/** Adds the "Push to Suivi" command: review pending Project and Task changes, then send the ticked ones. */
-export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSettings>) {
+/**
+ * Adds the "Push to Suivi" command: review pending Project and Task changes,
+ * then send the ticked ones. `afterPush` runs once a Push ended (conflicts may be settled).
+ */
+export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, afterPush?: () => void) {
 	const { app } = plugin;
 
 	/** Project notes directly in the projects folder (subfolders such as reviews/ are not Projects). */
@@ -135,6 +138,7 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 			} catch (e) {
 				new Notice(e instanceof RemoteError ? e.message : `Push failed: ${(e as Error).message}`, 10_000);
 			}
+			afterPush?.();
 		}).open();
 	}
 

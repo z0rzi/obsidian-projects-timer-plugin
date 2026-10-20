@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { ApiEvent, TaskFields } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
 import type { SyncState } from "../src/sync/pluginData";
-import { runPull, type VaultFiles } from "../src/sync/runPull";
+import { withInboxNotice } from "../src/inbox/inboxNotice";
+import { PULL_HANDLERS, runPull, type VaultFiles } from "../src/sync/runPull";
 import { readProjectSteps } from "../src/sync/sharedTask";
 
 const JMJ = "u-jmj";
@@ -62,15 +63,18 @@ function world(files: Record<string, string>, sync: Partial<SyncState>) {
 	const v = memoryVault(files);
 	const state: SyncState = { pushedProjects: {}, pushedTasks: {}, ...sync };
 	let saves = 0;
-	const pull = () =>
-		runPull({
-			remote: app.remote,
-			sync: state,
-			save: async () => {
-				saves++;
+	const pull = (handlers?: typeof PULL_HANDLERS) =>
+		runPull(
+			{
+				remote: app.remote,
+				sync: state,
+				save: async () => {
+					saves++;
+				},
+				files: v.vault,
 			},
-			files: v.vault,
-		});
+			handlers,
+		);
 	return { app, files: v.files, sync: state, pull, saves: () => saves };
 }
 
@@ -160,5 +164,29 @@ describe("Pull: Client priority changes", () => {
 		w.app.priority("t7f3a", 3, 1);
 		expect(await w.pull()).toMatchObject({ applied: 0, failed: [{ title: "t7f3a" }] });
 		expect(w.sync.cursor).toBe(1);
+	});
+});
+
+describe("Pull: Inbox notice", () => {
+	it("tells the Inbox when comments or priority changes came in, still applying the priority", async () => {
+		const w = world(
+			{ "m.md": "#task p3 Fix heatmap ^t7f3a\n" },
+			{ pushedTasks: { t7f3a: { path: "m.md", fields: task() } } },
+		);
+		w.app.log.push({
+			id: 1,
+			at: "2026-10-20T10:00:00.000Z",
+			actor: JMJ,
+			type: "comment.created",
+			item: "cabc",
+			payload: { item_id: "t7f3a" },
+		});
+		w.app.priority("t7f3a", 3, 1);
+		const noticed: string[] = [];
+		const handlers = withInboxNotice(PULL_HANDLERS, (e) => noticed.push(e.type));
+
+		await w.pull(handlers);
+		expect(noticed).toEqual(["comment.created", "item.updated"]);
+		expect(w.files.get("m.md")).toBe("#task p1 Fix heatmap ^t7f3a\n");
 	});
 });

@@ -17,7 +17,9 @@ import { commentTargetAt } from "../src/comments/commentTarget";
 import { ThreadSession, type ThreadState } from "../src/comments/threadSession";
 import { settleConflicts, withConflicts } from "../src/sync/conflicts";
 import { writeRemotePriority } from "../src/sync/pullPriority";
-import { runPull, type VaultFiles } from "../src/sync/runPull";
+import { PULL_HANDLERS, runPull, type VaultFiles } from "../src/sync/runPull";
+import { withInboxNotice } from "../src/inbox/inboxNotice";
+import { InboxStore } from "../src/inbox/inboxStore";
 
 const url = process.env.SUIVI_E2E_URL ?? "";
 const token = process.env.SUIVI_E2E_TOKEN ?? "";
@@ -256,5 +258,52 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 		expect(await runPush(pending, deps)).toEqual({ applied: 1, failed: [] });
 		expect(await pull()).toEqual({ applied: 0, conflicts: 0, failed: [] });
 		expect(plan()).toEqual([]);
+	});
+});
+
+describe.skipIf(!url || !token || !clientSession)("Inbox against a running Suivi", () => {
+	it("lists JMJ's comment and priority change, not mine, and keeps read marks in the app", async () => {
+		const remote = createHttpRemote({ url, token }, fetchTransport);
+		const [pushed] = await remote.push([
+			{ op: "create", kind: "task", fields: { title: `Inbox ${stamp}`, type: "task", status: "a_faire", priority: 3, project_id: null } },
+		]);
+		if (!pushed?.ok) throw new Error(JSON.stringify(pushed));
+		const id = pushed.id;
+		const asClient = (path: string, body: string) =>
+			fetch(`${url}${path}`, {
+				method: "POST",
+				headers: { cookie: `suivi_session=${clientSession}`, "content-type": "application/x-www-form-urlencoded" },
+				body,
+				redirect: "manual",
+			});
+		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
+		const files: VaultFiles = { read: async () => null, process: async () => {} };
+		await runPull({ remote, sync, save: async () => {}, files }); // catch up
+
+		expect((await asClient(`/items/${id}/commentaires`, "body=Une%20question")).status).toBe(303);
+		expect((await asClient(`/taches/${id}/priorite`, "priority=1")).status).toBe(303);
+		await remote.comment(id, "Ma réponse");
+
+		const noticed: string[] = [];
+		const handlers = withInboxNotice(PULL_HANDLERS, (e) => noticed.push(e.type));
+		await runPull({ remote, sync, save: async () => {}, files }, handlers);
+		expect(noticed).toEqual(["comment.created", "item.updated", "comment.created"]);
+
+		const store = new InboxStore(remote, () => ({}), () => {});
+		const ours = (s: InboxStore) => s.current.sections.flatMap((x) => x.entries).filter((e) => e.item.id === id);
+		await store.refresh();
+		expect(ours(store).map((e) => [e.kind, e.detail])).toEqual([
+			["comment", "Une question"],
+			["priority", "P3 → P1"],
+		]);
+		expect(store.unreadComments().has(id)).toBe(true);
+
+		await store.markRead(ours(store)[0]!);
+		const restarted = new InboxStore(remote, () => ({}), () => {});
+		await restarted.refresh();
+		expect(ours(restarted).map((e) => e.kind)).toEqual(["priority"]);
+		await restarted.markAllRead();
+		await store.refresh();
+		expect(store.current.sections[0]!.entries).toEqual([]);
 	});
 });

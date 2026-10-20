@@ -4,6 +4,8 @@ import type {
 	CommentResponse,
 	CommentsResponse,
 	EventsResponse,
+	InboxResponse,
+	MarkReadResponse,
 	PushChange,
 	PushResponse,
 	PushResult,
@@ -12,7 +14,7 @@ import type {
 /**
  * The plugin's only door to the Client app. Parser, kanban, Inbox and Push
  * screen depend on this interface, never on HTTP. Grows with later tickets
- * (upload, triage, markRead).
+ * (upload, triage).
  */
 export interface Remote {
 	push(changes: PushChange[]): Promise<PushResult[]>;
@@ -24,6 +26,10 @@ export interface Remote {
 	comment(itemId: string, body: string): Promise<Comment>;
 	/** Changes one's own comment; `null` deletes it. */
 	editComment(commentId: string, body: string | null): Promise<void>;
+	/** The Developer's Inbox: unread Notifications (read state lives in the app). */
+	inbox(): Promise<InboxResponse>;
+	/** Marks the events of Inbox entries read. */
+	markRead(eventIds: number[]): Promise<void>;
 }
 
 export type RemoteErrorKind = "config" | "auth" | "network" | "server";
@@ -107,6 +113,12 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 			const path = `/comments/${encodeURIComponent(commentId)}`;
 			if (body === null) await call("DELETE", path);
 			else await call<CommentResponse>("PATCH", path, { body });
+		},
+		async inbox() {
+			return call<InboxResponse>("GET", "/inbox");
+		},
+		async markRead(ids) {
+			await call<MarkReadResponse>("POST", "/events/read", { ids });
 		},
 	};
 }

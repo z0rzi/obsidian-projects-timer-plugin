@@ -48,6 +48,7 @@ Tasks appear in the Kanban board and are linked to their project if the note has
 - **Open Activities** — View recent logged activities.
 - **Push to Suivi** — Review pending Project and Task changes (new / changed old → new / deleted) and send the ticked ones to the Client app.
 - **Open Suivi comments** — Side panel with the Client app comment thread of the pushed Task or Project under the cursor; reply, edit or delete your own comments there.
+- **Open Suivi inbox** — What the Client did since you last looked: new comments, priority changes (old → new) and Pull conflicts. Click an entry to jump to its line (and its thread for a comment); mark entries read one by one or all at once. Kanban cards with unread comments show a dot.
 
 ## Settings
 
@@ -65,6 +66,8 @@ The plugin makes network requests only to the Suivi URL you set: when you run **
 It also sends Tasks, line only (never the indented or following body): Tag task lines (`#task`, `#bug`, `#quick`, `#wait`, `#done`) in any note, and the top-level checkboxes under a shared Project's Tasks heading, minus lines carrying `#private` and the Tasks of `prive` Projects. Sent: the title, type, status token, Project and `#done` date. A first Push leaves out items done more than 30 days ago (and undated done lines). The app's id is written back as a `^id` block ID at the end of the line. Sync state (what was last pushed) is kept in the plugin's `data.json` under `sync`.
 
 The comments panel fetches the thread of the item under the cursor (identified by its `^id` or `suivi_id:` only) and sends the replies and edits you type in it. Comments are never written into your notes.
+
+The inbox reads the unread Notifications from the app (on startup, after a Pull that brought comments or priority changes, and with its reload button) and sends the ids of the entries you mark read. Read state is kept by the app, not in the vault.
 
 ## Development
 

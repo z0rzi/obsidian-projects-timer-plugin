@@ -4,7 +4,7 @@ import { createHttpRemote } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
 import type { PluginData } from "../sync/pluginData";
 import { COMMENT_PANEL_VIEW_TYPE, CommentPanelView } from "../views/CommentPanelView";
-import { commentTargetAt } from "./commentTarget";
+import { commentTargetAt, type CommentTarget } from "./commentTarget";
 import { ThreadSession, type ThreadState } from "./threadSession";
 
 /** How often the open panel checks what is under the cursor. */
@@ -72,4 +72,12 @@ export function registerComments(plugin: Plugin, data: PluginData<ProjectsTimerS
 
 	plugin.addCommand({ id: "open-suivi-comments", name: "Open Suivi comments", callback: () => void openPanel() });
 	plugin.addRibbonIcon("messages-square", "Open Suivi comments", () => void openPanel());
+
+	return {
+		/** Opens the panel on `target`'s thread (put the cursor on its line first so the panel keeps it). */
+		async openThread(target: CommentTarget) {
+			await openPanel();
+			await session.show(target);
+		},
+	};
 }
