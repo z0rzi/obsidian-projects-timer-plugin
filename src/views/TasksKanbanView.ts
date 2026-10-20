@@ -78,6 +78,8 @@ function projectCardHtml(card: ProjectCard): string {
 		`;
 }
 
+const REVIEW_BOARD_ID = "pr";
+
 function priorityToBoardId(priority: number): string {
 	if (priority === 0) return "doing";
 	if (priority >= 5) return "p5";
@@ -86,6 +88,24 @@ function priorityToBoardId(priority: number): string {
 	if (priority >= 2) return "p2";
 	return "p1";
 }
+
+function taskBoardId(task: Task): string {
+	if (task.status === "review") return REVIEW_BOARD_ID;
+	return priorityToBoardId(task.priority);
+}
+
+/** Status token written on the line when a card is dropped on a board. */
+function boardIdToToken(boardId: string): string | null {
+	if (boardId === REVIEW_BOARD_ID) return "pr";
+	if (boardId === "doing") return "p0";
+	return /^p[1-5]$/.test(boardId) ? boardId : null;
+}
+
+const PROJECT_CARD_STYLE = {
+	label: "project",
+	color: "#2677b8",
+	css: "border: 3px solid var(--card-color);",
+};
 
 type BoardDef = { id: string; title: string; class: string; items: any[] };
 
@@ -209,7 +229,7 @@ export class TasksKanbanView extends ItemView {
 		const taskPart = tasks
 			.map(
 				(task) =>
-					`${task.id}:${task.priority}:${task.title}:${task.description}:${task.line}`,
+					`${task.id}:${task.priority}:${task.status}:${task.title}:${task.description}:${task.line}`,
 			)
 			.join("|");
 		const cardPart = projectCards
@@ -240,6 +260,12 @@ export class TasksKanbanView extends ItemView {
 		rootEl.innerHTML = "";
 
 		const boards: BoardDef[] = [
+			{
+				id: REVIEW_BOARD_ID,
+				title: "À valider",
+				class: "kanban-board-review",
+				items: [],
+			},
 			{
 				id: "doing",
 				title: "doing",
@@ -288,7 +314,7 @@ export class TasksKanbanView extends ItemView {
 
 		for (const task of tasks) {
 			if (task.priority === -1) continue;
-			const boardId = priorityToBoardId(task.priority);
+			const boardId = taskBoardId(task);
 
 			const board = boards.find((b) => b.id === boardId);
 			if (!board) continue;
@@ -320,7 +346,11 @@ export class TasksKanbanView extends ItemView {
 		setTimeout(() => {
 			let styleStr = "";
 
-			for (const cardType of TASKS_TYPES) {
+			const cardStyles = [
+				...TASKS_TYPES.map((t) => ({ label: t.tag, color: t.color, css: t.css })),
+				PROJECT_CARD_STYLE,
+			];
+			for (const cardType of cardStyles) {
 				const props = [] as string[];
 				if (cardType.color) {
 					props.push(`
@@ -332,12 +362,12 @@ export class TasksKanbanView extends ItemView {
 				}
 
 				styleStr += `
-					.tasks-kanban-view-container .kanban-item[data-type="${cardType.tag}"] {
+					.tasks-kanban-view-container .kanban-item[data-type="${cardType.label}"] {
 						position: relative;
 						${props.join('\n')};
 					}
-					.tasks-kanban-view-container .kanban-item[data-type="${cardType.tag}"]::before {
-						content: "${cardType.tag}";
+					.tasks-kanban-view-container .kanban-item[data-type="${cardType.label}"]::before {
+						content: "${cardType.label}";
 						display: block;
 						position: absolute;
 						top: 0;
@@ -419,23 +449,20 @@ export class TasksKanbanView extends ItemView {
 				const eid = el.getAttribute("data-eid");
 				if (!eid) return;
 
-				let newPriority: number;
-				if (targetBoardId === "doing") {
-					newPriority = 0;
-				} else {
-					const m = targetBoardId.match(/^p(\d)$/);
-					if (m) {
-						newPriority = +m[1]!;
-					} else {
-						return;
-					}
-				}
+				const token = boardIdToToken(targetBoardId);
+				if (!token) return;
 
 				if (eid.startsWith("project-")) {
 					const cardId = eid.replace("project-", "");
 					const card = this.currentProjectCards.get(cardId);
 					if (!card) return;
-					this.updateProjectPriority(card, newPriority);
+					if (token === "pr") {
+						// Projects have no À valider status: put the card back.
+						this.lastSnapshot = null;
+						this.updateBoards(this.plugin.allTasks.getValue());
+						return;
+					}
+					this.updateProjectPriority(card, +token.slice(1));
 					return;
 				}
 
@@ -443,9 +470,7 @@ export class TasksKanbanView extends ItemView {
 				const task = this.currentTasks.get(taskId);
 				if (!task) return;
 
-				let newTag = task.type ? `#${task.type}` : "#task";
-				newTag += ` p${newPriority ?? 1}`;
-
+				const newTag = `${task.type ? `#${task.type}` : "#task"} ${token}`;
 				this.updateTaskTag(task, newTag);
 			},
 		});
@@ -591,10 +616,8 @@ export class TasksKanbanView extends ItemView {
 			line: 0,
 			raw: "",
 			priority: card.priority,
-			// "project" is not yet part of the committed TaskTagLabel union
-			// (TASKS_TYPES gains a "project" entry via a separate, still-uncommitted
-			// change to src/types.ts). Cast to keep this a no-op once that lands.
-			type: "project" as Task["type"],
+			status: "priority",
+			type: "task",
 		};
 		this.startTimerForTask(pseudoTask);
 	}

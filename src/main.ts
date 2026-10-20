@@ -18,7 +18,8 @@ import {
 	ProjectsTimerSettings,
 	ProjectsTimerSettingTab,
 } from "./settings";
-import { Activity, ProjectCard, Task, TASKS_TYPES, TimeSource } from "./types";
+import { Activity, ProjectCard, Task, TimeSource } from "./types";
+import { parseTasks } from "./taskParser";
 import { parseProjectCard } from "./projectCards";
 import { AddActivityModal } from "./ui/AddActivityModal";
 import {
@@ -30,7 +31,6 @@ import {
 	ProjectsListView,
 } from "./views/ProjectsListView";
 import { ACTIVITIES_VIEW_TYPE, ActivitiesView } from "./views/ActivitiesView";
-import { splitBlockId } from "./blockId";
 
 function makeTaskHash(task: Task) {
 	return [
@@ -808,67 +808,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 			}
 		}
 
-		const tasks = [] as Task[];
-
-		let currentTask: Partial<Task> | null = null;
-		for (let lineNr = 0; lineNr < lines.length; lineNr++) {
-			const line = lines[lineNr];
-			if (!line?.trim()) {
-				if (currentTask) {
-					tasks.push(currentTask as Task);
-					currentTask = null;
-				}
-				continue;
-			}
-
-			let taskType = null as null | typeof TASKS_TYPES[number];
-			for (const ttype of TASKS_TYPES) {
-				if (line.startsWith('#' + ttype.tag + ' ')) {
-					taskType = ttype;
-				}
-			}
-
-			if (taskType) {
-				if (currentTask) {
-					tasks.push(currentTask as Task);
-					currentTask = null;
-				}
-
-				let priority = 1;
-
-				const firstSpaceIdx = line.indexOf(" ");
-				let title = line.slice(firstSpaceIdx + 1);
-
-				title = title.replace(/p\d/i, (rawPriority) => {
-					priority = +rawPriority.slice(1);
-					return "";
-				});
-
-				const { text: shownTitle, blockId } = splitBlockId(title);
-				currentTask = {
-					id: `${file.path}:${lineNr}`,
-					title: shownTitle,
-					...(blockId ? { blockId } : {}),
-					raw: line,
-					priority,
-					file,
-					projectFile: projectFile ?? undefined,
-					description: "",
-					line: lineNr,
-					type: taskType.tag,
-				};
-				continue;
-			}
-
-			if (currentTask) {
-				currentTask.description += line + "\n";
-			}
-		}
-		if (currentTask) {
-			tasks.push(currentTask as Task);
-		}
-
-		return tasks;
+		return parseTasks(lines, file, projectFile);
 	}
 
 	private async reloadAllTasks() {

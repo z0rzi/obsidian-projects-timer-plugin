@@ -3,15 +3,16 @@ import { TFile } from "obsidian";
 const borderLeft = 'border-left: 4px solid var(--card-color);'
 
 export const TASKS_TYPES = [
-	{ tag: "ask", color: "#0cbc4b", css: borderLeft },
 	{ tag: "quick", color: "#f7d522", css: borderLeft },
 	{ tag: "bug", color: "#b82626", css: borderLeft },
-	{ tag: "project", color: "#2677b8", css: `border: 3px solid var(--card-color);` },
 	{ tag: "task", color: "", css: '' },
-	{ tag: "wait", color: "", css: 'opacity: 0.6;' },
+	{ tag: "wait", color: "var(--text-faint)", css: 'opacity: 0.6; border: 2px dashed var(--card-color); font-style: italic;' },
 ] as const;
 
 export type TaskTagLabel = typeof TASKS_TYPES[number]['tag']
+
+/** "review" = `pr` token, shown in the À valider column. */
+export type TaskStatus = "priority" | "review";
 
 export type Task = {
 	id: string;
@@ -21,6 +22,7 @@ export type Task = {
 	file: TFile;
 	line: number;
 	priority: number;
+	status: TaskStatus;
 	type: TaskTagLabel;
 	blockId?: string;
 	/** Line content when parsed, to check it is unchanged before writing. */

@@ -50,6 +50,24 @@ describe("rewriteTaskTag", () => {
 	});
 });
 
+describe("rewriteTaskTag status token", () => {
+	it.each(["PR de refacto", "P2 Titre", "p7 Titre", "Étape2 du calcul"])(
+		"keeps a title starting with a non-token word: %s",
+		(title) => {
+			const raw = `#task ${title}`;
+			expect(rewriteTaskTag(raw, { line: 0, raw }, "#task pr")).toEqual({
+				ok: true,
+				content: `#task pr ${title}`,
+			});
+		},
+	);
+
+	it("replaces an existing pr token", () => {
+		const raw = "#task pr Titre";
+		expect(rewriteTaskTag(raw, { line: 0, raw }, "#task p0")).toEqual({ ok: true, content: "#task p0 Titre" });
+	});
+});
+
 describe("toggleCheckbox", () => {
 	it("toggles the Project step found by block ID and keeps the ID", () => {
 		const loaded = "- [ ] Étape ^s1";

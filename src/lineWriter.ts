@@ -33,7 +33,8 @@ function rewriteLine(content: string, ref: LineRef, rewrite: (line: string) => s
 	return { ok: true, content: lines.join("\n") };
 }
 
-const TAG_AND_TOKEN = /^#\S+(\s+(p\d|pr)(?=\s|$))?\s*/i;
+// Token rule must match taskParser: lowercase p0-p5 or pr, whole first word.
+const TAG_AND_TOKEN = /^#\S+(\s+(p[0-5]|pr)(?=\s|$))?\s*/;
 
 /** Replaces the tag (and priority token) of a Tag task line, keeping title and block ID. */
 export function rewriteTaskTag(content: string, ref: LineRef, newTag: string): WriteResult {
