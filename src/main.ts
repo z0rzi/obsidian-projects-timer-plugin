@@ -40,6 +40,7 @@ function makeTaskHash(task: Task) {
 		task.description,
 		task.file.path,
 		task.line,
+		task.raw,
 	].join("@");
 }
 

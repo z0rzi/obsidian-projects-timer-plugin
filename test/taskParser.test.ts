@@ -72,3 +72,13 @@ describe("parseTasks types", () => {
 		expect(tasks[0]!.description).toBe("#project p2 B\n");
 	});
 });
+
+describe("parseTasks block ID", () => {
+	it("strips the block ID from the title after the token", () => {
+		const task = parseOne("#task pr Export CSV ^t04be");
+		expect(task.title).toBe("Export CSV");
+		expect(task.blockId).toBe("t04be");
+		expect(task.status).toBe("review");
+		expect(task.raw).toBe("#task pr Export CSV ^t04be");
+	});
+});

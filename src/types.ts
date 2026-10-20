@@ -24,12 +24,18 @@ export type Task = {
 	priority: number;
 	status: TaskStatus;
 	type: TaskTagLabel;
+	blockId?: string;
+	/** Line content when parsed, to check it is unchanged before writing. */
+	raw: string;
 };
 
 export type ProjectCardItem = {
 	text: string;
 	line: number;
 	checked: boolean;
+	blockId?: string;
+	/** Line content when parsed, to check it is unchanged before writing. */
+	raw: string;
 };
 
 export type ProjectCard = {

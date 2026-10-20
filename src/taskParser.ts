@@ -1,4 +1,5 @@
 import type { TFile } from "obsidian";
+import { splitBlockId } from "./blockId";
 import { Task, TASKS_TYPES } from "./types";
 
 const DEFAULT_PRIORITY = 1;
@@ -33,9 +34,14 @@ export function parseTasks(
 			const match = PRIORITY_TOKEN.exec(firstWord);
 			const review = firstWord === REVIEW_TOKEN;
 			const hasToken = !!match || review;
+			const { text: title, blockId } = splitBlockId(
+				hasToken ? others.join(" ") : rest,
+			);
 			currentTask = {
 				id: `${file.path}:${lineNr}`,
-				title: hasToken ? others.join(" ") : rest,
+				title,
+				...(blockId ? { blockId } : {}),
+				raw: line,
 				priority: match ? +match[1]! : DEFAULT_PRIORITY,
 				status: review ? "review" : "priority",
 				file,
