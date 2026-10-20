@@ -86,3 +86,55 @@ export type PushResult = { ok: true; id: string } | { ok: false; error: string }
 export interface PushResponse {
   results: PushResult[];
 }
+
+/**
+ * One comment of a thread. Projects, Tasks and Reviews each have one thread,
+ * addressed by the item's id. Deleted comments are never returned.
+ */
+export interface Comment {
+  id: string;
+  /** Id of the Project, Task or Review the comment is on. */
+  item_id: string;
+  author_id: string;
+  author_email: string;
+  author_role: "client" | "developer";
+  /** Markdown. Uploaded images are `![](/uploads/<name>)`, relative to the app URL. */
+  body: string;
+  /** ISO date-times. `edited_at` is set once edited (shown "modifié"). */
+  created_at: string;
+  edited_at: string | null;
+  /** The caller wrote it, so may edit or delete it. */
+  mine: boolean;
+}
+
+/** `GET /api/items/:id/comments` response: the thread, oldest first. 404 for an unknown item. */
+export interface CommentsResponse {
+  comments: Comment[];
+}
+
+/**
+ * `POST /api/items/:id/comments` (answers 201) and `PATCH /api/comments/:id`
+ * body. An empty body is a 400; editing someone else's comment a 403.
+ */
+export interface CommentRequest {
+  body: string;
+}
+
+/** `POST /api/items/:id/comments` and `PATCH /api/comments/:id` response. */
+export interface CommentResponse {
+  comment: Comment;
+}
+
+/** `DELETE /api/comments/:id` response (403 for someone else's comment). */
+export interface DeleteCommentResponse {
+  ok: true;
+}
+
+/** Image types `POST /api/uploads` accepts (multipart field `file`), at most `UPLOAD_MAX_BYTES`. */
+export const UPLOAD_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
+export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+
+/** `POST /api/uploads` response: path of the image, relative to the app URL (`/uploads/<name>`). */
+export interface UploadResponse {
+  url: string;
+}

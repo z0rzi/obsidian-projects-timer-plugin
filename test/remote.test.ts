@@ -60,3 +60,59 @@ describe("HTTP remote", () => {
 		expect(sent).toEqual([]);
 	});
 });
+
+describe("HTTP remote, comments", () => {
+	const comment = {
+		id: "cabc1234",
+		item_id: "t7f3a",
+		author_id: "u1",
+		author_email: "jmj@edf.fr",
+		author_role: "client",
+		body: "Une question",
+		created_at: "2026-10-20T10:00:00.000Z",
+		edited_at: null,
+		mine: false,
+	} as const;
+	const remoteWith = (transport: Transport) => createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport);
+
+	it("reads the thread of an item", async () => {
+		const { sent, transport } = fakeTransport(200, { comments: [comment] });
+		expect(await remoteWith(transport).comments("t7f3a")).toEqual([comment]);
+		expect(sent[0]).toMatchObject({ url: "https://suivi.test/api/items/t7f3a/comments", method: "GET" });
+		expect(sent[0]!.body).toBeUndefined();
+	});
+
+	it("posts a reply and returns the new comment", async () => {
+		const mine = { ...comment, id: "cdef5678", body: "Une réponse", mine: true };
+		const { sent, transport } = fakeTransport(201, { comment: mine });
+		expect(await remoteWith(transport).comment("t7f3a", "Une réponse")).toEqual(mine);
+		expect(sent[0]).toMatchObject({
+			url: "https://suivi.test/api/items/t7f3a/comments",
+			method: "POST",
+			body: JSON.stringify({ body: "Une réponse" }),
+		});
+	});
+
+	it("changes a comment with PATCH, and removes it with DELETE when the body is null", async () => {
+		const changed = { ...comment, body: "Corrigé", edited_at: "2026-10-20T11:00:00.000Z", mine: true };
+		const patch = fakeTransport(200, { comment: changed });
+		await remoteWith(patch.transport).editComment("cabc1234", "Corrigé");
+		expect(patch.sent[0]).toMatchObject({
+			url: "https://suivi.test/api/comments/cabc1234",
+			method: "PATCH",
+			body: JSON.stringify({ body: "Corrigé" }),
+		});
+
+		const del = fakeTransport(200, { ok: true });
+		await remoteWith(del.transport).editComment("cabc1234", null);
+		expect(del.sent[0]).toMatchObject({ url: "https://suivi.test/api/comments/cabc1234", method: "DELETE" });
+	});
+
+	it("passes the app's message on for an unknown item", async () => {
+		const remote = remoteWith(fakeTransport(404, { error: "Élément introuvable" }).transport);
+		await expect(remote.comments("zzzzz")).rejects.toMatchObject({
+			kind: "server",
+			message: expect.stringMatching(/introuvable/),
+		});
+	});
+});

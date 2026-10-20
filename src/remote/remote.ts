@@ -1,12 +1,26 @@
-import type { ApiError, PushChange, PushResponse, PushResult } from "./api";
+import type {
+	ApiError,
+	Comment,
+	CommentResponse,
+	CommentsResponse,
+	PushChange,
+	PushResponse,
+	PushResult,
+} from "./api";
 
 /**
  * The plugin's only door to the Client app. Parser, kanban, Inbox and Push
  * screen depend on this interface, never on HTTP. Grows with later tickets
- * (pull, comments, upload, triage, markRead).
+ * (pull, upload, triage, markRead).
  */
 export interface Remote {
 	push(changes: PushChange[]): Promise<PushResult[]>;
+	/** Thread of a Project, Task or Review, oldest first. */
+	comments(itemId: string): Promise<Comment[]>;
+	/** Adds a comment to an item's thread. */
+	comment(itemId: string, body: string): Promise<Comment>;
+	/** Changes one's own comment; `null` deletes it. */
+	editComment(commentId: string, body: string | null): Promise<void>;
 }
 
 export type RemoteErrorKind = "config" | "auth" | "network" | "server";
@@ -22,9 +36,11 @@ export class RemoteError extends Error {
 	}
 }
 
+export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
+
 export interface TransportRequest {
 	url: string;
-	method: "GET" | "POST";
+	method: HttpMethod;
 	headers: Record<string, string>;
 	body?: string;
 }
@@ -41,7 +57,7 @@ export interface RemoteConfig {
 
 /** The `edf-suivi` HTTP API. */
 export function createHttpRemote(config: RemoteConfig, transport: Transport): Remote {
-	async function call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+	async function call<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
 		const base = config.url.trim().replace(/\/+$/, "");
 		const token = config.token.trim();
 		if (!base || !token) {
@@ -74,6 +90,17 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 	return {
 		async push(changes) {
 			return (await call<PushResponse>("POST", "/push", { changes })).results;
+		},
+		async comments(itemId) {
+			return (await call<CommentsResponse>("GET", `/items/${encodeURIComponent(itemId)}/comments`)).comments;
+		},
+		async comment(itemId, body) {
+			return (await call<CommentResponse>("POST", `/items/${encodeURIComponent(itemId)}/comments`, { body })).comment;
+		},
+		async editComment(commentId, body) {
+			const path = `/comments/${encodeURIComponent(commentId)}`;
+			if (body === null) await call("DELETE", path);
+			else await call<CommentResponse>("PATCH", path, { body });
 		},
 	};
 }
