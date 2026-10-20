@@ -54,7 +54,23 @@ export default class ProjectsTimerPlugin extends Plugin {
 	settings: ProjectsTimerSettings;
 	data: PluginData<ProjectsTimerSettings>;
 	/** Suivi Inbox store (unread comments feed the kanban dots); set in onload. */
-	inbox: ReturnType<typeof registerInbox> | null = null;
+	private inbox: ReturnType<typeof registerInbox> | null = null;
+
+	/** App ids of items with unread Client comments (kanban dots). */
+	unreadComments(): Set<string> {
+		return this.inbox?.store.unreadComments() ?? new Set();
+	}
+
+	/** Calls `listener` when the Inbox changes; returns the unsubscribe. */
+	onInboxChange(listener: () => void): () => void {
+		return this.inbox?.subscribe(listener) ?? (() => {});
+	}
+
+	/** App id of the Project last pushed from `path`. */
+	suiviIdOf(path: string): string | undefined {
+		const pushed = this.data.sync.pushedProjects;
+		return Object.keys(pushed).find((id) => pushed[id]!.path === path);
+	}
 
 	revenueSpan: HTMLElement;
 	todayWorkedSpan: HTMLElement;

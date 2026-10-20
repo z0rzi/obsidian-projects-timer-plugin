@@ -191,3 +191,38 @@
 	overflow-y: auto;
 	min-height: 0;
 }
+
+/* Project steps on Project and Override cards */
+.tasks-kanban-view-container .kanban-project-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.85em;
+	cursor: pointer;
+}
+
+.tasks-kanban-view-container .kanban-project-item-checkbox {
+	cursor: pointer;
+	margin: 0;
+	flex-shrink: 0;
+}
+
+.tasks-kanban-view-container .kanban-project-item.is-override {
+	opacity: 0.45;
+}
+
+.tasks-kanban-view-container .kanban-project-item.is-checked .kanban-project-item-text {
+	text-decoration: line-through;
+	color: var(--text-faint);
+}
+
+/* Unread Client comments (Suivi Inbox) */
+.suivi-unread-dot {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--color-accent);
+	margin-right: 4px;
+	vertical-align: middle;
+}
