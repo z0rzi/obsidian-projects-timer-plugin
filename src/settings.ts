@@ -207,7 +207,7 @@ export class ProjectsTimerSettingTab extends PluginSettingTab {
 
 		new Setting(this.containerEl)
 			.setName("Suivi URL")
-			.setDesc("Address of the Client app. Push sends Project titles, descriptions, statuses and priorities there.")
+			.setDesc("Address of the Client app. Push sends Project and Task titles, descriptions, statuses and priorities there; Pull fetches the Client's changes from it on startup and every 5 minutes.")
 			.addText((text) =>
 				text
 					.setPlaceholder("https://suivi.mbz-dev.com")

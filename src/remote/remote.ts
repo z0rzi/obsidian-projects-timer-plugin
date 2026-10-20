@@ -3,6 +3,7 @@ import type {
 	Comment,
 	CommentResponse,
 	CommentsResponse,
+	EventsResponse,
 	PushChange,
 	PushResponse,
 	PushResult,
@@ -11,10 +12,12 @@ import type {
 /**
  * The plugin's only door to the Client app. Parser, kanban, Inbox and Push
  * screen depend on this interface, never on HTTP. Grows with later tickets
- * (pull, upload, triage, markRead).
+ * (upload, triage, markRead).
  */
 export interface Remote {
 	push(changes: PushChange[]): Promise<PushResult[]>;
+	/** Events after `cursor` (null = from the start) and the cursor to keep. */
+	pull(cursor: number | null): Promise<EventsResponse>;
 	/** Thread of a Project, Task or Review, oldest first. */
 	comments(itemId: string): Promise<Comment[]>;
 	/** Adds a comment to an item's thread. */
@@ -90,6 +93,9 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 	return {
 		async push(changes) {
 			return (await call<PushResponse>("POST", "/push", { changes })).results;
+		},
+		async pull(cursor) {
+			return call<EventsResponse>("GET", `/events?since=${cursor ?? 0}`);
 		},
 		async comments(itemId) {
 			return (await call<CommentsResponse>("GET", `/items/${encodeURIComponent(itemId)}/comments`)).comments;

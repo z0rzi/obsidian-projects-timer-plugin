@@ -40,6 +40,7 @@ function fakeRemote(threads: Record<string, Comment[]>) {
 	let n = 0;
 	const remote: Remote = {
 		push: async () => [],
+		pull: async () => ({ events: [], cursor: 0 }),
 		comments: (id) => {
 			calls.push(`comments ${id}`);
 			return later(() => {

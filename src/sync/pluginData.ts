@@ -1,3 +1,4 @@
+import type { PullConflict } from "./pullPriority";
 import type { PushedProjects } from "./pushPlan";
 import type { PushedTasks } from "./taskPlan";
 
@@ -12,6 +13,10 @@ export interface SyncState {
 	 * out of the first Push, as `path\nline`. Unset until a first Push applied.
 	 */
 	doneHistory?: string[];
+	/** Id of the last app event handled by the Pull (`GET /api/events?since=`); unset = never pulled. */
+	cursor?: number;
+	/** Client changes not applied because the vault changed the same field, by `<id>:<field>`. */
+	conflicts?: Record<string, PullConflict>;
 }
 
 const emptySync = (): SyncState => ({ pushedProjects: {}, pushedTasks: {} });
@@ -40,6 +45,15 @@ export class PluginData<S extends object> {
 			{ ...emptySync(), ...(sync as Partial<SyncState> | undefined) },
 			write,
 		);
+	}
+
+	private queue: Promise<unknown> = Promise.resolve();
+
+	/** Runs `job` after the previous ones settle, so a Pull and a Push never touch the sync state at once. */
+	exclusive<T>(job: () => Promise<T>): Promise<T> {
+		const run = this.queue.then(job, job);
+		this.queue = run.catch(() => undefined);
+		return run;
 	}
 
 	save(): Promise<void> {

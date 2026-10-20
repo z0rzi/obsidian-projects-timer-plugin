@@ -87,6 +87,60 @@ export interface PushResponse {
   results: PushResult[];
 }
 
+/** Event types of the log (docs/spec.md "Event types"). */
+export const EVENT_TYPES = [
+  "project.created",
+  "task.created",
+  "item.updated",
+  "item.archived",
+  "ticket.created",
+  "idea.launched",
+  "item.triaged",
+  "review.published",
+  "review.answered",
+  "comment.created",
+  "comment.edited",
+  "comment.deleted",
+  "push.completed",
+] as const;
+export type EventType = (typeof EVENT_TYPES)[number];
+
+/** One entry of the event log, as the Pull returns it. */
+export interface ApiEvent {
+  /** Monotonic; the Pull cursor. */
+  id: number;
+  /** ISO date-time. */
+  at: string;
+  /** Id of the user who made the change (Developer for Push events, else usually the Client). */
+  actor: string;
+  type: EventType;
+  /** Id of the Project, Task, Review or Comment concerned; null for batch events. */
+  item: string | null;
+  /** Shape depends on `type`, e.g. `ItemUpdatedPayload` for `item.updated`. */
+  payload: Record<string, unknown>;
+}
+
+/**
+ * Payload of `item.updated`: one field of a Project or Task changed. A Client
+ * priority change is `{ field: "priority", from, to }` with `to` in 1–5 (`from`
+ * null = a Project step that inherited its Project's).
+ */
+export interface ItemUpdatedPayload {
+  field: string;
+  from: unknown;
+  to: unknown;
+}
+
+/**
+ * `GET /api/events?since=<cursor>` response (Pull): events with id greater than
+ * `since` (absent = 0, i.e. everything), oldest first, and the cursor to send
+ * next time (`since` itself when there is nothing new).
+ */
+export interface EventsResponse {
+  events: ApiEvent[];
+  cursor: number;
+}
+
 /**
  * One comment of a thread. Projects, Tasks and Reviews each have one thread,
  * addressed by the item's id. Deleted comments are never returned.

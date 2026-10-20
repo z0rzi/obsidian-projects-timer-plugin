@@ -45,4 +45,26 @@ describe("PluginData", () => {
 		expect(data.settings).toEqual(defaults);
 		expect(data.sync).toEqual({ pushedProjects: {}, pushedTasks: {} });
 	});
+
+	it("runs sync jobs (Pull, Push) one at a time, even when one fails", async () => {
+		const { load, save } = disk({});
+		const data = await PluginData.load(defaults, load, save);
+		const order: string[] = [];
+		let release!: () => void;
+		const first = data.exclusive(async () => {
+			order.push("pull start");
+			await new Promise<void>((r) => (release = r));
+			order.push("pull end");
+			throw new Error("down");
+		});
+		const second = data.exclusive(async () => {
+			order.push("push");
+			return 2;
+		});
+		await Promise.resolve();
+		release();
+		await expect(first).rejects.toThrow("down");
+		expect(await second).toBe(2);
+		expect(order).toEqual(["pull start", "pull end", "push"]);
+	});
 });
