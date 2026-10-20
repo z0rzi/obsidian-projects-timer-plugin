@@ -28,11 +28,48 @@ export interface ProjectFields {
   priority: number;
 }
 
+/**
+ * Task type codes; the app shows them as Tâche, Bug, Tâche rapide, En attente,
+ * Étape de projet, Amélioration, Idée. The last two only come from the Client.
+ */
+export const TASK_TYPES = ["task", "bug", "quick", "wait", "step", "amelioration", "idea"] as const;
+export type TaskType = (typeof TASK_TYPES)[number];
+/** Types a Push may set: the vault's tags (`#task`, `#bug`, `#quick`, `#wait`) and Project steps. */
+export const PUSHED_TASK_TYPES = ["task", "bug", "quick", "wait", "step"] as const;
+export type PushedTaskType = (typeof PUSHED_TASK_TYPES)[number];
+
+/** Task status codes; the app shows them as À trier, À faire, En cours, À valider, Terminé. */
+export const TASK_STATUSES = ["a_trier", "a_faire", "en_cours", "a_valider", "termine"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+/** Statuses a Push may set (À trier exists only in the app). */
+export const PUSHED_TASK_STATUSES = ["a_faire", "en_cours", "a_valider", "termine"] as const;
+export type PushedTaskStatus = (typeof PUSHED_TASK_STATUSES)[number];
+
+/**
+ * Fields of a Task the Developer sets by Push: the line only, never its body.
+ * Vault mapping: `p0` = en_cours + priority 0, `p1`–`p5` = a_faire + that
+ * priority, `pr` = a_valider, `#done <date>` / `[x]` = termine.
+ */
+export interface TaskFields {
+  title: string;
+  type: PushedTaskType;
+  status: PushedTaskStatus;
+  /** 0–5, or null = inherit the Project's Priority (a Project step without token). */
+  priority: number | null;
+  /** App id of the Project, null for a standalone Task. */
+  project_id: string | null;
+  /** `YYYY-MM-DD` the Task was done (`#done <date>`); null or absent = the Push date when it becomes termine. */
+  done_on?: string | null;
+}
+
 /** One vault change in a Push. Items are addressed by the id the app gave them at creation. */
 export type PushChange =
   | { op: "create"; kind: "project"; fields: ProjectFields }
   | { op: "update"; kind: "project"; id: string; fields: Partial<ProjectFields> }
-  | { op: "archive"; kind: "project"; id: string };
+  | { op: "archive"; kind: "project"; id: string }
+  | { op: "create"; kind: "task"; fields: TaskFields }
+  | { op: "update"; kind: "task"; id: string; fields: Partial<TaskFields> }
+  | { op: "archive"; kind: "task"; id: string };
 
 /** `POST /api/push` body. */
 export interface PushRequest {

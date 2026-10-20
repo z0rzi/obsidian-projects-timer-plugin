@@ -1,5 +1,6 @@
 import type { ProjectFields, PushChange } from "../remote/api";
 import type { SharedProject } from "./sharedProject";
+import type { PendingTaskChange } from "./taskPlan";
 
 /** Last-pushed state of each Project, by app id. */
 export type PushedProjects = Record<string, { path: string; fields: ProjectFields }>;
@@ -11,9 +12,11 @@ export interface FieldDiff {
 	to: string | number;
 }
 
-/** One line of the Push modal; `change` is what goes to the app if it stays ticked. */
-export type PendingChange =
-	| { group: "new"; key: string; path: string; title: string; fields: ProjectFields; change: PushChange }
+type ProjectChange = Extract<PushChange, { kind: "project" }>;
+
+/** One Project line of the Push modal; `change` is what goes to the app if it stays ticked. */
+export type PendingProjectChange =
+	| { group: "new"; key: string; path: string; title: string; fields: ProjectFields; change: ProjectChange }
 	| {
 			group: "changed";
 			key: string;
@@ -23,9 +26,12 @@ export type PendingChange =
 			/** All shared fields now, recorded as last-pushed once applied. */
 			fields: ProjectFields;
 			diffs: FieldDiff[];
-			change: PushChange;
+			change: ProjectChange;
 	  }
-	| { group: "deleted"; key: string; id: string; title: string; change: PushChange };
+	| { group: "deleted"; key: string; id: string; title: string; change: ProjectChange };
+
+/** One line of the Push modal, Project or Task (tell them apart by `change.kind`). */
+export type PendingChange = PendingProjectChange | PendingTaskChange;
 
 const FIELDS = ["title", "description", "status", "priority"] as const;
 
@@ -39,8 +45,8 @@ export function planProjectPush(
 	local: SharedProject[],
 	pushed: PushedProjects,
 	unreadable: string[] = [],
-): PendingChange[] {
-	const changes: PendingChange[] = [];
+): PendingProjectChange[] {
+	const changes: PendingProjectChange[] = [];
 	const seen = new Set<string>(unreadable);
 
 	for (const p of local) {

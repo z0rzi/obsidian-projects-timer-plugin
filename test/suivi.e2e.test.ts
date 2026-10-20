@@ -8,6 +8,9 @@ import type { SyncState } from "../src/sync/pluginData";
 import { planProjectPush } from "../src/sync/pushPlan";
 import { runPush } from "../src/sync/runPush";
 import { readSharedProject, type SharedProject } from "../src/sync/sharedProject";
+import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
+import { planTaskPush, type ProjectLinks } from "../src/sync/taskPlan";
+import { appendBlockId } from "../src/lineWriter";
 
 const url = process.env.SUIVI_E2E_URL ?? "";
 const token = process.env.SUIVI_E2E_TOKEN ?? "";
@@ -37,7 +40,7 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 				const r = readSharedProject(path, content);
 				return r?.ok ? [r.project] : [];
 			});
-		const sync: SyncState = { pushedProjects: {} };
+		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const deps = {
 			remote,
@@ -70,5 +73,69 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 
 		const bad = createHttpRemote({ url, token: "not-a-token" }, fetchTransport);
 		await expect(bad.push([])).rejects.toMatchObject({ kind: "auth" });
+	});
+
+	it("pushes Tag tasks and Project steps, writes their block IDs, moves and archives them", async () => {
+		const projectPath = `2.projects/Tâches ${stamp}.md`;
+		const meetingPath = `1.meetings/E2E ${stamp}.md`;
+		const files = new Map<string, string>([
+			[projectPath, "---\npriority: 3\n---\n# Description\nTest.\n# Tasks\n---\n- [ ] Étape héritée\n- [ ] p1 Étape urgente\n  corps privé\n- [ ] Secret #private\n"],
+			[meetingPath, "#task p2 Tâche de réunion\n  notes privées\n\n#bug pr Bug à valider\n#task p1 Paie #private\n"],
+		]);
+		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
+		const plan = () => {
+			const projects = [...files].flatMap(([path, content]) => {
+				const r = path.startsWith("2.projects/") ? readSharedProject(path, content) : null;
+				return r?.ok ? [r.project] : [];
+			});
+			const links: ProjectLinks = Object.fromEntries(
+				projects.map((p) => [p.path, { title: p.fields.title, ...(p.suiviId ? { id: p.suiviId } : {}) }]),
+			);
+			const tasks = [...files].flatMap(([path, content]) => [
+				...readTagTasks(path, content, path === meetingPath ? projectPath : path.startsWith("2.") ? path : null),
+				...(path.startsWith("2.projects/") ? readProjectSteps(path, content) : []),
+			]);
+			const t = planTaskPush(tasks, links, sync.pushedTasks, { now: new Date(), doneHistory: sync.doneHistory });
+			return [...planProjectPush(projects, sync.pushedProjects), ...t.changes];
+		};
+		const deps = {
+			remote: createHttpRemote({ url, token }, fetchTransport),
+			sync,
+			save: async () => {},
+			writeSuiviId: async (path: string, id: string) => {
+				files.set(path, files.get(path)!.replace("---\n", `---\nsuivi_id: ${id}\n`));
+			},
+			writeBlockId: async (path: string, ref: { line: number; raw: string }, id: string) => {
+				const r = appendBlockId(files.get(path)!, ref, id);
+				if (!r.ok) throw new Error(r.reason);
+				files.set(path, r.content);
+			},
+		};
+
+		const first = plan();
+		expect(first.map((c) => c.title).sort()).toEqual(
+			[`Tâches ${stamp}`, "Bug à valider", "Tâche de réunion", "Étape héritée", "Étape urgente"].sort(),
+		);
+		expect(await runPush(first, deps)).toEqual({ applied: 5, failed: [] });
+		expect(files.get(meetingPath)).toMatch(/^#task p2 Tâche de réunion \^[0-9a-z]{5}\n  notes privées\n/);
+		expect(files.get(projectPath)).toMatch(/- \[ \] Étape héritée \^[0-9a-z]{5}\n/);
+		expect(plan()).toEqual([]);
+
+		// Move the meeting Task into a standalone note, check a step, delete the bug.
+		const taskLine = files.get(meetingPath)!.split("\n")[0]!;
+		files.set(meetingPath, files.get(meetingPath)!.replace(`${taskLine}\n`, "").replace(/#bug pr .*\n/, ""));
+		files.set(`0.inbox/Notes ${stamp}.md`, `${taskLine}\n`);
+		files.set(projectPath, files.get(projectPath)!.replace("- [ ] Étape héritée", "- [x] Étape héritée"));
+		const second = plan();
+		expect(second.map((c) => c.group).sort()).toEqual(["changed", "changed", "deleted"]);
+		expect(second).toContainEqual(
+			expect.objectContaining({
+				group: "changed",
+				title: "Tâche de réunion",
+				diffs: [expect.objectContaining({ field: "project", to: "none" })],
+			}),
+		);
+		expect(await runPush(second, deps)).toEqual({ applied: 3, failed: [] });
+		expect(plan()).toEqual([]);
 	});
 });

@@ -53,16 +53,24 @@ export class PushModal extends Modal {
 			if (items.length === 0) continue;
 			contentEl.createEl("h4", { text: heading });
 			for (const change of items) {
-				const setting = new Setting(contentEl).setName(change.title).addToggle((t) =>
-					t.setValue(true).onChange((on) => {
-						if (on) this.ticked.add(change.key);
-						else this.ticked.delete(change.key);
-					}),
-				);
+				const isTask = change.change.kind === "task";
+				const setting = new Setting(contentEl)
+					.setName(isTask ? change.title : `Project: ${change.title}`)
+					.addToggle((t) =>
+						t.setValue(true).onChange((on) => {
+							if (on) this.ticked.add(change.key);
+							else this.ticked.delete(change.key);
+						}),
+					);
+				const desc = setting.descEl;
+				if ("detail" in change) desc.createDiv({ text: change.detail });
 				if (change.group === "changed") {
-					const desc = setting.descEl;
 					for (const d of change.diffs) {
-						desc.createDiv({ text: `${d.field}: ${show(d.field, d.from)} → ${show(d.field, d.to)}` });
+						// Task diffs come ready to show.
+						const text = isTask
+							? `${d.field}: ${d.from} → ${d.to}`
+							: `${d.field}: ${show(d.field, d.from)} → ${show(d.field, d.to)}`;
+						desc.createDiv({ text });
 					}
 				}
 			}

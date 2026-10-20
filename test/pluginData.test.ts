@@ -31,11 +31,11 @@ describe("PluginData", () => {
 
 		data.settings.hourlyRate = 90;
 		await data.save();
-		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { pushedProjects: pushed } });
+		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { pushedProjects: pushed, pushedTasks: {} } });
 
 		delete data.sync.pushedProjects.t7f3a;
 		await data.save();
-		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { pushedProjects: {} } });
+		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { pushedProjects: {}, pushedTasks: {} } });
 	});
 
 	it("starts empty when there is no data.json yet", async () => {
@@ -43,6 +43,6 @@ describe("PluginData", () => {
 		const data = await PluginData.load(defaults, io.load, io.save);
 
 		expect(data.settings).toEqual(defaults);
-		expect(data.sync).toEqual({ pushedProjects: {} });
+		expect(data.sync).toEqual({ pushedProjects: {}, pushedTasks: {} });
 	});
 });

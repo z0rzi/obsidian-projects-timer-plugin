@@ -1,14 +1,17 @@
-import { Notice, Plugin, TFile } from "obsidian";
+import { Notice, Plugin, TFile, parseLinktext } from "obsidian";
+import { appendBlockId, type LineRef } from "../lineWriter";
 import { obsidianTransport } from "../remote/obsidianTransport";
 import { createHttpRemote, RemoteError } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
 import { PushModal } from "../ui/PushModal";
 import type { PluginData } from "./pluginData";
-import { planProjectPush } from "./pushPlan";
+import { planProjectPush, type PendingChange } from "./pushPlan";
 import { runPush } from "./runPush";
 import { readSharedProject, type SharedProject } from "./sharedProject";
+import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
+import { planTaskPush, type ProjectLinks } from "./taskPlan";
 
-/** Adds the "Push to Suivi" command: review pending Project changes, then send the ticked ones. */
+/** Adds the "Push to Suivi" command: review pending Project and Task changes, then send the ticked ones. */
 export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSettings>) {
 	const { app } = plugin;
 
@@ -18,19 +21,68 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 		return app.vault.getMarkdownFiles().filter((f) => f.parent?.path === folder);
 	}
 
-	async function readLocal() {
+	async function readProjects() {
 		const projects: SharedProject[] = [];
 		const unreadable: string[] = [];
+		const links: ProjectLinks = {};
+		const steps: LocalTask[] = [];
 		for (const file of projectFiles()) {
-			const result = readSharedProject(file.path, await app.vault.cachedRead(file));
-			if (!result) continue;
-			if (result.ok) projects.push(result.project);
-			else {
+			const content = await app.vault.cachedRead(file);
+			const result = readSharedProject(file.path, content);
+			const title = file.basename;
+			if (!result) {
+				links[file.path] = { title, hidden: true };
+			} else if (!result.ok) {
 				if (result.suiviId) unreadable.push(result.suiviId);
+				links[file.path] = { title, unreadable: true, ...(result.suiviId ? { id: result.suiviId } : {}) };
 				new Notice(`Push skips ${file.basename}: ${result.error}`);
+			} else {
+				const p = result.project;
+				projects.push(p);
+				if (p.archived && !p.suiviId) {
+					links[file.path] = { title, hidden: true };
+					continue;
+				}
+				links[file.path] = { title, ...(p.suiviId ? { id: p.suiviId } : {}) };
+				steps.push(...readProjectSteps(file.path, content));
 			}
 		}
-		return { projects, unreadable };
+		return { projects, unreadable, links, steps };
+	}
+
+	/** Project of a Tag task: the `project:` frontmatter link, else the file itself if it has a `project` block. */
+	function projectOf(file: TFile, content: string): string | null {
+		const link = app.metadataCache.getFileCache(file)?.frontmatter?.project;
+		if (typeof link === "string" && link.trim()) {
+			const linkpath = parseLinktext(link.replace(/^\[\[|\]\]$/g, "").split("|")[0]!.trim()).path;
+			const target = app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
+			if (target) return target.path;
+		}
+		return content.split("\n").some((l) => l.startsWith("```project")) ? file.path : null;
+	}
+
+	async function readTasks(): Promise<LocalTask[]> {
+		const tasks: LocalTask[] = [];
+		for (const file of app.vault.getMarkdownFiles()) {
+			if (file.path === data.settings.projectTemplate) continue;
+			const content = await app.vault.cachedRead(file);
+			if (!/^#\w/m.test(content)) continue;
+			tasks.push(...readTagTasks(file.path, content, projectOf(file, content)));
+		}
+		return tasks;
+	}
+
+	async function writeBlockId(path: string, ref: Omit<LineRef, "blockId">, id: string) {
+		const file = app.vault.getFileByPath(path);
+		if (!file) throw new Error("file not found");
+		let refused: string | null = null;
+		await app.vault.process(file, (content) => {
+			const result = appendBlockId(content, ref, id);
+			if (result.ok) return result.content;
+			refused = result.reason === "not-found" ? "the line changed" : `the line is ${result.reason}`;
+			return content;
+		});
+		if (refused) throw new Error(refused);
 	}
 
 	async function push() {
@@ -42,14 +94,24 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 			{ url: data.settings.suiviUrl, token: data.settings.suiviToken },
 			obsidianTransport,
 		);
-		const local = await readLocal();
-		const pending = planProjectPush(local.projects, data.sync.pushedProjects, local.unreadable);
+		const local = await readProjects();
+		const tasks = planTaskPush(
+			[...(await readTasks()), ...local.steps],
+			local.links,
+			data.sync.pushedTasks,
+			{ now: new Date(), doneHistory: data.sync.doneHistory },
+		);
+		const pending: PendingChange[] = [
+			...planProjectPush(local.projects, data.sync.pushedProjects, local.unreadable),
+			...tasks.changes,
+		];
 		new PushModal(app, pending, async (selected) => {
 			try {
 				const outcome = await runPush(selected, {
 					remote,
 					sync: data.sync,
 					save: () => data.save(),
+					doneHistory: tasks.history,
 					writeSuiviId: async (path, id) => {
 						const file = app.vault.getFileByPath(path);
 						if (!file) throw new Error("file not found");
@@ -57,6 +119,7 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 							fm.suivi_id = id;
 						});
 					},
+					writeBlockId,
 				});
 				for (const f of outcome.failed) new Notice(`Push: ${f.title}: ${f.error}`, 10_000);
 				new Notice(`Pushed ${outcome.applied} change(s) to Suivi.`);

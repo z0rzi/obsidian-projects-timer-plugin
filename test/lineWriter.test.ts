@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { splitBlockId } from "../src/blockId";
-import { rewriteStepToken, rewriteTaskTag, toggleCheckbox } from "../src/lineWriter";
+import { appendBlockId, rewriteStepToken, rewriteTaskTag, toggleCheckbox } from "../src/lineWriter";
 
 describe("splitBlockId", () => {
 	it("strips a trailing block ID from the text", () => {
@@ -139,5 +139,27 @@ describe("toggleCheckbox on an Override", () => {
 	it("keeps the token and block ID", () => {
 		const raw = "- [ ] p1 Titre ^s1";
 		expect(toggleCheckbox(raw, { line: 0, raw, blockId: "s1" })).toEqual({ ok: true, content: "- [x] p1 Titre ^s1" });
+	});
+});
+
+describe("appendBlockId", () => {
+	it("ends the pushed line with its ^id, even if lines moved above it since", () => {
+		const raw = "#task p2 Widget saison";
+		const content = ["ajout", "#task p1 Autre", raw, "  corps"].join("\n");
+		expect(appendBlockId(content, { line: 1, raw }, "t7f3a")).toEqual({
+			ok: true,
+			content: ["ajout", "#task p1 Autre", "#task p2 Widget saison ^t7f3a", "  corps"].join("\n"),
+		});
+	});
+
+	it("refuses when the line changed or appears twice", () => {
+		const raw = "- [ ] Étape";
+		expect(appendBlockId("- [ ] Étape modifiée", { line: 0, raw }, "s1")).toEqual({ ok: false, reason: "not-found" });
+		expect(appendBlockId(`${raw}\n${raw}`, { line: 5, raw }, "s1")).toEqual({ ok: false, reason: "ambiguous" });
+	});
+
+	it("refuses a line that already has a block ID", () => {
+		const raw = "#task p2 Titre ^abc";
+		expect(appendBlockId(raw, { line: 0, raw }, "s1")).toEqual({ ok: false, reason: "changed" });
 	});
 });
