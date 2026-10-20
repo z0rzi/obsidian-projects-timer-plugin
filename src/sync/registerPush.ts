@@ -1,5 +1,5 @@
 import { Notice, Plugin, TFile } from "obsidian";
-import { appendBlockId, type LineRef } from "../lineWriter";
+import { appendBlockId, processLine, type LineRef } from "../lineWriter";
 import { obsidianTransport } from "../remote/obsidianTransport";
 import { createHttpRemote, RemoteError } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
@@ -7,8 +7,9 @@ import { PushModal } from "../ui/PushModal";
 import type { PluginData } from "./pluginData";
 import { settleConflicts, withConflicts } from "./conflicts";
 import { writeRemotePriority } from "./pullPriority";
+import { writeValidated } from "./pullReview";
 import { planProjectPush, type PendingChange } from "./pushPlan";
-import { vaultFiles } from "./registerPull";
+import { vaultFiles } from "./vaultFiles";
 import { runPush } from "./runPush";
 import { readSharedProject, type SharedProject } from "./sharedProject";
 import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
@@ -24,6 +25,7 @@ import { reviewsFolder } from "./sharedReview";
  */
 export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, afterPush?: () => void) {
 	const { app } = plugin;
+	const files = vaultFiles(app);
 
 	/** Project notes directly in the projects folder (subfolders such as reviews/ are not Projects). */
 	function projectFiles(): TFile[] {
@@ -75,16 +77,8 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 	}
 
 	async function writeBlockId(path: string, ref: Omit<LineRef, "blockId">, id: string) {
-		const file = app.vault.getFileByPath(path);
-		if (!file) throw new Error("file not found");
-		let refused: string | null = null;
-		await app.vault.process(file, (content) => {
-			const result = appendBlockId(content, ref, id);
-			if (result.ok) return result.content;
-			refused = result.reason === "not-found" ? "the line changed" : `the line is ${result.reason}`;
-			return content;
-		});
-		if (refused) throw new Error(refused);
+		const result = await processLine(files.process, path, (content) => appendBlockId(content, ref, id));
+		if (!result.ok) throw new Error(result.reason === "not-found" ? "the line changed" : `the line is ${result.reason}`);
 	}
 
 	async function push() {
@@ -137,7 +131,8 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 					},
 					writeBlockId,
 					writePriority: (kind, id, path, priority) =>
-						writeRemotePriority(vaultFiles(plugin), kind, id, path, priority),
+						writeRemotePriority(files, kind, id, path, priority),
+					writeValidated: (id, path, doneOn) => writeValidated(files, id, path, doneOn),
 					shareBody: reviewBodySharer(app, remote),
 					writeTaskToken: (path, id, token) => writeTaskTokenIn(app, path, id, token),
 				}));

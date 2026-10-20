@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InboxStore } from "../src/inbox/inboxStore";
-import { runNewProject, type NewProjectDeps } from "../src/inbox/newProject";
+import { projectFile, runNewProject, type NewProjectDeps } from "../src/inbox/newProject";
 import type { ProjectFields, TriageRequest } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
 import type { SyncState } from "../src/sync/pluginData";
@@ -82,6 +82,13 @@ describe("runNewProject (Nouveau projet)", () => {
 			const read = readSharedProject("2.projects/Carte des flux.md", content);
 			expect(read).toMatchObject({ ok: true, project: { suiviId: "i4k2z", fields: sync.pushedProjects.i4k2z!.fields } });
 		}
+	});
+
+	it("fills {{date}} with the local day, not the UTC one", () => {
+		const fields: ProjectFields = { title: "X", description: "", status: "a_faire", priority: 3 };
+		// 23:30 UTC on the 21st is already the 22nd in Paris.
+		const content = projectFile("created {{date}}", "X", "xxxxx", fields, new Date("2026-10-21T23:30:00Z"));
+		expect(content).toContain("created 2026-10-22");
 	});
 
 	it("names the file after the title without characters a file name can't hold", async () => {

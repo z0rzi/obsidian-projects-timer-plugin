@@ -1,5 +1,8 @@
 import { defineConfig } from "vitest/config";
 
+// Dates written to the vault are local days: tests pin a zone ahead of UTC.
+process.env.TZ = "Europe/Paris";
+
 export default defineConfig({
 	resolve: {
 		alias: {

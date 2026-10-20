@@ -14,7 +14,9 @@ export const obsidianTransport: Transport = async (req) => {
 	try {
 		json = res.json;
 	} catch {
-		json = null;
+		json = null; // not JSON (an image, an HTML error page)
 	}
-	return { status: res.status, json };
+	const contentType = Object.entries(res.headers).find(([k]) => k.toLowerCase() === "content-type")?.[1] ?? "";
+	if (!contentType.startsWith("image/")) return { status: res.status, json };
+	return { status: res.status, json, arrayBuffer: res.arrayBuffer, contentType };
 };

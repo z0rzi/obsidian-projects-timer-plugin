@@ -18,6 +18,8 @@ export interface PushDeps {
 	writeBlockId: (path: string, ref: Omit<LineRef, "blockId">, id: string) => Promise<void>;
 	/** Writes Suivi's priority into the vault ("take theirs" on a Pull conflict). */
 	writePriority?: (kind: "project" | "task", id: string, path: string, priority: number | null) => Promise<void>;
+	/** Marks the Task line done in the vault ("take theirs" on a Validé Review answer conflict). */
+	writeValidated?: (id: string, path: string, doneOn: string | null) => Promise<void>;
 	/** Keys of the undated done lines this plan left out; remembered after the first Push. */
 	doneHistory?: string[];
 	/** A Review body as Suivi gets it (images uploaded, wikilinks as text); throws if an image can't be sent. */
@@ -74,10 +76,20 @@ export async function runPush(selected: PendingChange[], deps: PushDeps): Promis
 
 async function settleConflicts(selected: PendingConflict[], deps: PushDeps, outcome: PushOutcome) {
 	if (selected.length === 0) return;
-	const settled = (c: PendingConflict, value: number | null) => {
+	const settled = (c: PendingConflict, choice: "mine" | "theirs") => {
 		const pushed = c.kind === "project" ? deps.sync.pushedProjects[c.id] : deps.sync.pushedTasks[c.id];
-		// Only a Task's priority may be null (inherit); a Project's conflict values are numbers.
-		if (pushed && (value !== null || c.kind === "task")) (pushed.fields as { priority: number | null }).priority = value;
+		const task = deps.sync.pushedTasks[c.id];
+		if (c.field === "status" && task) {
+			const { done_on: _old, ...rest } = task.fields;
+			task.fields =
+				choice === "theirs"
+					? { ...rest, status: "termine", priority: null, done_on: c.doneOn ?? null }
+					: { ...rest, status: c.localStatus as typeof rest.status, priority: c.localValue };
+		} else {
+			const value = choice === "mine" ? c.localValue : c.remoteValue;
+			// Only a Task's priority may be null (inherit); a Project's conflict values are numbers.
+			if (pushed && (value !== null || c.kind === "task")) (pushed.fields as { priority: number | null }).priority = value;
+		}
 		if (deps.sync.conflicts) delete deps.sync.conflicts[c.key.replace(/^conflict:/, "")];
 		outcome.applied++;
 	};
@@ -86,15 +98,20 @@ async function settleConflicts(selected: PendingConflict[], deps: PushDeps, outc
 	const results = await send(deps.remote, mine.map((c) => c.change));
 	mine.forEach((c, i) => {
 		const result = results[i]!;
-		if (result.ok) settled(c, c.localValue);
+		if (result.ok) settled(c, "mine");
 		else outcome.failed.push({ title: c.title, error: result.error });
 	});
 
 	for (const c of selected.filter((c) => c.choice === "theirs")) {
 		try {
-			if (!deps.writePriority) throw new Error("no vault writer");
-			await deps.writePriority(c.kind, c.id, c.path, c.remoteValue);
-			settled(c, c.remoteValue);
+			if (c.field === "status") {
+				if (!deps.writeValidated) throw new Error("no vault writer");
+				await deps.writeValidated(c.id, c.path, c.doneOn ?? null);
+			} else {
+				if (!deps.writePriority) throw new Error("no vault writer");
+				await deps.writePriority(c.kind, c.id, c.path, c.remoteValue);
+			}
+			settled(c, "theirs");
 		} catch (e) {
 			outcome.failed.push({ title: c.title, error: `Suivi's value could not be written (${(e as Error).message})` });
 		}

@@ -1,10 +1,11 @@
 import { parseLinktext, type App } from "obsidian";
-import { setTaskToken } from "../lineWriter";
+import { processLineById, setTaskToken, type StatusToken } from "../lineWriter";
 import { UPLOAD_MAX_BYTES } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { PlannedReview } from "./reviewPlan";
 import { IMAGE_TYPES, shareReviewBody } from "./reviewBody";
 import { readReview } from "./sharedReview";
+import { vaultFiles } from "./vaultFiles";
 
 /** Review notes of `folder` (and its subfolders), `project:` resolved to a note path. */
 export async function readReviews(app: App, folder: string): Promise<PlannedReview[]> {
@@ -33,15 +34,6 @@ export function reviewBodySharer(app: App, remote: Remote) {
 }
 
 /** `writeTaskToken` of a Push: the token of the line `^id` in `path`. */
-export async function writeTaskTokenIn(app: App, path: string, id: string, token: string): Promise<void> {
-	const file = app.vault.getFileByPath(path);
-	if (!file) throw new Error(`${path} not found`);
-	let refused: string | null = null;
-	await app.vault.process(file, (content) => {
-		const result = setTaskToken(content, { line: -1, raw: "", blockId: id }, token);
-		if (result.ok) return result.content;
-		refused = `^${id} is ${result.reason === "not-found" ? "not in the file" : result.reason}`;
-		return content;
-	});
-	if (refused) throw new Error(refused);
+export async function writeTaskTokenIn(app: App, path: string, id: string, token: StatusToken): Promise<void> {
+	await processLineById(vaultFiles(app).process, path, id, (content, ref) => setTaskToken(content, ref, token));
 }

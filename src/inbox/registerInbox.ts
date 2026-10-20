@@ -1,11 +1,11 @@
 import { MarkdownView, Notice, type Plugin, type WorkspaceLeaf } from "obsidian";
 import type { CommentTarget } from "../comments/commentTarget";
-import { obsidianTransport } from "../remote/obsidianTransport";
-import { createHttpRemote } from "../remote/remote";
+import { listeners, settingsRemote } from "../remote/settingsRemote";
+import { openView } from "../ui/openView";
 import type { ProjectsTimerSettings } from "../settings";
 import type { PluginData } from "../sync/pluginData";
 import type { PullHooks } from "../sync/registerPull";
-import { vaultFiles } from "../sync/registerPull";
+import { vaultFiles } from "../sync/vaultFiles";
 import { INBOX_VIEW_TYPE, InboxView } from "../views/InboxView";
 import { withInboxNotice } from "./inboxNotice";
 import { InboxStore, type InboxEntry, type InboxState } from "./inboxStore";
@@ -28,26 +28,12 @@ export interface InboxDeps {
  */
 export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, deps: InboxDeps) {
 	const { app } = plugin;
-	const remote = createHttpRemote(
-		{
-			get url() {
-				return data.settings.suiviUrl;
-			},
-			get token() {
-				return data.settings.suiviToken;
-			},
-		},
-		obsidianTransport,
-	);
-	const listeners = new Set<(state: InboxState) => void>();
-	const store = new InboxStore(remote, () => data.sync.conflicts, (state) => listeners.forEach((l) => l(state)));
-	const subscribe = (listener: (state: InboxState) => void) => {
-		listeners.add(listener);
-		return () => listeners.delete(listener);
-	};
+	const remote = settingsRemote(data.settings);
+	const { emit, subscribe } = listeners<InboxState>();
+	const store = new InboxStore(remote, () => data.sync.conflicts, emit);
 
 	async function open(entry: InboxEntry) {
-		const at = await itemLocation(data.sync, vaultFiles(plugin), entry.item);
+		const at = await itemLocation(data.sync, vaultFiles(app), entry.item);
 		if (at) await openLine(at.path, at.line);
 		else if (entry.kind !== "comment" && entry.kind !== "ticket" && entry.kind !== "answer") {
 			new Notice(`${entry.item.title} is not in this vault.`);
@@ -143,7 +129,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				if (result.ok) {
 					new Notice(`Created ${result.path}`);
 					await openLine(result.path, 0);
-				} else new Notice(`Nouveau projet failed: ${result.error}`, 10_000);
+				} else new Notice(`New project failed: ${result.error}`, 10_000);
 				await store.refresh();
 			})();
 		}).open();
@@ -154,18 +140,9 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		(leaf: WorkspaceLeaf) => new InboxView(leaf, store, subscribe, (e) => void open(e), triage, newProject),
 	);
 
-	async function openView() {
-		const existing = app.workspace.getLeavesOfType(INBOX_VIEW_TYPE)[0];
-		const leaf = existing ?? app.workspace.getRightLeaf(false);
-		if (!leaf) {
-			new Notice("Unable to open the Suivi inbox");
-			return;
-		}
-		if (!existing) await leaf.setViewState({ type: INBOX_VIEW_TYPE, active: true });
-		void app.workspace.revealLeaf(leaf);
-	}
-	plugin.addCommand({ id: "open-suivi-inbox", name: "Open Suivi inbox", callback: () => void openView() });
-	plugin.addRibbonIcon("inbox", "Open Suivi inbox", () => void openView());
+	const openInbox = () => void openView(app, INBOX_VIEW_TYPE, "Suivi inbox", { active: true });
+	plugin.addCommand({ id: "open-suivi-inbox", name: "Open Suivi inbox", callback: openInbox });
+	plugin.addRibbonIcon("inbox", "Open Suivi inbox", openInbox);
 
 	let noticed = false;
 	const pullHooks: PullHooks = {

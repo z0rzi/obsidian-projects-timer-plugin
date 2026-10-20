@@ -1,25 +1,28 @@
-import { setTaskToken } from "../lineWriter";
+import { priorityToken, processLineById, setTaskToken } from "../lineWriter";
 import { setFrontmatterPriority } from "../projectCards";
 import type { ApiEvent, ItemUpdatedPayload } from "../remote/api";
 import type { SyncState } from "./pluginData";
 import type { PullContext, VaultFiles } from "./runPull";
-import { readSharedProject } from "./sharedProject";
-import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
+import { locateItem, projectNote, taskLine } from "./locateItem";
 
 /**
  * A Client change the Pull didn't apply because the Developer had changed the
  * same field in the vault and not pushed it yet. Shown in the Push modal with
  * both values; the Developer picks. Keyed `<id>:<field>` in `SyncState.conflicts`.
+ * `status` is a Validé Review answer (the Task is Terminé in the app) against
+ * a Task line whose status or priority changed locally.
  */
 export interface PullConflict {
 	kind: "project" | "task";
 	id: string;
-	field: "priority";
+	field: "priority" | "status";
 	/** Where the item was last pushed from. */
 	path: string;
 	title: string;
-	/** Value now in the app. */
+	/** Priority now in the app (null for a `status` conflict). */
 	remote: number | null;
+	/** `status` conflict: the done date the answer gives a Tag task (null for a Project step). */
+	doneOn?: string | null;
 }
 
 export const conflictKey = (id: string, field: string) => `${id}:${field}`;
@@ -51,11 +54,10 @@ async function pullPriority(id: string, to: unknown, ctx: PullContext): Promise<
 		delete sync.conflicts?.[key];
 		return;
 	}
-	const local = project ? await localProjectPriority(ctx.files, pushed.path, id) : await localTaskLine(ctx.files, pushed.path, id);
-	if (!local) throw new Error(`not found in ${pushed.path}`);
-
 	if (project) {
-		const now = (local as { priority: number }).priority;
+		const local = await locateItem(ctx.files, id, project.path, projectNote(id));
+		project.path = local.path;
+		const now = local.found.fields.priority;
 		if (now === to) {
 			project.fields.priority = to as number;
 		} else if (now !== project.fields.priority) {
@@ -72,7 +74,9 @@ async function pullPriority(id: string, to: unknown, ctx: PullContext): Promise<
 		return;
 	}
 
-	const line = local as LocalTask;
+	const local = await locateItem(ctx.files, id, task!.path, taskLine(id));
+	task!.path = local.path;
+	const line = local.found;
 	const fields = task!.fields;
 	if (line.priority === to && line.status === statusOf(to)) {
 		fields.priority = to;
@@ -93,23 +97,8 @@ function statusOf(priority: number | null) {
 	return priority === 0 ? ("en_cours" as const) : ("a_faire" as const);
 }
 
-function addConflict(sync: SyncState, key: string, conflict: PullConflict) {
+export function addConflict(sync: SyncState, key: string, conflict: PullConflict) {
 	sync.conflicts = { ...sync.conflicts, [key]: conflict };
-}
-
-async function localProjectPriority(files: VaultFiles, path: string, id: string) {
-	const content = await files.read(path);
-	const result = content === null ? null : readSharedProject(path, content);
-	if (!result?.ok || result.project.suiviId !== id) return null;
-	return { priority: result.project.fields.priority };
-}
-
-/** The Task line with block ID `id` in `path`: a Tag task or a Project step. */
-async function localTaskLine(files: VaultFiles, path: string, id: string): Promise<LocalTask | null> {
-	const content = await files.read(path);
-	if (content === null) return null;
-	const lines = [...readTagTasks(path, content, null), ...readProjectSteps(path, content)];
-	return lines.find((t) => t.blockId === id) ?? null;
 }
 
 /**
@@ -124,16 +113,10 @@ export async function writeRemotePriority(
 	path: string,
 	priority: number | null,
 ): Promise<void> {
-	let refused: string | null = null;
-	await files.process(path, (content) => {
-		if (kind === "project") {
-			if (priority === null) return content;
-			return setFrontmatterPriority(content, priority);
-		}
-		const result = setTaskToken(content, { line: -1, raw: "", blockId: id }, priority === null ? null : `p${priority}`);
-		if (result.ok) return result.content;
-		refused = `^${id} is ${result.reason === "not-found" ? "not in the file" : result.reason}`;
-		return content;
-	});
-	if (refused) throw new Error(refused);
+	if (kind === "project") {
+		if (priority !== null) await files.process(path, (content) => setFrontmatterPriority(content, priority));
+		return;
+	}
+	const token = priority === null ? null : priorityToken(priority);
+	await processLineById(files.process, path, id, (content, ref) => setTaskToken(content, ref, token));
 }

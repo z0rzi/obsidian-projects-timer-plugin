@@ -1,3 +1,4 @@
+import type { ApiEvent } from "../remote/api";
 import type { PullConflict } from "./pullPriority";
 import type { PushedProjects } from "./pushPlan";
 import type { PushedTasks } from "./taskPlan";
@@ -18,6 +19,8 @@ export interface SyncState {
 	doneHistory?: string[];
 	/** Id of the last app event handled by the Pull (`GET /api/events?since=`); unset = never pulled. */
 	cursor?: number;
+	/** Pulled events whose item is in no note right now, retried at each Pull (oldest first). */
+	pullRetry?: ApiEvent[];
 	/** Client changes not applied because the vault changed the same field, by `<id>:<field>`. */
 	conflicts?: Record<string, PullConflict>;
 }

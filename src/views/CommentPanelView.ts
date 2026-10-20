@@ -1,5 +1,6 @@
 import { ItemView, MarkdownRenderer, setIcon, type WorkspaceLeaf } from "obsidian";
-import { withAppUrls } from "../comments/commentMarkdown";
+import { AppImages } from "../comments/appImages";
+import { uploadedImages, withAppUrls } from "../comments/commentMarkdown";
 import type { ThreadSession, ThreadState } from "../comments/threadSession";
 import type { Comment } from "../remote/api";
 
@@ -23,14 +24,18 @@ export class CommentPanelView extends ItemView {
 	private unsubscribe: (() => void) | null = null;
 	/** Id of the item the reply draft was typed for. */
 	private draftFor: string | null = null;
+	/** Uploaded images shown in the thread, fetched with the token while the panel is open. */
+	private readonly images: AppImages;
 
 	constructor(
 		leaf: WorkspaceLeaf,
 		private readonly session: ThreadSession,
 		private readonly subscribe: (listener: (state: ThreadState) => void) => () => void,
 		private readonly appUrl: () => string,
+		fetchImage: ConstructorParameters<typeof AppImages>[0],
 	) {
 		super(leaf);
+		this.images = new AppImages(fetchImage);
 	}
 
 	getViewType(): string {
@@ -75,6 +80,7 @@ export class CommentPanelView extends ItemView {
 	async onClose() {
 		this.unsubscribe?.();
 		this.unsubscribe = null;
+		this.images.clear();
 	}
 
 	private render(state: ThreadState) {
@@ -114,7 +120,18 @@ export class CommentPanelView extends ItemView {
 		meta.createEl("strong", { text: c.mine ? "You" : c.author_email });
 		meta.createSpan({ text: ` · ${DATE.format(new Date(c.created_at))}${c.edited_at ? " · modifié" : ""}` });
 		const body = el.createDiv({ cls: "suivi-comment-body" });
-		void MarkdownRenderer.render(this.app, withAppUrls(c.body, this.appUrl()), body, "", this);
+		const show = (images?: Map<string, string>) => {
+			body.empty();
+			void MarkdownRenderer.render(this.app, withAppUrls(c.body, this.appUrl(), images), body, "", this);
+		};
+		show();
+		const paths = uploadedImages(c.body);
+		if (paths.length > 0) {
+			void this.images.urls(paths).then((images) => {
+				// Not if the comment was re-rendered or is being edited meanwhile.
+				if (images.size > 0 && body.isConnected && !body.querySelector("textarea")) show(images);
+			});
+		}
 		if (!c.mine) return;
 
 		const actions = el.createDiv({ cls: "suivi-comment-actions" });

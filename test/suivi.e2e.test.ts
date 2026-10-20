@@ -22,7 +22,7 @@ import { withInboxNotice } from "../src/inbox/inboxNotice";
 import { InboxStore } from "../src/inbox/inboxStore";
 import { placeLine, runTriage } from "../src/inbox/triage";
 import { runNewProject } from "../src/inbox/newProject";
-import { setTaskToken } from "../src/lineWriter";
+import { LineRef, setTaskToken, type StatusToken } from "../src/lineWriter";
 import { shareReviewBody } from "../src/sync/reviewBody";
 import { planReviewPush } from "../src/sync/reviewPlan";
 import { readReview } from "../src/sync/sharedReview";
@@ -33,6 +33,8 @@ const clientSession = process.env.SUIVI_E2E_CLIENT_SESSION ?? "";
 
 const fetchTransport: Transport = async (req) => {
 	const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+	const contentType = res.headers.get("content-type") ?? "";
+	if (contentType.startsWith("image/")) return { status: res.status, json: null, arrayBuffer: await res.arrayBuffer(), contentType };
 	const text = await res.text();
 	let json: unknown = null;
 	try {
@@ -193,6 +195,7 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 		const memory: VaultFiles = {
 			read: async (p) => files.get(p) ?? null,
 			process: async (p, edit) => void files.set(p, edit(files.get(p)!)),
+			paths: () => [...files.keys()],
 		};
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
 		const plan = () => {
@@ -283,7 +286,7 @@ describe.skipIf(!url || !token || !clientSession)("Inbox against a running Suivi
 				redirect: "manual",
 			});
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-		const files: VaultFiles = { read: async () => null, process: async () => {} };
+		const files: VaultFiles = { read: async () => null, process: async () => {}, paths: () => [] };
 		await runPull({ remote, sync, save: async () => {}, files }); // catch up
 
 		expect((await asClient(`/items/${id}/commentaires`, "body=Une%20question")).status).toBe(303);
@@ -318,7 +321,7 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 	it("JMJ's Bug reaches À trier after a Pull; Insérer ici writes its line and the same item becomes a Task", async () => {
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-		const files: VaultFiles = { read: async () => null, process: async () => {} };
+		const files: VaultFiles = { read: async () => null, process: async () => {}, paths: () => [] };
 		await runPull({ remote, sync, save: async () => {}, files }); // catch up
 
 		const title = `Ticket ${stamp}`;
@@ -372,7 +375,7 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 	it("JMJ's Idée waits in the app until launched; Nouveau projet creates the file and the same item becomes a Project", async () => {
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-		const files: VaultFiles = { read: async () => null, process: async () => {} };
+		const files: VaultFiles = { read: async () => null, process: async () => {}, paths: () => [] };
 		await runPull({ remote, sync, save: async () => {}, files }); // catch up
 		const jmj = { cookie: `suivi_session=${clientSession}`, "content-type": "application/x-www-form-urlencoded" };
 
@@ -441,6 +444,7 @@ describe.skipIf(!url || !token || !clientSession)("Reviews against a running Sui
 		const vault: VaultFiles = {
 			read: async (p) => files.get(p) ?? null,
 			process: async (p, edit) => void files.set(p, edit(files.get(p)!)),
+			paths: () => [...files.keys()],
 		};
 		const deps = {
 			remote,
@@ -454,7 +458,7 @@ describe.skipIf(!url || !token || !clientSession)("Reviews against a running Sui
 			shareBody: (p: string, body: string) =>
 				shareReviewBody(body, async () => remote.upload(new Uint8Array(Buffer.from(PNG, "base64")).buffer, "capture.png")),
 			writeTaskToken: async (p: string, id: string, token: string) => {
-				const r = setTaskToken(files.get(p)!, { line: -1, raw: "", blockId: id }, token);
+				const r = setTaskToken(files.get(p)!, LineRef.byId(id), token as StatusToken);
 				if (!r.ok) throw new Error(r.reason);
 				files.set(p, r.content);
 			},
@@ -485,7 +489,13 @@ describe.skipIf(!url || !token || !clientSession)("Reviews against a running Sui
 			fetch(`${url}${path}`, { ...init, redirect: "manual", headers: { cookie: `suivi_session=${clientSession}`, ...init.headers } });
 		const page = await (await site(`/revues/${reviewId}`)).text();
 		expect(page).toContain(`src="https://www.loom.com/embed/${loom}"`);
-		expect(page).toMatch(/<img src="\/uploads\/[\w-]+\.png"/);
+		const upload = page.match(/<img src="(\/uploads\/[\w-]+\.png)"/)?.[1];
+		expect(upload).toBeTruthy();
+		// Uploads need a session or the token: the plugin fetches them with the token.
+		expect((await fetch(`${url}${upload}`, { redirect: "manual" })).status).not.toBe(200);
+		const image = await remote.image(upload!);
+		expect(image.type).toBe("image/png");
+		expect(Buffer.from(image.data).toString("base64")).toBe(PNG);
 		expect(page).toContain("Voir le projet.");
 		expect(page).not.toContain("[[");
 
