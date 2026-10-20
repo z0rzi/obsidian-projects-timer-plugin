@@ -11,7 +11,6 @@ import type ProjectsTimerPlugin from "../main";
 import { ProjectCard, ProjectCardItem, Task, TaskStatus, TASKS_TYPES } from "../types";
 import { Subscription } from "rxjs";
 import { AddActivityModal } from "../ui/AddActivityModal";
-import { setFrontmatterPriority } from "../projectCards";
 import { rewriteStepToken, rewriteTaskTag, toggleCheckbox, WriteResult } from "../lineWriter";
 import { localDay } from "../localDate";
 
@@ -737,11 +736,9 @@ export class TasksKanbanView extends ItemView {
 
 	private async updateProjectPriority(card: ProjectCard, newPriority: number) {
 		try {
-			const content = await this.app.vault.adapter.read(card.file.path);
-			const newContent = setFrontmatterPriority(content, newPriority);
-			if (newContent === content) return;
-
-			await this.app.vault.modify(card.file, newContent);
+			await this.app.fileManager.processFrontMatter(card.file, (fm: Record<string, unknown>) => {
+				fm.priority = newPriority;
+			});
 		} catch (e) {
 			new Notice("Failed to update project priority");
 		}
