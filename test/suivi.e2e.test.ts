@@ -193,6 +193,7 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 		const memory: VaultFiles = {
 			read: async (p) => files.get(p) ?? null,
 			process: async (p, edit) => void files.set(p, edit(files.get(p)!)),
+			paths: () => [...files.keys()],
 		};
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
 		const plan = () => {
@@ -283,7 +284,7 @@ describe.skipIf(!url || !token || !clientSession)("Inbox against a running Suivi
 				redirect: "manual",
 			});
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-		const files: VaultFiles = { read: async () => null, process: async () => {} };
+		const files: VaultFiles = { read: async () => null, process: async () => {}, paths: () => [] };
 		await runPull({ remote, sync, save: async () => {}, files }); // catch up
 
 		expect((await asClient(`/items/${id}/commentaires`, "body=Une%20question")).status).toBe(303);
@@ -318,7 +319,7 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 	it("JMJ's Bug reaches À trier after a Pull; Insérer ici writes its line and the same item becomes a Task", async () => {
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-		const files: VaultFiles = { read: async () => null, process: async () => {} };
+		const files: VaultFiles = { read: async () => null, process: async () => {}, paths: () => [] };
 		await runPull({ remote, sync, save: async () => {}, files }); // catch up
 
 		const title = `Ticket ${stamp}`;
@@ -372,7 +373,7 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 	it("JMJ's Idée waits in the app until launched; Nouveau projet creates the file and the same item becomes a Project", async () => {
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-		const files: VaultFiles = { read: async () => null, process: async () => {} };
+		const files: VaultFiles = { read: async () => null, process: async () => {}, paths: () => [] };
 		await runPull({ remote, sync, save: async () => {}, files }); // catch up
 		const jmj = { cookie: `suivi_session=${clientSession}`, "content-type": "application/x-www-form-urlencoded" };
 
@@ -441,6 +442,7 @@ describe.skipIf(!url || !token || !clientSession)("Reviews against a running Sui
 		const vault: VaultFiles = {
 			read: async (p) => files.get(p) ?? null,
 			process: async (p, edit) => void files.set(p, edit(files.get(p)!)),
+			paths: () => [...files.keys()],
 		};
 		const deps = {
 			remote,

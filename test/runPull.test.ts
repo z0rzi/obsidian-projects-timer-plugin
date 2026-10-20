@@ -45,6 +45,7 @@ function memoryVault(initial: Record<string, string>) {
 			if (content === undefined) throw new Error(`no file ${path}`);
 			files.set(path, edit(content));
 		},
+		paths: () => [...files.keys()],
 	};
 	return { files, vault };
 }
@@ -159,11 +160,47 @@ describe("Pull: Client priority changes", () => {
 		expect(w.sync.conflicts).toEqual({});
 	});
 
-	it("reports a line it can't find and moves on", async () => {
+	it("finds a Task line moved to another note since the Push, and remembers where", async () => {
+		const w = world(
+			{ "m.md": "moved away\n", "n.md": "#task p3 Fix heatmap ^t7f3a\n" },
+			{ pushedTasks: { t7f3a: { path: "m.md", fields: task() } } },
+		);
+		w.app.priority("t7f3a", 3, 1);
+
+		expect(await w.pull()).toEqual({ applied: 1, conflicts: 0, failed: [] });
+		expect(w.files.get("n.md")).toBe("#task p1 Fix heatmap ^t7f3a\n");
+		expect(w.sync.pushedTasks.t7f3a!.path).toBe("n.md");
+	});
+
+	it("finds a renamed Project note by its suivi_id", async () => {
+		const fields = { title: "A", description: "", status: "a_faire" as const, priority: 3 };
+		const w = world(
+			{ "2.projects/B.md": "---\nsuivi_id: aaaaa\npriority: 3\n---\n" },
+			{ pushedProjects: { aaaaa: { path: "2.projects/A.md", fields } } },
+		);
+		w.app.priority("aaaaa", 3, 1);
+
+		expect(await w.pull()).toMatchObject({ applied: 1, failed: [] });
+		expect(w.files.get("2.projects/B.md")).toBe("---\nsuivi_id: aaaaa\npriority: 1\n---\n");
+		expect(w.sync.pushedProjects.aaaaa!.path).toBe("2.projects/B.md");
+	});
+
+	it("keeps an event whose item is nowhere in the vault, reports it once and retries it at each Pull", async () => {
 		const w = world({ "m.md": "#task p3 Renamed\n" }, { pushedTasks: { t7f3a: { path: "m.md", fields: task() } } });
 		w.app.priority("t7f3a", 3, 1);
-		expect(await w.pull()).toMatchObject({ applied: 0, failed: [{ title: "t7f3a" }] });
+		const first = await w.pull();
+		expect(first).toMatchObject({ applied: 0, failed: [{ title: "t7f3a" }] });
+		expect(first.failed[0]!.error).toMatch(/retried/);
 		expect(w.sync.cursor).toBe(1);
+
+		// Still missing: kept, not reported again.
+		expect(await w.pull()).toEqual({ applied: 0, conflicts: 0, failed: [] });
+
+		// The line is back (block ID restored): the kept event applies.
+		w.files.set("m.md", "#task p3 Renamed ^t7f3a\n");
+		expect(await w.pull()).toEqual({ applied: 1, conflicts: 0, failed: [] });
+		expect(w.files.get("m.md")).toBe("#task p1 Renamed ^t7f3a\n");
+		expect(await w.pull()).toEqual({ applied: 0, conflicts: 0, failed: [] });
 	});
 });
 

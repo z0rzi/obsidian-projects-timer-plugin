@@ -27,6 +27,7 @@ export function vaultFiles(plugin: Plugin): VaultFiles {
 			if (!file) throw new Error(`${path} not found`);
 			await vault.process(file, edit);
 		},
+		paths: () => vault.getMarkdownFiles().map((f) => f.path),
 	};
 }
 

@@ -3,8 +3,7 @@ import { setFrontmatterPriority } from "../projectCards";
 import type { ApiEvent, ItemUpdatedPayload } from "../remote/api";
 import type { SyncState } from "./pluginData";
 import type { PullContext, VaultFiles } from "./runPull";
-import { readSharedProject } from "./sharedProject";
-import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
+import { locateItem, projectNote, taskLine } from "./locateItem";
 
 /**
  * A Client change the Pull didn't apply because the Developer had changed the
@@ -51,11 +50,10 @@ async function pullPriority(id: string, to: unknown, ctx: PullContext): Promise<
 		delete sync.conflicts?.[key];
 		return;
 	}
-	const local = project ? await localProjectPriority(ctx.files, pushed.path, id) : await localTaskLine(ctx.files, pushed.path, id);
-	if (!local) throw new Error(`not found in ${pushed.path}`);
-
 	if (project) {
-		const now = (local as { priority: number }).priority;
+		const local = await locateItem(ctx.files, id, project.path, projectNote(id));
+		project.path = local.path;
+		const now = local.found.fields.priority;
 		if (now === to) {
 			project.fields.priority = to as number;
 		} else if (now !== project.fields.priority) {
@@ -72,7 +70,9 @@ async function pullPriority(id: string, to: unknown, ctx: PullContext): Promise<
 		return;
 	}
 
-	const line = local as LocalTask;
+	const local = await locateItem(ctx.files, id, task!.path, taskLine(id));
+	task!.path = local.path;
+	const line = local.found;
 	const fields = task!.fields;
 	if (line.priority === to && line.status === statusOf(to)) {
 		fields.priority = to;
@@ -95,21 +95,6 @@ function statusOf(priority: number | null) {
 
 function addConflict(sync: SyncState, key: string, conflict: PullConflict) {
 	sync.conflicts = { ...sync.conflicts, [key]: conflict };
-}
-
-async function localProjectPriority(files: VaultFiles, path: string, id: string) {
-	const content = await files.read(path);
-	const result = content === null ? null : readSharedProject(path, content);
-	if (!result?.ok || result.project.suiviId !== id) return null;
-	return { priority: result.project.fields.priority };
-}
-
-/** The Task line with block ID `id` in `path`: a Tag task or a Project step. */
-async function localTaskLine(files: VaultFiles, path: string, id: string): Promise<LocalTask | null> {
-	const content = await files.read(path);
-	if (content === null) return null;
-	const lines = [...readTagTasks(path, content, null), ...readProjectSteps(path, content)];
-	return lines.find((t) => t.blockId === id) ?? null;
 }
 
 /**

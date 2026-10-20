@@ -2,7 +2,7 @@ import { localDay } from "../localDate";
 import { rewriteStepToken, rewriteTaskTag, setTaskToken, toggleCheckbox, type WriteResult } from "../lineWriter";
 import type { ApiEvent, ReviewAnsweredPayload } from "../remote/api";
 import type { PullContext } from "./runPull";
-import { readProjectSteps, readTagTasks } from "./sharedTask";
+import { locateItem, taskLine } from "./locateItem";
 
 /**
  * `review.answered`: the Client answered a Review. Validé makes its Task line
@@ -19,20 +19,14 @@ export async function pullReviewAnswered(event: ApiEvent, ctx: PullContext): Pro
 	const task = taskId ? ctx.sync.pushedTasks[taskId] : undefined;
 	if (!taskId || !task) return; // no Task, or not from this vault
 
-	const content = await ctx.files.read(task.path);
-	const line =
-		content === null
-			? undefined
-			: [...readTagTasks(task.path, content, null), ...readProjectSteps(task.path, content)].find(
-					(t) => t.blockId === taskId,
-				);
-	if (!line) throw new Error(`^${taskId} is not in ${task.path}`);
+	const { path, found: line } = await locateItem(ctx.files, taskId, task.path, taskLine(taskId));
+	task.path = path;
 	const isStep = line.type === "step";
 	const date = localDay(new Date(event.at));
 	const ref = { line: -1, raw: "", blockId: taskId };
 
 	let refused: string | null = null;
-	await ctx.files.process(task.path, (now) => {
+	await ctx.files.process(path, (now) => {
 		let result: WriteResult;
 		if (answer === "a_reprendre") result = setTaskToken(now, ref, "p0");
 		else if (isStep) {

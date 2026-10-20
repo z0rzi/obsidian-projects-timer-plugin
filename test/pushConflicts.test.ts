@@ -59,6 +59,7 @@ function world() {
 				{
 					read: async (p) => files.get(p) ?? null,
 					process: async (p, edit) => void files.set(p, edit(files.get(p)!)),
+					paths: () => [...files.keys()],
 				},
 				kind,
 				id,

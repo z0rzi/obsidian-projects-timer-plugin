@@ -30,6 +30,7 @@ function world(events: Omit<ApiEvent, "id">[]) {
 		async process(path, edit) {
 			files.set(path, edit(files.get(path)!));
 		},
+		paths: () => [...files.keys()],
 	};
 	const sync: SyncState = {
 		pushedProjects: {},
@@ -106,5 +107,18 @@ describe("Pull: Review answers", () => {
 		const gone = world([answered("valide", "t7f3a")]);
 		gone.files.set(meeting, "plus rien");
 		expect((await gone.pull()).failed).toHaveLength(1);
+		// Kept: once the line is back, the next Pull applies the answer.
+		gone.files.set(meeting, "#task pr Widget ^t7f3a\nnotes");
+		expect(await gone.pull()).toEqual({ applied: 1, conflicts: 0, failed: [] });
+		expect(gone.files.get(meeting)).toBe("#done 2026-10-21 Widget ^t7f3a\nnotes");
+	});
+
+	it("finds the Task line in another note when it moved since the Push", async () => {
+		const w = world([answered("valide", "t7f3a")]);
+		w.files.set(meeting, "plus rien");
+		w.files.set("1.meetings/n.md", "#task pr Widget ^t7f3a");
+		expect(await w.pull()).toEqual({ applied: 1, conflicts: 0, failed: [] });
+		expect(w.files.get("1.meetings/n.md")).toBe("#done 2026-10-21 Widget ^t7f3a");
+		expect(w.sync.pushedTasks.t7f3a!.path).toBe("1.meetings/n.md");
 	});
 });

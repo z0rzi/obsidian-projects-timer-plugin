@@ -1,6 +1,7 @@
 import type { ApiEvent, EventType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { SyncState } from "./pluginData";
+import { NotInVault } from "./locateItem";
 import { pullItemUpdated } from "./pullPriority";
 import { pullReviewAnswered } from "./pullReview";
 
@@ -10,6 +11,8 @@ export interface VaultFiles {
 	read(path: string): Promise<string | null>;
 	/** Rewrites the file atomically with `edit` (Obsidian's `vault.process`). */
 	process(path: string, edit: (content: string) => string): Promise<void>;
+	/** Every Markdown note, to find an item that left the note it was pushed from. */
+	paths(): string[];
 }
 
 export interface PullDeps {
@@ -25,7 +28,11 @@ export interface PullOutcome {
 	applied: number;
 	/** New conflicts, for the Push modal. */
 	conflicts: number;
-	/** Events that couldn't be applied (line gone, file unreadable); they are not retried. */
+	/**
+	 * Events that couldn't be applied. One whose item is in no note is kept in
+	 * `SyncState.pullRetry` and retried at each Pull (reported once); others
+	 * (line refused, file unreadable) are dropped.
+	 */
 	failed: { title: string; error: string }[];
 }
 
@@ -55,16 +62,29 @@ export async function runPull(deps: PullDeps, handlers = PULL_HANDLERS): Promise
 	const outcome: PullOutcome = { applied: 0, conflicts: 0, failed: [] };
 	const { events, cursor } = await deps.remote.pull(deps.sync.cursor ?? null);
 	const ctx: PullContext = { ...deps, outcome };
-	for (const event of events) {
+	const kept = deps.sync.pullRetry ?? [];
+	const keptIds = new Set(kept.map((e) => e.id));
+	const retry: ApiEvent[] = [];
+	for (const event of [...kept, ...events.filter((e) => !keptIds.has(e.id))]) {
 		const handler = handlers[event.type];
 		if (!handler) continue;
 		try {
 			await handler(event, ctx);
 		} catch (e) {
-			outcome.failed.push({ title: event.item ?? event.type, error: (e as Error).message });
+			const title = event.item ?? event.type;
+			if (!(e instanceof NotInVault)) outcome.failed.push({ title, error: (e as Error).message });
+			else {
+				retry.push(event);
+				if (!keptIds.has(event.id)) outcome.failed.push({ title, error: `${e.message}; kept, retried at the next Pull` });
+			}
 		}
 	}
-	if (cursor !== deps.sync.cursor) {
+	const retryChanged = retry.length !== kept.length || retry.some((e, i) => e.id !== kept[i]!.id);
+	if (retryChanged) {
+		if (retry.length) deps.sync.pullRetry = retry;
+		else delete deps.sync.pullRetry;
+	}
+	if (cursor !== deps.sync.cursor || retryChanged) {
 		deps.sync.cursor = cursor;
 		await deps.save();
 	}

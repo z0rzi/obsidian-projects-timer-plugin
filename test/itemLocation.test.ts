@@ -5,6 +5,7 @@ import type { VaultFiles } from "../src/sync/runPull";
 
 const files = (map: Record<string, string>): VaultFiles => ({
 	read: async (path) => map[path] ?? null,
+	paths: () => Object.keys(map),
 	process: async () => {
 		throw new Error("read only");
 	},
