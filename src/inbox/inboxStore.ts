@@ -88,7 +88,7 @@ function conflictEntry(c: PullConflict): InboxEntry {
 		kind: "conflict",
 		item: { kind: c.kind, id: c.id, title: c.title },
 		title: `Conflict on ${c.title}`,
-		detail: `Suivi has ${p(c.remote)}, you changed it too: pick in Push to Suivi`,
+		detail: `Suivi has ${c.field === "status" ? "Terminé (Review validée)" : p(c.remote)}, you changed it too: pick in Push to Suivi`,
 		eventIds: [],
 	};
 }

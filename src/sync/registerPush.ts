@@ -7,6 +7,7 @@ import { PushModal } from "../ui/PushModal";
 import type { PluginData } from "./pluginData";
 import { settleConflicts, withConflicts } from "./conflicts";
 import { writeRemotePriority } from "./pullPriority";
+import { writeValidated } from "./pullReview";
 import { planProjectPush, type PendingChange } from "./pushPlan";
 import { vaultFiles } from "./registerPull";
 import { runPush } from "./runPush";
@@ -138,6 +139,7 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 					writeBlockId,
 					writePriority: (kind, id, path, priority) =>
 						writeRemotePriority(vaultFiles(plugin), kind, id, path, priority),
+					writeValidated: (id, path, doneOn) => writeValidated(vaultFiles(plugin), id, path, doneOn),
 					shareBody: reviewBodySharer(app, remote),
 					writeTaskToken: (path, id, token) => writeTaskTokenIn(app, path, id, token),
 				}));

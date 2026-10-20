@@ -1,4 +1,4 @@
-import type { PushChange } from "../remote/api";
+import type { PushChange, PushedTaskStatus } from "../remote/api";
 import type { SyncState } from "./pluginData";
 import type { PendingChange } from "./pushPlan";
 import { conflictKey, type PullConflict } from "./pullPriority";
@@ -24,6 +24,9 @@ export interface PendingConflict {
 	remote: string;
 	localValue: number | null;
 	remoteValue: number | null;
+	/** `status` conflict: the vault line's status, and the done date "theirs" writes. */
+	localStatus?: string;
+	doneOn?: string | null;
 	choice: "mine" | "theirs";
 	change: Extract<PushChange, { op: "update" }>;
 }
@@ -52,9 +55,16 @@ export function settleConflicts(sync: SyncState, projects: SharedProject[], task
 	const local = localItems(projects, tasks);
 	for (const [key, c] of Object.entries(sync.conflicts)) {
 		const now = local.get(c.id);
-		if (!now || now.priority !== c.remote) continue;
-		const pushed = c.kind === "project" ? sync.pushedProjects[c.id] : sync.pushedTasks[c.id];
-		if (pushed && c.remote !== null) pushed.fields.priority = c.remote;
+		if (!now) continue;
+		if (c.field === "status") {
+			if (now.status !== "termine") continue;
+			const task = sync.pushedTasks[c.id];
+			if (task) task.fields = { ...task.fields, status: "termine", priority: null, done_on: c.doneOn ?? null };
+		} else {
+			if (now.priority !== c.remote) continue;
+			const pushed = c.kind === "project" ? sync.pushedProjects[c.id] : sync.pushedTasks[c.id];
+			if (pushed && c.remote !== null) pushed.fields.priority = c.remote;
+		}
 		delete sync.conflicts[key];
 	}
 }
@@ -75,13 +85,17 @@ export function withConflicts(
 	if (conflicts.length === 0) return pending;
 	const local = localItems(projects, tasks);
 	const entries: PendingConflict[] = [];
-	const conflicting = new Set<string>();
+	/** The fields held out of plain changes, by item id. */
+	const held = new Map<string, Set<string>>();
 
 	for (const c of conflicts) {
 		const now = local.get(c.id);
 		const pushed = c.kind === "project" ? sync.pushedProjects[c.id] : sync.pushedTasks[c.id];
 		if (!now || !pushed) continue;
-		conflicting.add(c.id);
+		const fields = held.get(c.id) ?? new Set<string>();
+		for (const f of HELD[c.field]) fields.add(f);
+		held.set(c.id, fields);
+		const status = c.field === "status";
 		entries.push({
 			group: "conflict",
 			key: `conflict:${conflictKey(c.id, c.field)}`,
@@ -91,34 +105,54 @@ export function withConflicts(
 			path: now.path,
 			title: now.title,
 			local: label(now.priority, now.status),
-			remote: label(c.remote),
+			remote: status ? "Terminé" : label(c.remote),
 			localValue: now.priority,
 			remoteValue: c.remote,
+			...(status ? { localStatus: now.status, doneOn: c.doneOn ?? null } : {}),
 			choice: "mine",
 			change:
 				c.kind === "project"
 					? { op: "update", kind: "project", id: c.id, fields: { priority: now.priority ?? 5 } }
-					: { op: "update", kind: "task", id: c.id, fields: { priority: now.priority } },
+					: status
+						? {
+								op: "update",
+								kind: "task",
+								id: c.id,
+								fields: { status: now.status as PushedTaskStatus, priority: now.priority },
+							}
+						: { op: "update", kind: "task", id: c.id, fields: { priority: now.priority } },
 		});
 	}
 
+	type Loose = Record<string, unknown>;
 	const kept = pending.flatMap((p): PendingChange[] => {
-		if (p.group !== "changed" || !conflicting.has(p.id)) return [p];
-		const base = (p.change.kind === "project" ? sync.pushedProjects[p.id] : sync.pushedTasks[p.id])!.fields.priority;
-		const { priority: _dropped, ...sent } = (p.change as Extract<PushChange, { op: "update"; kind: "project" | "task" }>).fields;
-		const diffs = p.diffs.filter((d) => d.field !== "priority");
+		const fields = p.group === "changed" ? held.get(p.id) : undefined;
+		if (p.group !== "changed" || !fields) return [p];
+		const pushed = p.change.kind === "project" ? sync.pushedProjects[p.id] : sync.pushedTasks[p.id];
+		const base = pushed!.fields as unknown as Loose;
+		const sent = { ...((p.change as { fields?: Loose }).fields ?? {}) };
+		// The snapshot recorded if this change is pushed keeps the held fields at their last-pushed value.
+		const snapshot = { ...(p.fields as unknown as Loose) };
+		for (const f of fields) {
+			delete sent[f];
+			if (f in base) snapshot[f] = base[f];
+			else delete snapshot[f];
+		}
+		const diffs = p.diffs.filter((d) => !fields.has(DIFF_FIELD[d.field] ?? d.field));
 		if (diffs.length === 0) return [];
-		return [
-			{
-				...p,
-				fields: { ...p.fields, priority: base },
-				diffs,
-				change: { ...p.change, fields: sent },
-			} as PendingChange,
-		];
+		return [{ ...p, fields: snapshot, diffs, change: { ...p.change, fields: sent } } as unknown as PendingChange];
 	});
 	return [...kept, ...entries.sort((a, b) => a.title.localeCompare(b.title))];
 }
+
+/** Fields a conflict holds out of the plain changes until the Developer picks. */
+const HELD: Record<PullConflict["field"], string[]> = {
+	priority: ["priority"],
+	status: ["status", "priority", "done_on"],
+};
+
+/** Task diffs show `done` for `done_on`, `project` for `project_id`. */
+const DIFF_FIELD: Record<string, string> = { done: "done_on", project: "project_id" };
 
 function label(priority: number | null, status?: string): string {
 	if (status === "a_valider") return "À valider";

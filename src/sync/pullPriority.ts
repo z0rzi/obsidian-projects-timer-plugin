@@ -9,16 +9,20 @@ import { locateItem, projectNote, taskLine } from "./locateItem";
  * A Client change the Pull didn't apply because the Developer had changed the
  * same field in the vault and not pushed it yet. Shown in the Push modal with
  * both values; the Developer picks. Keyed `<id>:<field>` in `SyncState.conflicts`.
+ * `status` is a Validé Review answer (the Task is Terminé in the app) against
+ * a Task line whose status or priority changed locally.
  */
 export interface PullConflict {
 	kind: "project" | "task";
 	id: string;
-	field: "priority";
+	field: "priority" | "status";
 	/** Where the item was last pushed from. */
 	path: string;
 	title: string;
-	/** Value now in the app. */
+	/** Priority now in the app (null for a `status` conflict). */
 	remote: number | null;
+	/** `status` conflict: the done date the answer gives a Tag task (null for a Project step). */
+	doneOn?: string | null;
 }
 
 export const conflictKey = (id: string, field: string) => `${id}:${field}`;
@@ -93,7 +97,7 @@ function statusOf(priority: number | null) {
 	return priority === 0 ? ("en_cours" as const) : ("a_faire" as const);
 }
 
-function addConflict(sync: SyncState, key: string, conflict: PullConflict) {
+export function addConflict(sync: SyncState, key: string, conflict: PullConflict) {
 	sync.conflicts = { ...sync.conflicts, [key]: conflict };
 }
 
