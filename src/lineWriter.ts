@@ -2,12 +2,61 @@ import { splitBlockId } from "./blockId";
 import { toggleCheckboxLine } from "./projectCards";
 import { STATUS_TOKEN_SOURCE } from "./taskParser";
 
-/** What the kanban knew about a line when it was loaded. */
+/** What the kanban knew about a line when it was loaded; with a block ID, the line is found by it alone. */
 export type LineRef = { line: number; raw: string; blockId?: string };
+
+export const LineRef = {
+	/** The line ending with `^<blockId>`, wherever it is in the file. */
+	byId: (blockId: string): LineRef => ({ line: -1, raw: "", blockId }),
+};
+
+/** A Task line's status token: `p0` (En cours) to `p5`, or `pr` (À valider). */
+export type StatusToken = "p0" | "p1" | "p2" | "p3" | "p4" | "p5" | "pr";
+
+export const priorityToken = (priority: number): StatusToken => `p${priority}` as StatusToken;
 
 export type WriteResult =
 	| { ok: true; content: string }
 	| { ok: false; reason: "not-found" | "ambiguous" | "changed" };
+
+type Refused = Extract<WriteResult, { ok: false }>;
+
+/** Atomic edit of one file (Obsidian's `vault.process`, or a memory map in tests). */
+export type ProcessFile = (path: string, edit: (content: string) => string) => Promise<void>;
+
+/**
+ * Rewrites one line of `path` inside an atomic file edit. A refused rewrite
+ * (line gone, ambiguous, changed) leaves the file as is and is returned.
+ */
+export async function processLine(
+	process: ProcessFile,
+	path: string,
+	rewrite: (content: string) => WriteResult,
+): Promise<{ ok: true; changed: boolean } | Refused> {
+	let outcome: { ok: true; changed: boolean } | Refused = { ok: true, changed: false };
+	await process(path, (content) => {
+		const result = rewrite(content);
+		if (!result.ok) {
+			outcome = result;
+			return content;
+		}
+		outcome = { ok: true, changed: result.content !== content };
+		return result.content;
+	});
+	return outcome;
+}
+
+/** `processLine` for the line `^id`; throws `^<id> is not in the file` (or ambiguous, changed). */
+export async function processLineById(
+	process: ProcessFile,
+	path: string,
+	id: string,
+	rewrite: (content: string, ref: LineRef) => WriteResult,
+): Promise<void> {
+	const ref = LineRef.byId(id);
+	const result = await processLine(process, path, (content) => rewrite(content, ref));
+	if (!result.ok) throw new Error(`^${id} is ${result.reason === "not-found" ? "not in the file" : result.reason}`);
+}
 
 type Located = { ok: true; index: number } | { ok: false; reason: "not-found" | "ambiguous" | "changed" };
 
@@ -52,7 +101,7 @@ export function toggleCheckbox(content: string, ref: LineRef): WriteResult {
 }
 
 /** Sets (or with null removes) the status token of a Project step, keeping text and block ID. */
-export function rewriteStepToken(content: string, ref: LineRef, token: string | null): WriteResult {
+export function rewriteStepToken(content: string, ref: LineRef, token: StatusToken | null): WriteResult {
 	return rewriteLine(content, ref, (line) => {
 		const match = line.match(CHECKBOX_AND_TOKEN);
 		if (!match) return null;
@@ -67,7 +116,7 @@ export function rewriteStepToken(content: string, ref: LineRef, token: string | 
  * Project step (adding one to an inheriting step makes it an Override); null
  * removes it from a step. Title and block ID are kept.
  */
-export function setTaskToken(content: string, ref: LineRef, token: string | null): WriteResult {
+export function setTaskToken(content: string, ref: LineRef, token: StatusToken | null): WriteResult {
 	return rewriteLine(content, ref, (line) => {
 		if (CHECKBOX_AND_TOKEN.test(line)) {
 			const match = line.match(CHECKBOX_AND_TOKEN)!;

@@ -3,7 +3,8 @@ import { obsidianTransport } from "../remote/obsidianTransport";
 import { createHttpRemote, RemoteError } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
 import type { PluginData } from "./pluginData";
-import { PULL_HANDLERS, runPull, type PullHandler, type VaultFiles } from "./runPull";
+import { PULL_HANDLERS, runPull, type PullHandler } from "./runPull";
+import { vaultFiles } from "./vaultFiles";
 import type { EventType } from "../remote/api";
 
 /** Lets other features see the Pull: extra handlers, and a call once each Pull ended. */
@@ -13,23 +14,6 @@ export interface PullHooks {
 }
 
 const PULL_EVERY_MS = 5 * 60_000;
-
-/** The vault files as the Pull sees them. */
-export function vaultFiles(plugin: Plugin): VaultFiles {
-	const { vault } = plugin.app;
-	return {
-		async read(path) {
-			const file = vault.getFileByPath(path);
-			return file ? vault.read(file) : null;
-		},
-		async process(path, edit) {
-			const file = vault.getFileByPath(path);
-			if (!file) throw new Error(`${path} not found`);
-			await vault.process(file, edit);
-		},
-		paths: () => vault.getMarkdownFiles().map((f) => f.path),
-	};
-}
 
 /**
  * Pulls Client changes from Suivi on startup, every 5 minutes and with the
@@ -44,7 +28,7 @@ export function registerPull(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 		const remote = createHttpRemote({ url: suiviUrl, token: suiviToken }, obsidianTransport);
 		try {
 			const outcome = await data.exclusive(() =>
-				runPull({ remote, sync: data.sync, save: () => data.save(), files: vaultFiles(plugin) }, handlers),
+				runPull({ remote, sync: data.sync, save: () => data.save(), files: vaultFiles(plugin.app) }, handlers),
 			);
 			for (const f of outcome.failed) new Notice(`Pull: ${f.title}: ${f.error}`, 10_000);
 			if (outcome.conflicts > 0) {

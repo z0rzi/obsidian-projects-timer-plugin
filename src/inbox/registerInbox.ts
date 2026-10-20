@@ -5,7 +5,7 @@ import { createHttpRemote } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
 import type { PluginData } from "../sync/pluginData";
 import type { PullHooks } from "../sync/registerPull";
-import { vaultFiles } from "../sync/registerPull";
+import { vaultFiles } from "../sync/vaultFiles";
 import { INBOX_VIEW_TYPE, InboxView } from "../views/InboxView";
 import { withInboxNotice } from "./inboxNotice";
 import { InboxStore, type InboxEntry, type InboxState } from "./inboxStore";
@@ -47,7 +47,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	};
 
 	async function open(entry: InboxEntry) {
-		const at = await itemLocation(data.sync, vaultFiles(plugin), entry.item);
+		const at = await itemLocation(data.sync, vaultFiles(app), entry.item);
 		if (at) await openLine(at.path, at.line);
 		else if (entry.kind !== "comment" && entry.kind !== "ticket" && entry.kind !== "answer") {
 			new Notice(`${entry.item.title} is not in this vault.`);

@@ -1,4 +1,4 @@
-import { setTaskToken } from "../lineWriter";
+import { priorityToken, processLineById, setTaskToken } from "../lineWriter";
 import { setFrontmatterPriority } from "../projectCards";
 import type { ApiEvent, ItemUpdatedPayload } from "../remote/api";
 import type { SyncState } from "./pluginData";
@@ -113,16 +113,10 @@ export async function writeRemotePriority(
 	path: string,
 	priority: number | null,
 ): Promise<void> {
-	let refused: string | null = null;
-	await files.process(path, (content) => {
-		if (kind === "project") {
-			if (priority === null) return content;
-			return setFrontmatterPriority(content, priority);
-		}
-		const result = setTaskToken(content, { line: -1, raw: "", blockId: id }, priority === null ? null : `p${priority}`);
-		if (result.ok) return result.content;
-		refused = `^${id} is ${result.reason === "not-found" ? "not in the file" : result.reason}`;
-		return content;
-	});
-	if (refused) throw new Error(refused);
+	if (kind === "project") {
+		if (priority !== null) await files.process(path, (content) => setFrontmatterPriority(content, priority));
+		return;
+	}
+	const token = priority === null ? null : priorityToken(priority);
+	await processLineById(files.process, path, id, (content, ref) => setTaskToken(content, ref, token));
 }

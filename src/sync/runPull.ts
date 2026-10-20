@@ -1,3 +1,4 @@
+import type { ProcessFile } from "../lineWriter";
 import type { ApiEvent, EventType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { SyncState } from "./pluginData";
@@ -10,7 +11,7 @@ export interface VaultFiles {
 	/** Current content, or null if there is no such file. */
 	read(path: string): Promise<string | null>;
 	/** Rewrites the file atomically with `edit` (Obsidian's `vault.process`). */
-	process(path: string, edit: (content: string) => string): Promise<void>;
+	process: ProcessFile;
 	/** Every Markdown note, to find an item that left the note it was pushed from. */
 	paths(): string[];
 }

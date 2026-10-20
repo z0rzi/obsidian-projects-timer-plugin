@@ -1,5 +1,5 @@
 import { localDay } from "../localDate";
-import { rewriteStepToken, rewriteTaskTag, setTaskToken, toggleCheckbox, type WriteResult } from "../lineWriter";
+import { processLineById, rewriteStepToken, rewriteTaskTag, setTaskToken, toggleCheckbox } from "../lineWriter";
 import type { ApiEvent, ReviewAnsweredPayload } from "../remote/api";
 import type { PullContext, VaultFiles } from "./runPull";
 import { locateItem, taskLine } from "./locateItem";
@@ -40,7 +40,7 @@ export async function pullReviewAnswered(event: ApiEvent, ctx: PullContext): Pro
 	}
 
 	if (answer === "a_reprendre") {
-		await writeLine(ctx.files, path, taskId, (now) => setTaskToken(now, { line: -1, raw: "", blockId: taskId }, "p0"));
+		await processLineById(ctx.files.process, path, taskId, (now, ref) => setTaskToken(now, ref, "p0"));
 	} else await writeDone(ctx.files, path, taskId, line, date);
 
 	const { done_on: _old, ...fields } = task.fields;
@@ -62,21 +62,9 @@ export async function writeValidated(files: VaultFiles, id: string, path: string
 }
 
 async function writeDone(files: VaultFiles, path: string, id: string, line: LocalTask, date: string) {
-	const ref = { line: -1, raw: "", blockId: id };
-	await writeLine(files, path, id, (now) => {
+	await processLineById(files.process, path, id, (now, ref) => {
 		if (line.type !== "step") return rewriteTaskTag(now, ref, `#done ${date}`);
 		const result = rewriteStepToken(now, ref, null);
 		return result.ok && line.status !== "termine" ? toggleCheckbox(result.content, ref) : result;
 	});
-}
-
-async function writeLine(files: VaultFiles, path: string, id: string, rewrite: (content: string) => WriteResult) {
-	let refused: string | null = null;
-	await files.process(path, (now) => {
-		const result = rewrite(now);
-		if (result.ok) return result.content;
-		refused = `^${id} is ${result.reason}`;
-		return now;
-	});
-	if (refused) throw new Error(refused);
 }

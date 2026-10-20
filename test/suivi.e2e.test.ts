@@ -22,7 +22,7 @@ import { withInboxNotice } from "../src/inbox/inboxNotice";
 import { InboxStore } from "../src/inbox/inboxStore";
 import { placeLine, runTriage } from "../src/inbox/triage";
 import { runNewProject } from "../src/inbox/newProject";
-import { setTaskToken } from "../src/lineWriter";
+import { LineRef, setTaskToken, type StatusToken } from "../src/lineWriter";
 import { shareReviewBody } from "../src/sync/reviewBody";
 import { planReviewPush } from "../src/sync/reviewPlan";
 import { readReview } from "../src/sync/sharedReview";
@@ -458,7 +458,7 @@ describe.skipIf(!url || !token || !clientSession)("Reviews against a running Sui
 			shareBody: (p: string, body: string) =>
 				shareReviewBody(body, async () => remote.upload(new Uint8Array(Buffer.from(PNG, "base64")).buffer, "capture.png")),
 			writeTaskToken: async (p: string, id: string, token: string) => {
-				const r = setTaskToken(files.get(p)!, { line: -1, raw: "", blockId: id }, token);
+				const r = setTaskToken(files.get(p)!, LineRef.byId(id), token as StatusToken);
 				if (!r.ok) throw new Error(r.reason);
 				files.set(p, r.content);
 			},
