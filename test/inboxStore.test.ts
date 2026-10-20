@@ -157,3 +157,28 @@ describe("Inbox", () => {
 		expect(entries().map((e) => e.kind)).toEqual(["conflict"]);
 	});
 });
+
+describe("Inbox: Review answers", () => {
+	it("lists a Review answer as a Notification", async () => {
+		const answered: InboxNotification = {
+			id: 9,
+			at: "2026-10-21T09:30:00.000Z",
+			actor_email: "jmj@edf.fr",
+			type: "review.answered",
+			item_id: "r1abc",
+			item_kind: "review",
+			item_title: "Démo widget",
+			answer: "a_reprendre",
+		};
+		const { store, entries } = storeOn(fakeApp([answered]));
+		await store.refresh();
+		expect(entries()).toEqual([
+			expect.objectContaining({
+				kind: "answer",
+				title: "Review Démo widget: À reprendre",
+				item: { kind: "review", id: "r1abc", title: "Démo widget" },
+				eventIds: [9],
+			}),
+		]);
+	});
+});

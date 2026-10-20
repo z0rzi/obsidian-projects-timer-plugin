@@ -18,6 +18,12 @@ export interface LocalReview {
 	body: string;
 }
 
+/** Where Review notes live: `reviews/` in the projects folder (empty setting = none). */
+export function reviewsFolder(projectsLocation: string): string | undefined {
+	const base = projectsLocation.replace(/\/+$/, "");
+	return base ? `${base}/reviews` : undefined;
+}
+
 export function readReview(path: string, content: string): LocalReview {
 	const lines = content.split("\n");
 	const fm = readFrontmatter(lines);

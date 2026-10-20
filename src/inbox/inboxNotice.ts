@@ -2,7 +2,7 @@ import type { ApiEvent, EventType } from "../remote/api";
 import type { PullHandler } from "../sync/runPull";
 
 /** Event types that may change the Inbox. */
-export const INBOX_EVENT_TYPES: EventType[] = ["comment.created", "item.updated", "ticket.created"];
+export const INBOX_EVENT_TYPES: EventType[] = ["comment.created", "item.updated", "ticket.created", "review.answered"];
 
 /**
  * The Pull handlers plus a call to `notice` for each event that may change

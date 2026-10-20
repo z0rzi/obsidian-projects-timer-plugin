@@ -14,6 +14,9 @@ import { readSharedProject, type SharedProject } from "./sharedProject";
 import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
 import { planTaskPush, type ProjectLinks } from "./taskPlan";
 import { tagTaskProject } from "./taskProject";
+import { planReviewPush } from "./reviewPlan";
+import { readReviews, reviewBodySharer, writeTaskTokenIn } from "./reviewVault";
+import { reviewsFolder } from "./sharedReview";
 
 /**
  * Adds the "Push to Suivi" command: review pending Project and Task changes,
@@ -59,8 +62,11 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 
 	async function readTasks(): Promise<LocalTask[]> {
 		const tasks: LocalTask[] = [];
+		const reviews = reviewsFolder(data.settings.projectsLocation);
 		for (const file of app.vault.getMarkdownFiles()) {
 			if (file.path === data.settings.projectTemplate) continue;
+			// A Review note is shared whole as a Review, never as Tasks.
+			if (reviews && file.path.startsWith(`${reviews}/`)) continue;
 			const content = await app.vault.cachedRead(file);
 			if (!/^#\w/m.test(content)) continue;
 			tasks.push(...readTagTasks(file.path, content, tagTaskProject(app, file, content)));
@@ -99,8 +105,18 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 			data.sync.pushedTasks,
 			{ now: new Date(), doneHistory: data.sync.doneHistory },
 		);
+		const reviews = planReviewPush(
+			await readReviews(app, reviewsFolder(data.settings.projectsLocation)!),
+			local.links,
+			data.sync.pushedReviews ?? {},
+		);
+		for (const p of reviews.problems) new Notice(`Push skips the Review ${p.path}: ${p.error}`, 10_000);
 		const pending: PendingChange[] = withConflicts(
-			[...planProjectPush(local.projects, data.sync.pushedProjects, local.unreadable), ...tasks.changes],
+			[
+				...planProjectPush(local.projects, data.sync.pushedProjects, local.unreadable),
+				...tasks.changes,
+				...reviews.changes,
+			],
 			data.sync,
 			local.projects,
 			localTasks,
@@ -122,6 +138,8 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 					writeBlockId,
 					writePriority: (kind, id, path, priority) =>
 						writeRemotePriority(vaultFiles(plugin), kind, id, path, priority),
+					shareBody: reviewBodySharer(app, remote),
+					writeTaskToken: (path, id, token) => writeTaskTokenIn(app, path, id, token),
 				}));
 				for (const f of outcome.failed) new Notice(`Push: ${f.title}: ${f.error}`, 10_000);
 				new Notice(`Pushed ${outcome.applied} change(s) to Suivi.`);
