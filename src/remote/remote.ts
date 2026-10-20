@@ -1,12 +1,14 @@
-import type { ApiError, PushChange, PushResponse, PushResult } from "./api";
+import type { ApiError, EventsResponse, PushChange, PushResponse, PushResult } from "./api";
 
 /**
  * The plugin's only door to the Client app. Parser, kanban, Inbox and Push
  * screen depend on this interface, never on HTTP. Grows with later tickets
- * (pull, comments, upload, triage, markRead).
+ * (comments, upload, triage, markRead).
  */
 export interface Remote {
 	push(changes: PushChange[]): Promise<PushResult[]>;
+	/** Events after `cursor` (null = from the start) and the cursor to keep. */
+	pull(cursor: number | null): Promise<EventsResponse>;
 }
 
 export type RemoteErrorKind = "config" | "auth" | "network" | "server";
@@ -74,6 +76,9 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 	return {
 		async push(changes) {
 			return (await call<PushResponse>("POST", "/push", { changes })).results;
+		},
+		async pull(cursor) {
+			return call<EventsResponse>("GET", `/events?since=${cursor ?? 0}`);
 		},
 	};
 }
