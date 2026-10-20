@@ -46,17 +46,19 @@ export async function runTriage(
 ): Promise<TriageResult> {
 	const target = deps.target();
 	if ("error" in target) return { ok: false, error: target.error };
-	let fields;
+	let response;
 	try {
-		({ fields } = await deps.remote.triage(item.id, {
+		response = await deps.remote.triage(item.id, {
 			as: "task",
 			type: choice.type,
 			priority: choice.priority,
 			project_id: target.projectId,
-		}));
+		});
 	} catch (e) {
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
+	if (response.as === "project") return { ok: false, error: "The app made it a Project, not a Task." };
+	const { fields } = response;
 	const title = item.title.replace(/\s+/g, " ").trim();
 	const line = `#${choice.type} p${choice.priority} ${title} ^${item.id}`;
 	deps.insert(line);

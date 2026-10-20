@@ -264,11 +264,12 @@ export interface InboxNotification {
 
 /**
  * An Inbox À trier entry: an item the Client proposed that waits for Triage
- * (status `a_trier`). Today Bug and Amélioration Tickets; launched Ideas join
- * later. It leaves the list once triaged, so there is nothing to mark read.
+ * (status `a_trier`): Bug and Amélioration Tickets (triaged as a Task) and
+ * Ideas the Client launched (`type: "idea"`, triaged as a Project). It leaves
+ * the list once triaged, so there is nothing to mark read.
  */
 export interface InboxTicket {
-  /** App id; becomes the `^id` of the Task line written at Triage. */
+  /** App id; becomes the `^id` of the Task line, or the `suivi_id:` of the Project file, written at Triage. */
   id: string;
   type: TaskType;
   title: string;
@@ -305,20 +306,30 @@ export type TriageTaskType = (typeof TRIAGE_TASK_TYPES)[number];
 
 /**
  * `POST /api/items/:id/triage` body: what an item À trier becomes.
- * `as: "task"`: a Task of `type` with `priority` (0 = En cours, 1–5 = À faire)
- * in Project `project_id` (null = standalone), keeping the item's id,
- * description and comments. 404 for an unknown item, 409 for one not À trier,
- * 400 for a bad body.
+ * `as: "task"` (Bug and Amélioration Tickets): a Task of `type` with
+ * `priority` (0 = En cours, 1–5 = À faire) in Project `project_id` (null =
+ * standalone). `as: "project"` (launched Ideas, "Nouveau projet"): a Project
+ * with `priority` (0 = En cours, 1–5 = À faire), title and description taken
+ * from the Idea, which then shows lancée. Either way the item keeps its id,
+ * description and comments. 404 for an unknown item, 409 for one not À trier
+ * or not of that kind, 400 for a bad body.
  */
-export type TriageRequest = {
-  as: "task";
-  type: TriageTaskType;
-  priority: number;
-  project_id: string | null;
-};
+export type TriageRequest =
+  | {
+      as: "task";
+      type: TriageTaskType;
+      priority: number;
+      project_id: string | null;
+    }
+  | {
+      as: "project";
+      priority: number;
+    };
 
-/** `POST /api/items/:id/triage` response: the Task's shared fields now, i.e. what the line written in the vault says. */
-export interface TriageResponse {
-  id: string;
-  fields: TaskFields;
-}
+/**
+ * `POST /api/items/:id/triage` response: the item's shared fields now, i.e.
+ * what the vault writes (the Task line, or the new Project file).
+ */
+export type TriageResponse =
+  | { id: string; as: "task"; fields: TaskFields }
+  | { id: string; as: "project"; fields: ProjectFields };

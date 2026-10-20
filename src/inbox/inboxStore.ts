@@ -62,7 +62,11 @@ function notificationEntry(n: InboxNotification): InboxEntry {
 	return { ...base, kind: "priority", title: `Priority of ${n.item_title}`, detail: `${p(n.from)} → ${p(n.to)}` };
 }
 
-const TICKET_LABELS: Partial<Record<TaskType, string>> = { bug: "Bug", amelioration: "Amélioration" };
+const TICKET_LABELS: Partial<Record<TaskType, string>> = {
+	bug: "Bug",
+	amelioration: "Amélioration",
+	idea: "Idée",
+};
 
 function ticketEntry(t: InboxTicket): InboxEntry {
 	return {

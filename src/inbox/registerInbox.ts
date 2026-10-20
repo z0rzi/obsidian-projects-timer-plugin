@@ -13,6 +13,8 @@ import { itemLocation } from "./itemLocation";
 import { placeLine, runTriage, type TriageChoice } from "./triage";
 import { tagTaskProject } from "../sync/taskProject";
 import { TriageModal } from "../ui/TriageModal";
+import { NewProjectModal } from "../ui/NewProjectModal";
+import { runNewProject } from "./newProject";
 
 export interface InboxDeps {
 	/** Opens the comment panel on an item's thread. */
@@ -20,7 +22,7 @@ export interface InboxDeps {
 }
 
 /**
- * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici"),
+ * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici"), launched Ideas ("Nouveau projet"),
  * Client comments, priority changes and Pull conflicts. Reloads from the app after a Pull that brought such
  * events; returns the store (for the kanban dots) and the Pull hooks.
  */
@@ -118,9 +120,38 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		}).open();
 	}
 
+	function newProject(entry: InboxEntry) {
+		new NewProjectModal(app, entry.item, (choice) => {
+			void (async () => {
+				const result = await data.exclusive(() =>
+					runNewProject(entry.item, choice, {
+						remote,
+						sync: data.sync,
+						save: () => data.save(),
+						folder: data.settings.projectsLocation,
+						template: async () => {
+							const path = data.settings.projectTemplate;
+							const file = path ? app.vault.getFileByPath(path) : null;
+							return file ? app.vault.read(file) : "";
+						},
+						exists: (path) => app.vault.getAbstractFileByPath(path) !== null,
+						create: async (path, content) => {
+							await app.vault.create(path, content);
+						},
+					}),
+				);
+				if (result.ok) {
+					new Notice(`Created ${result.path}`);
+					await openLine(result.path, 0);
+				} else new Notice(`Nouveau projet failed: ${result.error}`, 10_000);
+				await store.refresh();
+			})();
+		}).open();
+	}
+
 	plugin.registerView(
 		INBOX_VIEW_TYPE,
-		(leaf: WorkspaceLeaf) => new InboxView(leaf, store, subscribe, (e) => void open(e), triage),
+		(leaf: WorkspaceLeaf) => new InboxView(leaf, store, subscribe, (e) => void open(e), triage, newProject),
 	);
 
 	async function openView() {

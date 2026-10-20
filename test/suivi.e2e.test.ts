@@ -21,6 +21,7 @@ import { PULL_HANDLERS, runPull, type VaultFiles } from "../src/sync/runPull";
 import { withInboxNotice } from "../src/inbox/inboxNotice";
 import { InboxStore } from "../src/inbox/inboxStore";
 import { placeLine, runTriage } from "../src/inbox/triage";
+import { runNewProject } from "../src/inbox/newProject";
 import { setTaskToken } from "../src/lineWriter";
 import { shareReviewBody } from "../src/sync/reviewBody";
 import { planReviewPush } from "../src/sync/reviewPlan";
@@ -367,6 +368,65 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 	});
 });
 
+describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi", () => {
+	it("JMJ's Idée waits in the app until launched; Nouveau projet creates the file and the same item becomes a Project", async () => {
+		const remote = createHttpRemote({ url, token }, fetchTransport);
+		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
+		const files: VaultFiles = { read: async () => null, process: async () => {} };
+		await runPull({ remote, sync, save: async () => {}, files }); // catch up
+		const jmj = { cookie: `suivi_session=${clientSession}`, "content-type": "application/x-www-form-urlencoded" };
+
+		const title = `Idee ${stamp}`;
+		const res = await fetch(`${url}/tickets`, {
+			method: "POST",
+			headers: jmj,
+			body: new URLSearchParams({ title, type: "idea", description: "Voir les flux" }).toString(),
+			redirect: "manual",
+		});
+		expect(res.status).toBe(303);
+		const id = res.headers.get("location")!.replace("/taches/", "");
+		await remote.comment(id, "Bonne idée");
+
+		const store = new InboxStore(remote, () => ({}), () => {});
+		const inToTriage = async () => {
+			await store.refresh();
+			return store.current.sections.find((s) => s.id === "to-triage")!.entries.find((e) => e.item.id === id);
+		};
+		expect(await inToTriage()).toBeUndefined();
+
+		const launch = await fetch(`${url}/idees/${id}/lancer`, { method: "POST", headers: jmj, redirect: "manual" });
+		expect(launch.status).toBe(303);
+		const noticed: string[] = [];
+		await runPull({ remote, sync, save: async () => {}, files }, withInboxNotice(PULL_HANDLERS, (e) => noticed.push(e.type)));
+		expect(noticed).toContain("idea.launched");
+		const entry = (await inToTriage())!;
+		expect(entry).toMatchObject({ kind: "ticket", ticketType: "idea", detail: "Voir les flux" });
+
+		const vault = new Map<string, string>();
+		const result = await runNewProject(entry.item, { priority: 4 }, {
+			remote,
+			sync,
+			save: async () => {},
+			folder: "2.projects",
+			template: async () => "---\npriority: 5\n---\n\n# Time usage\n---\n```project\n```\n\n# Tasks\n---",
+			exists: (p) => vault.has(p),
+			create: async (p, c) => void vault.set(p, c),
+		});
+		const path = `2.projects/${title}.md`;
+		expect(result).toEqual({ ok: true, path });
+		expect(await inToTriage()).toBeUndefined();
+		expect((await remote.comments(id)).map((c) => c.body)).toEqual(["Bonne idée"]);
+
+		// The next Push sees the file as already pushed.
+		const read = readSharedProject(path, vault.get(path)!);
+		expect(read).toMatchObject({ ok: true, project: { suiviId: id } });
+		expect(planProjectPush([(read as { project: SharedProject }).project], sync.pushedProjects)).toEqual([]);
+
+		const ideas = await (await fetch(`${url}/idees`, { headers: jmj })).text();
+		expect(ideas).toContain(`href="/projets/${id}"`);
+		expect(ideas).toContain("Lancée");
+	});
+});
 describe.skipIf(!url || !token || !clientSession)("Reviews against a running Suivi", () => {
 	it("publishes a Review note (image, Loom, wikilinks), sets its Task pr; JMJ's Validé comes back as #done", async () => {
 		const remote = createHttpRemote({ url, token }, fetchTransport);

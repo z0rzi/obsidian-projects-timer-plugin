@@ -8,7 +8,7 @@ const EXCERPT = 160;
 
 /**
  * What the Client did since the Developer last looked, one block per section
- * of the store (À trier entries get "Insérer ici"). Opening an entry is delegated (`open`); marking read goes
+ * of the store (À trier entries get "Insérer ici", launched Ideas "Nouveau projet"). Opening an entry is delegated (`open`); marking read goes
  * through the store, so the app keeps the state.
  */
 export class InboxView extends ItemView {
@@ -21,6 +21,8 @@ export class InboxView extends ItemView {
 		private readonly open: (entry: InboxEntry) => void,
 		/** "Insérer ici" on an entry À trier. */
 		private readonly triage: (entry: InboxEntry) => void = () => {},
+		/** "Nouveau projet" on a launched Idea À trier. */
+		private readonly newProject: (entry: InboxEntry) => void = () => {},
 	) {
 		super(leaf);
 	}
@@ -93,7 +95,12 @@ export class InboxView extends ItemView {
 		if (entry.eventIds.length > 0) {
 			el.createEl("button", { text: "Mark read" }).onclick = () => void this.store.markRead(entry);
 		}
-		if (entry.kind === "ticket") {
+		if (entry.kind === "ticket" && entry.ticketType === "idea") {
+			el.createEl("button", {
+				text: "Nouveau projet",
+				attr: { "aria-label": "Create the Project file from the template" },
+			}).onclick = () => this.newProject(entry);
+		} else if (entry.kind === "ticket") {
 			const insert = el.createEl("button", {
 				text: "Insérer ici",
 				attr: { "aria-label": "Write this Task at the cursor of the open note" },

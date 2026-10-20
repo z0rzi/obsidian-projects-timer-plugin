@@ -81,7 +81,7 @@ function deps(overrides: Partial<TriageDeps> = {}) {
 					priority: as.priority,
 					project_id: as.project_id,
 				};
-				return { id, fields };
+				return { id, as: "task", fields };
 			},
 		},
 		sync,
