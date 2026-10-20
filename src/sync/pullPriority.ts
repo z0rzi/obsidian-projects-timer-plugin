@@ -26,7 +26,9 @@ export const conflictKey = (id: string, field: string) => `${id}:${field}`;
 
 /** `item.updated`: dispatches on the field; only priority comes from the Client today. */
 export async function pullItemUpdated(event: ApiEvent, ctx: PullContext): Promise<void> {
-	const payload = event.payload as Partial<ItemUpdatedPayload>;
+	const payload = event.payload as Partial<ItemUpdatedPayload> & { review?: string };
+	// Part of a Review answer: `review.answered` wrote the line already.
+	if (payload.review) return;
 	if (payload.field === "priority" && event.item) await pullPriority(event.item, payload.to, ctx);
 }
 
