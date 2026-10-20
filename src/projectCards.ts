@@ -1,6 +1,7 @@
 import { TFile } from "obsidian";
 import { ProjectCard, ProjectCardItem } from "./types";
 import { splitBlockId } from "./blockId";
+import { readStatusToken } from "./taskParser";
 
 export function findTasksHeadingSection(
 	lines: string[],
@@ -44,12 +45,14 @@ export function extractCheckboxItems(
 		const match = line.match(checkboxPattern);
 		if (!match) continue;
 
-		const { text, blockId } = splitBlockId(match[2]!.trim());
+		const { token, rest } = readStatusToken(match[2]!.trim());
+		const { text, blockId } = splitBlockId(rest);
 		items.push({
 			text,
 			line: i,
 			checked: match[1]!.toLowerCase() === "x",
 			...(blockId ? { blockId } : {}),
+			...(token ? { override: token } : {}),
 			raw: line,
 		});
 	}
@@ -111,7 +114,13 @@ export function parseProjectCard(params: {
 		? extractCheckboxItems(lines, section.start, section.end)
 		: [];
 
-	return { id: file.path, file, priority, items: selectPreviewItems(items) };
+	return {
+		id: file.path,
+		file,
+		priority,
+		items: selectPreviewItems(items),
+		overrides: items.filter((item) => item.override && !item.checked),
+	};
 }
 
 export function toggleCheckboxLine(line: string): string | null {

@@ -34,6 +34,8 @@ export type ProjectCardItem = {
 	line: number;
 	checked: boolean;
 	blockId?: string;
+	/** Status token carried by the step itself, replacing the Project's priority. */
+	override?: { priority: number; status: TaskStatus };
 	/** Line content when parsed, to check it is unchanged before writing. */
 	raw: string;
 };
@@ -42,7 +44,10 @@ export type ProjectCard = {
 	id: string;
 	file: TFile;
 	priority: number;
+	/** Preview shown on the Project card. */
 	items: ProjectCardItem[];
+	/** Open steps carrying their own token, shown as their own cards. */
+	overrides: ProjectCardItem[];
 };
 
 export interface TimeSource {

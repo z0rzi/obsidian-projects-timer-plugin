@@ -8,11 +8,11 @@ import {
 } from "obsidian";
 import "jkanban";
 import type ProjectsTimerPlugin from "../main";
-import { ProjectCard, Task, TASKS_TYPES } from "../types";
+import { ProjectCard, ProjectCardItem, Task, TaskStatus, TASKS_TYPES } from "../types";
 import { Subscription } from "rxjs";
 import { AddActivityModal } from "../ui/AddActivityModal";
 import { setFrontmatterPriority } from "../projectCards";
-import { rewriteTaskTag, toggleCheckbox, WriteResult } from "../lineWriter";
+import { rewriteStepToken, rewriteTaskTag, toggleCheckbox, WriteResult } from "../lineWriter";
 
 declare global {
 	interface Window {
@@ -50,23 +50,37 @@ function cardHtml(id: string, title: string, description: string): string {
 		`;
 }
 
+function escapeHtml(text: string): string {
+	return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function stepItemHtml(card: ProjectCard, item: ProjectCardItem, extraClass = ""): string {
+	const classes = ["kanban-project-item", item.checked ? "is-checked" : "", extraClass]
+		.filter(Boolean)
+		.join(" ");
+	return `
+		<div class="${classes}" data-project-id="${card.id}" data-line="${item.line}">
+			<input type="checkbox" class="kanban-project-item-checkbox" data-project-id="${card.id}" data-line="${item.line}" ${item.checked ? "checked" : ""} />
+			<span class="kanban-project-item-text">${escapeHtml(item.text)}</span>
+		</div>
+	`;
+}
+
+/** Card of an Override: the step itself, with its Project's name. */
+function overrideCardHtml(card: ProjectCard, item: ProjectCardItem): string {
+	return `
+		${stepItemHtml(card, item)}
+		<small style="color: var(--text-faint)">${escapeHtml(card.file.basename)}</small>
+		`;
+}
+
 function projectCardHtml(card: ProjectCard): string {
 	const safeTitle = card.file.basename
 		.replace(/</g, "&lt;")
 		.replace(/>/g, "&gt;");
 
 	const itemsHtml = card.items
-		.map((item) => {
-			const safeText = item.text
-				.replace(/</g, "&lt;")
-				.replace(/>/g, "&gt;");
-			return `
-				<div class="kanban-project-item${item.checked ? " is-checked" : ""}" data-project-id="${card.id}" data-line="${item.line}">
-					<input type="checkbox" class="kanban-project-item-checkbox" data-project-id="${card.id}" data-line="${item.line}" ${item.checked ? "checked" : ""} />
-					<span class="kanban-project-item-text">${safeText}</span>
-				</div>
-			`;
-		})
+		.map((item) => stepItemHtml(card, item, item.override ? "is-override" : ""))
 		.join("");
 
 	return `
@@ -89,9 +103,9 @@ function priorityToBoardId(priority: number): string {
 	return "p1";
 }
 
-function taskBoardId(task: Task): string {
-	if (task.status === "review") return REVIEW_BOARD_ID;
-	return priorityToBoardId(task.priority);
+function statusBoardId(item: { priority: number; status: TaskStatus }): string {
+	if (item.status === "review") return REVIEW_BOARD_ID;
+	return priorityToBoardId(item.priority);
 }
 
 /** Status token written on the line when a card is dropped on a board. */
@@ -107,6 +121,14 @@ const PROJECT_CARD_STYLE = {
 	css: "border: 3px solid var(--card-color);",
 };
 
+const OVERRIDE_CARD_STYLE = {
+	label: "step",
+	color: "#2677b8",
+	css: "border-left: 4px solid var(--card-color);",
+};
+
+type StepRef = { card: ProjectCard; item: ProjectCardItem };
+
 type BoardDef = { id: string; title: string; class: string; items: any[] };
 
 export class TasksKanbanView extends ItemView {
@@ -117,6 +139,9 @@ export class TasksKanbanView extends ItemView {
 	private projectCardSub: Subscription | null = null;
 	private currentTasks: Map<string, Task> = new Map();
 	private currentProjectCards: Map<string, ProjectCard> = new Map();
+	/** Override cards by jKanban id. */
+	private currentSteps: Map<string, StepRef> = new Map();
+	private lastPointer: { x: number; y: number } | null = null;
 	private isRendering = false;
 	private lastSnapshot: string | null = null;
 	private footerEl: HTMLElement | null = null;
@@ -189,6 +214,11 @@ export class TasksKanbanView extends ItemView {
 		this.footerEl.style.flexGrow = "0";
 		this.footerEl.style.width = "100%";
 
+		// jKanban drops into boards, not onto cards: remember where the pointer was.
+		this.registerDomEvent(document, "mousemove", (evt) => {
+			this.lastPointer = { x: evt.clientX, y: evt.clientY };
+		});
+
 		this.taskSub = this.plugin.allTasks.subscribe((tasks) => {
 			this.updateBoards(tasks);
 		});
@@ -235,8 +265,11 @@ export class TasksKanbanView extends ItemView {
 		const cardPart = projectCards
 			.map(
 				(card) =>
-					`${card.id}:${card.priority}:${card.items
-						.map((item) => `${item.line}:${item.checked ? 1 : 0}:${item.text}`)
+					`${card.id}:${card.priority}:${[...card.items, ...card.overrides]
+						.map(
+							(item) =>
+								`${item.line}:${item.checked ? 1 : 0}:${item.override?.status ?? ""}${item.override?.priority ?? ""}:${item.text}`,
+						)
 						.join(",")}`,
 			)
 			.join("|");
@@ -314,7 +347,7 @@ export class TasksKanbanView extends ItemView {
 
 		for (const task of tasks) {
 			if (task.priority === -1) continue;
-			const boardId = taskBoardId(task);
+			const boardId = statusBoardId(task);
 
 			const board = boards.find((b) => b.id === boardId);
 			if (!board) continue;
@@ -342,6 +375,21 @@ export class TasksKanbanView extends ItemView {
 			});
 		}
 
+		this.currentSteps.clear();
+		for (const card of projectCards) {
+			for (const item of card.overrides) {
+				const board = boards.find((b) => b.id === statusBoardId(item.override!));
+				if (!board) continue;
+				const id = `step-${this.currentSteps.size}`;
+				this.currentSteps.set(id, { card, item });
+				board.items.push({
+					id,
+					title: overrideCardHtml(card, item),
+					type: OVERRIDE_CARD_STYLE.label,
+				});
+			}
+		}
+
 		// Applying card styles dynamically
 		setTimeout(() => {
 			let styleStr = "";
@@ -349,6 +397,7 @@ export class TasksKanbanView extends ItemView {
 			const cardStyles = [
 				...TASKS_TYPES.map((t) => ({ label: t.tag, color: t.color, css: t.css })),
 				PROJECT_CARD_STYLE,
+				OVERRIDE_CARD_STYLE,
 			];
 			for (const cardType of cardStyles) {
 				const props = [] as string[];
@@ -394,6 +443,9 @@ export class TasksKanbanView extends ItemView {
 					margin: 0;
 					flex-shrink: 0;
 				}
+				.tasks-kanban-view-container .kanban-project-item.is-override {
+					opacity: 0.45;
+				}
 				.tasks-kanban-view-container .kanban-project-item.is-checked .kanban-project-item-text {
 					text-decoration: line-through;
 					color: var(--text-faint);
@@ -423,6 +475,12 @@ export class TasksKanbanView extends ItemView {
 				const eid = el.getAttribute("data-eid");
 				if (!eid) return;
 
+				const step = this.currentSteps.get(eid);
+				if (step) {
+					this.openFileAtLine(step.card.file, step.item.line);
+					return;
+				}
+
 				if (eid.startsWith("project-")) {
 					const id = eid.replace("project-", "");
 					const card = this.currentProjectCards.get(id);
@@ -448,6 +506,15 @@ export class TasksKanbanView extends ItemView {
 
 				const eid = el.getAttribute("data-eid");
 				if (!eid) return;
+
+				const step = this.currentSteps.get(eid);
+				if (step) {
+					const backOnProject = this.isDroppedOnProjectCard(el, step.card);
+					const token = backOnProject ? null : boardIdToToken(targetBoardId);
+					if (!backOnProject && !token) return;
+					await this.updateStepToken(step, token);
+					return;
+				}
 
 				const token = boardIdToToken(targetBoardId);
 				if (!token) return;
@@ -564,8 +631,9 @@ export class TasksKanbanView extends ItemView {
 		file: TFile,
 		failMessage: string,
 		rewrite: (content: string) => WriteResult,
-	) {
+	): Promise<boolean> {
 		let refused: WriteResult | null = null;
+		let changed = false;
 		try {
 			await this.app.vault.process(file, (content) => {
 				const result = rewrite(content);
@@ -573,17 +641,42 @@ export class TasksKanbanView extends ItemView {
 					refused = result;
 					return content;
 				}
+				changed = result.content !== content;
 				return result.content;
 			});
 		} catch (e) {
 			new Notice(failMessage);
-			return;
+			return false;
 		}
 		if (refused) {
 			new Notice(
 				`Not updated: the line in ${file.basename} changed since the kanban loaded. Reload and try again.`,
 			);
 		}
+		return changed;
+	}
+
+	/** Pointer over the Project card, or the drop landed right next to it. */
+	private isDroppedOnProjectCard(el: HTMLElement, card: ProjectCard): boolean {
+		const isProjectCard = (node: Element | null) =>
+			node?.getAttribute("data-eid") === `project-${card.id}`;
+		if (isProjectCard(el.previousElementSibling) || isProjectCard(el.nextElementSibling)) {
+			return true;
+		}
+		if (!this.lastPointer) return false;
+		return document
+			.elementsFromPoint(this.lastPointer.x, this.lastPointer.y)
+			.some((node) => !node.closest(".gu-mirror") && isProjectCard(node.closest(".kanban-item")));
+	}
+
+	private async updateStepToken(step: StepRef, token: string | null) {
+		const written = await this.writeLine(step.card.file, "Failed to update project step", (content) =>
+			rewriteStepToken(content, step.item, token),
+		);
+		if (written) return;
+		// Nothing written: jKanban already moved the card in the DOM, put it back.
+		this.lastSnapshot = null;
+		this.updateBoards(this.plugin.allTasks.getValue());
 	}
 
 	private openFileAtLine(file: TFile, line?: number) {
@@ -599,7 +692,7 @@ export class TasksKanbanView extends ItemView {
 	}
 
 	private async updateProjectCheckbox(card: ProjectCard, line: number) {
-		const item = card.items.find((i) => i.line === line);
+		const item = [...card.items, ...card.overrides].find((i) => i.line === line);
 		if (!item) return;
 		await this.writeLine(card.file, "Failed to update task checkbox", (content) =>
 			toggleCheckbox(content, item),

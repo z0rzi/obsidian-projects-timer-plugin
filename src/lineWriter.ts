@@ -1,5 +1,6 @@
 import { splitBlockId } from "./blockId";
 import { toggleCheckboxLine } from "./projectCards";
+import { STATUS_TOKEN_SOURCE } from "./taskParser";
 
 /** What the kanban knew about a line when it was loaded. */
 export type LineRef = { line: number; raw: string; blockId?: string };
@@ -33,8 +34,8 @@ function rewriteLine(content: string, ref: LineRef, rewrite: (line: string) => s
 	return { ok: true, content: lines.join("\n") };
 }
 
-// Token rule must match taskParser: lowercase p0-p5 or pr, whole first word.
-const TAG_AND_TOKEN = /^#\S+(\s+(p[0-5]|pr)(?=\s|$))?\s*/;
+const TAG_AND_TOKEN = new RegExp(`^#\\S+(\\s+(${STATUS_TOKEN_SOURCE})(?=\\s|$))?\\s*`);
+const CHECKBOX_AND_TOKEN = new RegExp(`^(- \\[[ xX]\\] )(?:(?:${STATUS_TOKEN_SOURCE})(?: |$))?`);
 
 /** Replaces the tag (and priority token) of a Tag task line, keeping title and block ID. */
 export function rewriteTaskTag(content: string, ref: LineRef, newTag: string): WriteResult {
@@ -48,4 +49,14 @@ export function rewriteTaskTag(content: string, ref: LineRef, newTag: string): W
 /** Toggles a Project step checkbox, keeping its text and block ID. */
 export function toggleCheckbox(content: string, ref: LineRef): WriteResult {
 	return rewriteLine(content, ref, toggleCheckboxLine);
+}
+
+/** Sets (or with null removes) the status token of a Project step, keeping text and block ID. */
+export function rewriteStepToken(content: string, ref: LineRef, token: string | null): WriteResult {
+	return rewriteLine(content, ref, (line) => {
+		const match = line.match(CHECKBOX_AND_TOKEN);
+		if (!match) return null;
+		const rest = line.slice(match[0].length);
+		return `${match[1]}${token ? `${token} ` : ""}${rest}`;
+	});
 }

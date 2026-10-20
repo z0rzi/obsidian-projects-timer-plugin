@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { splitBlockId } from "../src/blockId";
-import { rewriteTaskTag, toggleCheckbox } from "../src/lineWriter";
+import { rewriteStepToken, rewriteTaskTag, toggleCheckbox } from "../src/lineWriter";
 
 describe("splitBlockId", () => {
 	it("strips a trailing block ID from the text", () => {
@@ -84,5 +84,60 @@ describe("toggleCheckbox", () => {
 		const result = toggleCheckbox(content, { line: 1, raw: "- [ ] Étape" });
 
 		expect(result).toEqual({ ok: false, reason: "changed" });
+	});
+});
+
+describe("rewriteStepToken", () => {
+	it("replaces an Override token and keeps the block ID", () => {
+		const loaded = "- [ ] p1 Titre ^s1";
+		const content = ["# Tasks", "- [ ] Nouvelle", loaded].join("\n");
+
+		const result = rewriteStepToken(content, { line: 1, raw: loaded, blockId: "s1" }, "p0");
+
+		expect(result).toEqual({ ok: true, content: ["# Tasks", "- [ ] Nouvelle", "- [ ] p0 Titre ^s1"].join("\n") });
+	});
+
+	it("adds a token to an inheriting step", () => {
+		const raw = "- [ ] Titre ^s1";
+		expect(rewriteStepToken(raw, { line: 0, raw, blockId: "s1" }, "pr")).toEqual({
+			ok: true,
+			content: "- [ ] pr Titre ^s1",
+		});
+	});
+
+	it("removes the token, so the step inherits again", () => {
+		const raw = "- [ ] pr Titre ^s1";
+		expect(rewriteStepToken(raw, { line: 0, raw, blockId: "s1" }, null)).toEqual({
+			ok: true,
+			content: "- [ ] Titre ^s1",
+		});
+	});
+
+	it.each(["P1 Titre", "p7 Titre", "Étape2 du calcul"])("keeps a non-token first word: %s", (title) => {
+		const raw = `- [ ] ${title}`;
+		expect(rewriteStepToken(raw, { line: 0, raw }, "p2")).toEqual({ ok: true, content: `- [ ] p2 ${title}` });
+	});
+
+	it("refuses a step without ID whose line changed", () => {
+		const content = ["- [ ] Autre", "- [ ] p1 Titre"].join("\n");
+		expect(rewriteStepToken(content, { line: 0, raw: "- [ ] p1 Titre" }, "p2")).toEqual({
+			ok: false,
+			reason: "changed",
+		});
+	});
+
+	it("refuses a line that is no longer a checkbox", () => {
+		const content = "Titre ^s1";
+		expect(rewriteStepToken(content, { line: 0, raw: "- [ ] Titre ^s1", blockId: "s1" }, "p2")).toEqual({
+			ok: false,
+			reason: "changed",
+		});
+	});
+});
+
+describe("toggleCheckbox on an Override", () => {
+	it("keeps the token and block ID", () => {
+		const raw = "- [ ] p1 Titre ^s1";
+		expect(toggleCheckbox(raw, { line: 0, raw, blockId: "s1" })).toEqual({ ok: true, content: "- [x] p1 Titre ^s1" });
 	});
 });
