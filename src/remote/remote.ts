@@ -10,12 +10,14 @@ import type {
 	PushResponse,
 	PushResult,
 	UploadResponse,
+	TriageRequest,
+	TriageResponse,
 } from "./api";
 
 /**
  * The plugin's only door to the Client app. Parser, kanban, Inbox and Push
  * screen depend on this interface, never on HTTP. Grows with later tickets
- * (upload, triage).
+ * (upload).
  */
 export interface Remote {
 	push(changes: PushChange[]): Promise<PushResult[]>;
@@ -33,6 +35,8 @@ export interface Remote {
 	markRead(eventIds: number[]): Promise<void>;
 	/** Uploads an image (PNG, JPEG, GIF, WebP); returns its path in the app (`/uploads/<name>`). */
 	upload(data: ArrayBuffer, name: string): Promise<string>;
+	/** Turns an item À trier into a Task; returns its shared fields as the app now has them. */
+	triage(itemId: string, as: TriageRequest): Promise<TriageResponse>;
 }
 
 export type RemoteErrorKind = "config" | "auth" | "network" | "server";
@@ -125,6 +129,9 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		},
 		async upload(data, name) {
 			return (await call<UploadResponse>("POST", "/uploads", undefined, multipart(data, name))).url;
+		},
+		async triage(itemId, as) {
+			return call<TriageResponse>("POST", `/items/${encodeURIComponent(itemId)}/triage`, as);
 		},
 	};
 }
