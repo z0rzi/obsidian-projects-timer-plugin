@@ -3,6 +3,7 @@ import { Task, TASKS_TYPES } from "./types";
 
 const DEFAULT_PRIORITY = 1;
 const PRIORITY_TOKEN = /^p([0-5])$/;
+const REVIEW_TOKEN = "pr";
 
 /**
  * Tag tasks: a line starting with `#<type> ` opens a Task, the following
@@ -30,10 +31,13 @@ export function parseTasks(
 			const rest = line.slice(taskType.tag.length + 2).trimStart();
 			const [firstWord = "", ...others] = rest.split(" ");
 			const match = PRIORITY_TOKEN.exec(firstWord);
+			const review = firstWord === REVIEW_TOKEN;
+			const hasToken = !!match || review;
 			currentTask = {
 				id: `${file.path}:${lineNr}`,
-				title: match ? others.join(" ") : rest,
+				title: hasToken ? others.join(" ") : rest,
 				priority: match ? +match[1]! : DEFAULT_PRIORITY,
+				status: review ? "review" : "priority",
 				file,
 				projectFile: projectFile ?? undefined,
 				description: "",
