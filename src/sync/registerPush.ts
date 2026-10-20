@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, parseLinktext } from "obsidian";
+import { Notice, Plugin, TFile } from "obsidian";
 import { appendBlockId, type LineRef } from "../lineWriter";
 import { obsidianTransport } from "../remote/obsidianTransport";
 import { createHttpRemote, RemoteError } from "../remote/remote";
@@ -13,6 +13,7 @@ import { runPush } from "./runPush";
 import { readSharedProject, type SharedProject } from "./sharedProject";
 import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
 import { planTaskPush, type ProjectLinks } from "./taskPlan";
+import { tagTaskProject } from "./taskProject";
 
 /**
  * Adds the "Push to Suivi" command: review pending Project and Task changes,
@@ -56,24 +57,13 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 		return { projects, unreadable, links, steps };
 	}
 
-	/** Project of a Tag task: the `project:` frontmatter link, else the file itself if it has a `project` block. */
-	function projectOf(file: TFile, content: string): string | null {
-		const link = app.metadataCache.getFileCache(file)?.frontmatter?.project;
-		if (typeof link === "string" && link.trim()) {
-			const linkpath = parseLinktext(link.replace(/^\[\[|\]\]$/g, "").split("|")[0]!.trim()).path;
-			const target = app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
-			if (target) return target.path;
-		}
-		return content.split("\n").some((l) => l.startsWith("```project")) ? file.path : null;
-	}
-
 	async function readTasks(): Promise<LocalTask[]> {
 		const tasks: LocalTask[] = [];
 		for (const file of app.vault.getMarkdownFiles()) {
 			if (file.path === data.settings.projectTemplate) continue;
 			const content = await app.vault.cachedRead(file);
 			if (!/^#\w/m.test(content)) continue;
-			tasks.push(...readTagTasks(file.path, content, projectOf(file, content)));
+			tasks.push(...readTagTasks(file.path, content, tagTaskProject(app, file, content)));
 		}
 		return tasks;
 	}

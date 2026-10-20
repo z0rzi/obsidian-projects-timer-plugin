@@ -10,6 +10,9 @@ import { INBOX_VIEW_TYPE, InboxView } from "../views/InboxView";
 import { withInboxNotice } from "./inboxNotice";
 import { InboxStore, type InboxEntry, type InboxState } from "./inboxStore";
 import { itemLocation } from "./itemLocation";
+import { placeLine, runTriage, type TriageChoice } from "./triage";
+import { tagTaskProject } from "../sync/taskProject";
+import { TriageModal } from "../ui/TriageModal";
 
 export interface InboxDeps {
 	/** Opens the comment panel on an item's thread. */
@@ -17,8 +20,8 @@ export interface InboxDeps {
 }
 
 /**
- * Inbox view (command "Open Suivi inbox"): Client comments, priority changes
- * and Pull conflicts. Reloads from the app after a Pull that brought such
+ * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici"),
+ * Client comments, priority changes and Pull conflicts. Reloads from the app after a Pull that brought such
  * events; returns the store (for the kanban dots) and the Pull hooks.
  */
 export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, deps: InboxDeps) {
@@ -44,8 +47,8 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	async function open(entry: InboxEntry) {
 		const at = await itemLocation(data.sync, vaultFiles(plugin), entry.item);
 		if (at) await openLine(at.path, at.line);
-		else if (entry.kind !== "comment") new Notice(`${entry.item.title} is not in this vault.`);
-		if (entry.kind === "comment" && entry.item.kind !== "review") {
+		else if (entry.kind !== "comment" && entry.kind !== "ticket") new Notice(`${entry.item.title} is not in this vault.`);
+		if ((entry.kind === "comment" || entry.kind === "ticket") && entry.item.kind !== "review") {
 			await deps.openThread({ kind: entry.item.kind, id: entry.item.id, title: entry.item.title });
 		}
 	}
@@ -63,7 +66,60 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		view?.editor.setCursor({ line, ch: 0 });
 	}
 
-	plugin.registerView(INBOX_VIEW_TYPE, (leaf: WorkspaceLeaf) => new InboxView(leaf, store, subscribe, (e) => void open(e)));
+	/** The note last edited (the Inbox has focus when its button is clicked). */
+	function noteView(): MarkdownView | null {
+		const leaf = app.workspace.getMostRecentLeaf();
+		return leaf?.view instanceof MarkdownView && leaf.view.file ? leaf.view : null;
+	}
+
+	/** Note and Project the line goes to, with the same Project rule as the Push. */
+	function triageTarget(view: MarkdownView | null) {
+		const file = view?.file;
+		if (!view || !file) return { error: "Open the note where the Task goes and put the cursor there." };
+		if (file.path === data.settings.projectTemplate) return { error: "That is the Project template." };
+		const projectPath = tagTaskProject(app, file, view.editor.getValue());
+		const projectFile = projectPath ? app.vault.getFileByPath(projectPath) : null;
+		const folder = data.settings.projectsLocation.replace(/\/+$/, "");
+		if (!projectFile || projectFile.parent?.path !== folder) return { path: file.path, projectId: null };
+		const fm = app.metadataCache.getFileCache(projectFile)?.frontmatter as Record<string, unknown> | undefined;
+		if (fm?.prive === true) return { error: `${projectFile.basename} is private: the Client would lose this Task.` };
+		// Not pushed yet: the next Push links the Task once the Project has its id.
+		return { path: file.path, projectId: typeof fm?.suivi_id === "string" ? fm.suivi_id : null };
+	}
+
+	function triage(entry: InboxEntry) {
+		const view = noteView();
+		if (!view) {
+			new Notice("Open the note where the Task goes and put the cursor there.");
+			return;
+		}
+		new TriageModal(app, { title: entry.item.title, type: entry.ticketType ?? "task" }, (choice: TriageChoice) => {
+			void (async () => {
+				const result = await data.exclusive(() =>
+					runTriage(entry.item, choice, {
+						remote,
+						sync: data.sync,
+						save: () => data.save(),
+						target: () => triageTarget(view),
+						insert: (line) => {
+							const editor = view.editor;
+							const lines = editor.getValue().split("\n");
+							const at = placeLine(lines, editor.getCursor().line, line);
+							editor.replaceRange(at.text, at.from, at.to);
+						},
+					}),
+				);
+				if (result.ok) new Notice(`Inserted: ${result.line}`);
+				else new Notice(`Triage failed: ${result.error}`, 10_000);
+				await store.refresh();
+			})();
+		}).open();
+	}
+
+	plugin.registerView(
+		INBOX_VIEW_TYPE,
+		(leaf: WorkspaceLeaf) => new InboxView(leaf, store, subscribe, (e) => void open(e), triage),
+	);
 
 	async function openView() {
 		const existing = app.workspace.getLeavesOfType(INBOX_VIEW_TYPE)[0];

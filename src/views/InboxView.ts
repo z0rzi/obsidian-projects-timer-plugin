@@ -8,7 +8,7 @@ const EXCERPT = 160;
 
 /**
  * What the Client did since the Developer last looked, one block per section
- * of the store. Opening an entry is delegated (`open`); marking read goes
+ * of the store (À trier entries get "Insérer ici"). Opening an entry is delegated (`open`); marking read goes
  * through the store, so the app keeps the state.
  */
 export class InboxView extends ItemView {
@@ -19,6 +19,8 @@ export class InboxView extends ItemView {
 		private readonly store: InboxStore,
 		private readonly subscribe: (listener: (state: InboxState) => void) => () => void,
 		private readonly open: (entry: InboxEntry) => void,
+		/** "Insérer ici" on an entry À trier. */
+		private readonly triage: (entry: InboxEntry) => void = () => {},
 	) {
 		super(leaf);
 	}
@@ -90,6 +92,15 @@ export class InboxView extends ItemView {
 		el.createDiv({ text: detail, cls: "suivi-inbox-detail" }).style.whiteSpace = "pre-wrap";
 		if (entry.eventIds.length > 0) {
 			el.createEl("button", { text: "Mark read" }).onclick = () => void this.store.markRead(entry);
+		}
+		if (entry.kind === "ticket") {
+			const insert = el.createEl("button", {
+				text: "Insérer ici",
+				attr: { "aria-label": "Write this Task at the cursor of the open note" },
+			});
+			// Keep the note's cursor: the button must not take focus from the editor first.
+			insert.onmousedown = (e) => e.preventDefault();
+			insert.onclick = () => this.triage(entry);
 		}
 	}
 }

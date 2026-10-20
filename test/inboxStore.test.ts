@@ -63,7 +63,7 @@ describe("Inbox", () => {
 		await store.refresh();
 
 		expect(store.current.status).toBe("ready");
-		expect(store.current.sections.map((s) => s.title)).toEqual(["Notifications"]);
+		expect(store.current.sections.map((s) => s.title)).toEqual(["À trier", "Notifications"]);
 		expect(entries()).toEqual([
 			expect.objectContaining({
 				kind: "comment",

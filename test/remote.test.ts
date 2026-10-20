@@ -150,3 +150,19 @@ describe("HTTP remote, inbox", () => {
 		});
 	});
 });
+
+describe("HTTP remote, triage", () => {
+	it("posts the target to /api/items/:id/triage and returns the Task's fields", async () => {
+		const fields = { title: "Heatmap vide", type: "bug", status: "a_faire", priority: 2, project_id: null };
+		const { sent, transport } = fakeTransport(200, { id: "t7f3a", fields });
+		const remote = createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport);
+		const as = { as: "task", type: "bug", priority: 2, project_id: null } as const;
+
+		expect(await remote.triage("t7f3a", as)).toEqual({ id: "t7f3a", fields });
+		expect(sent[0]).toMatchObject({
+			url: "https://suivi.test/api/items/t7f3a/triage",
+			method: "POST",
+			body: JSON.stringify(as),
+		});
+	});
+});
