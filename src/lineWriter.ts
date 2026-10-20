@@ -62,6 +62,25 @@ export function rewriteStepToken(content: string, ref: LineRef, token: string | 
 }
 
 /**
+ * Sets the status token of a Task line found by `ref`, whatever its kind: after
+ * the tag of a Tag task (`#task p3 x` → `#task p1 x`), after the checkbox of a
+ * Project step (adding one to an inheriting step makes it an Override); null
+ * removes it from a step. Title and block ID are kept.
+ */
+export function setTaskToken(content: string, ref: LineRef, token: string | null): WriteResult {
+	return rewriteLine(content, ref, (line) => {
+		if (CHECKBOX_AND_TOKEN.test(line)) {
+			const match = line.match(CHECKBOX_AND_TOKEN)!;
+			return `${match[1]}${token ? `${token} ` : ""}${line.slice(match[0].length)}`;
+		}
+		const tag = line.match(/^#\S+/)?.[0];
+		if (!tag || token === null) return null;
+		const rest = line.replace(TAG_AND_TOKEN, "");
+		return rest ? `${tag} ${token} ${rest}` : `${tag} ${token}`;
+	});
+}
+
+/**
  * Ends a line not yet pushed with the block ID the app gave it. The line is
  * found by its content: where it was read, else its only exact copy in the
  * file (lines may have moved while the Push modal was open).

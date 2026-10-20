@@ -24,6 +24,7 @@ import { parseProjectCard } from "./projectCards";
 import { AddActivityModal } from "./ui/AddActivityModal";
 import { PluginData } from "./sync/pluginData";
 import { registerPush } from "./sync/registerPush";
+import { registerPull } from "./sync/registerPull";
 import {
 	TASKS_KANBAN_VIEW_TYPE,
 	TasksKanbanView,
@@ -606,6 +607,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 		);
 
 		registerPush(this, this.data);
+		registerPull(this, this.data);
 
 		this.addCommand({
 			id: "open-tasks-kanban",

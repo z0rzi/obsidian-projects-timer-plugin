@@ -132,19 +132,22 @@ export function toggleCheckboxLine(line: string): string | null {
 	return `- [${newState}] ${match[2]}`;
 }
 
+/** Sets `priority:` in the frontmatter, adding the key (or the frontmatter) when missing. */
 export function setFrontmatterPriority(
 	content: string,
 	newPriority: number,
 ): string {
 	const lines = content.split("\n");
-	const closingIdx = lines.indexOf("---", 1);
+	if (lines[0]?.trim() !== "---") return `---\npriority: ${newPriority}\n---\n${content}`;
+	const closingIdx = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+	if (closingIdx < 0) return content;
 
 	for (let i = 1; i < closingIdx; i++) {
 		if (lines[i]?.match(/^priority\s*:/)) {
 			lines[i] = `priority: ${newPriority}`;
-			break;
+			return lines.join("\n");
 		}
 	}
-
+	lines.splice(closingIdx, 0, `priority: ${newPriority}`);
 	return lines.join("\n");
 }

@@ -5,6 +5,7 @@ const GROUPS: { group: PendingChange["group"]; heading: string }[] = [
 	{ group: "new", heading: "New" },
 	{ group: "changed", heading: "Changed" },
 	{ group: "deleted", heading: "Deleted (archived in Suivi)" },
+	{ group: "conflict", heading: "Conflicts (changed in both)" },
 ];
 
 const STATUS_LABELS: Record<string, string> = {
@@ -26,7 +27,11 @@ function show(field: string, value: string | number | null): string {
 	return String(value);
 }
 
-/** Lists pending changes grouped new / changed (old → new) / deleted, all ticked; pushes the ticked ones. */
+/**
+ * Lists pending changes grouped new / changed (old → new) / deleted /
+ * conflicts, all ticked; pushes the ticked ones. A conflict shows the vault
+ * and Suivi values and the Developer picks which one wins (vault by default).
+ */
 export class PushModal extends Modal {
 	private readonly ticked: Set<string>;
 
@@ -63,6 +68,18 @@ export class PushModal extends Modal {
 						}),
 					);
 				const desc = setting.descEl;
+				if (change.group === "conflict") {
+					desc.createDiv({ text: `${change.field}: vault ${change.local} · Suivi ${change.remote}` });
+					setting.addDropdown((d) =>
+						d
+							.addOption("mine", `Keep vault (${change.local})`)
+							.addOption("theirs", `Take Suivi (${change.remote})`)
+							.setValue(change.choice)
+							.onChange((v) => {
+								change.choice = v === "theirs" ? "theirs" : "mine";
+							}),
+					);
+				}
 				if ("detail" in change) desc.createDiv({ text: change.detail });
 				if (change.group === "changed") {
 					for (const d of change.diffs) {

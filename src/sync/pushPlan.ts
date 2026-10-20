@@ -1,4 +1,5 @@
 import type { ProjectFields, PushChange } from "../remote/api";
+import type { PendingConflict } from "./conflicts";
 import type { SharedProject } from "./sharedProject";
 import type { PendingTaskChange } from "./taskPlan";
 
@@ -30,8 +31,8 @@ export type PendingProjectChange =
 	  }
 	| { group: "deleted"; key: string; id: string; title: string; change: ProjectChange };
 
-/** One line of the Push modal, Project or Task (tell them apart by `change.kind`). */
-export type PendingChange = PendingProjectChange | PendingTaskChange;
+/** One line of the Push modal, Project or Task (tell them apart by `change.kind`), or a Pull conflict. */
+export type PendingChange = PendingProjectChange | PendingTaskChange | PendingConflict;
 
 const FIELDS = ["title", "description", "status", "priority"] as const;
 

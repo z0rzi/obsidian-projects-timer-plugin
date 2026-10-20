@@ -5,7 +5,10 @@ import { createHttpRemote, RemoteError } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
 import { PushModal } from "../ui/PushModal";
 import type { PluginData } from "./pluginData";
+import { settleConflicts, withConflicts } from "./conflicts";
+import { writeRemotePriority } from "./pullPriority";
 import { planProjectPush, type PendingChange } from "./pushPlan";
+import { vaultFiles } from "./registerPull";
 import { runPush } from "./runPush";
 import { readSharedProject, type SharedProject } from "./sharedProject";
 import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
@@ -95,19 +98,23 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 			obsidianTransport,
 		);
 		const local = await readProjects();
+		const localTasks = [...(await readTasks()), ...local.steps];
+		settleConflicts(data.sync, local.projects, localTasks);
 		const tasks = planTaskPush(
-			[...(await readTasks()), ...local.steps],
+			localTasks,
 			local.links,
 			data.sync.pushedTasks,
 			{ now: new Date(), doneHistory: data.sync.doneHistory },
 		);
-		const pending: PendingChange[] = [
-			...planProjectPush(local.projects, data.sync.pushedProjects, local.unreadable),
-			...tasks.changes,
-		];
+		const pending: PendingChange[] = withConflicts(
+			[...planProjectPush(local.projects, data.sync.pushedProjects, local.unreadable), ...tasks.changes],
+			data.sync,
+			local.projects,
+			localTasks,
+		);
 		new PushModal(app, pending, async (selected) => {
 			try {
-				const outcome = await runPush(selected, {
+				const outcome = await data.exclusive(() => runPush(selected, {
 					remote,
 					sync: data.sync,
 					save: () => data.save(),
@@ -120,7 +127,9 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 						});
 					},
 					writeBlockId,
-				});
+					writePriority: (kind, id, path, priority) =>
+						writeRemotePriority(vaultFiles(plugin), kind, id, path, priority),
+				}));
 				for (const f of outcome.failed) new Notice(`Push: ${f.title}: ${f.error}`, 10_000);
 				new Notice(`Pushed ${outcome.applied} change(s) to Suivi.`);
 			} catch (e) {
