@@ -46,7 +46,7 @@ Tasks appear in the Kanban board and are linked to their project if the note has
 - **Open Tasks Kanban** — Open the Kanban board.
 - **Open Projects List** — Browse all project files.
 - **Open Activities** — View recent logged activities.
-- **Push to Suivi** — Review pending Project changes (new / changed old → new / deleted) and send the ticked ones to the Client app.
+- **Push to Suivi** — Review pending Project and Task changes (new / changed old → new / deleted) and send the ticked ones to the Client app.
 
 ## Settings
 
@@ -59,7 +59,9 @@ Tasks appear in the Kanban board and are linked to their project if the note has
 
 ## Network use
 
-The plugin makes network requests only to the Suivi URL you set, and only when you run **Push to Suivi**. It sends, for each note directly in the projects folder not marked `prive: true`: the file name (title), the `# Description` section, `status:` and `priority:` (P5 if missing). Time logs, other sections and other notes are never sent. The app's id is written back as `suivi_id:` in the Project's frontmatter. Sync state (what was last pushed) is kept in the plugin's `data.json` under `sync`.
+The plugin makes network requests only to the Suivi URL you set, and only when you run **Push to Suivi**. It sends, for each note directly in the projects folder not marked `prive: true`: the file name (title), the `# Description` section, `status:` and `priority:` (P5 if missing). Time logs, other sections and other notes are never sent. The app's id is written back as `suivi_id:` in the Project's frontmatter.
+
+It also sends Tasks, line only (never the indented or following body): Tag task lines (`#task`, `#bug`, `#quick`, `#wait`, `#done`) in any note, and the top-level checkboxes under a shared Project's Tasks heading, minus lines carrying `#private` and the Tasks of `prive` Projects. Sent: the title, type, status token, Project and `#done` date. A first Push leaves out items done more than 30 days ago (and undated done lines). The app's id is written back as a `^id` block ID at the end of the line. Sync state (what was last pushed) is kept in the plugin's `data.json` under `sync`.
 
 ## Development
 

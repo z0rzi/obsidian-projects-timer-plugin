@@ -60,3 +60,22 @@ export function rewriteStepToken(content: string, ref: LineRef, token: string | 
 		return `${match[1]}${token ? `${token} ` : ""}${rest}`;
 	});
 }
+
+/**
+ * Ends a line not yet pushed with the block ID the app gave it. The line is
+ * found by its content: where it was read, else its only exact copy in the
+ * file (lines may have moved while the Push modal was open).
+ */
+export function appendBlockId(content: string, ref: Omit<LineRef, "blockId">, id: string): WriteResult {
+	const lines = content.split("\n");
+	let index = lines[ref.line] === ref.raw ? ref.line : -1;
+	if (index < 0) {
+		const hits = lines.flatMap((line, i) => (line === ref.raw ? [i] : []));
+		if (hits.length !== 1) return { ok: false, reason: hits.length ? "ambiguous" : "not-found" };
+		index = hits[0]!;
+	}
+	const line = lines[index]!;
+	if (splitBlockId(line).blockId) return { ok: false, reason: "changed" };
+	lines[index] = `${line.trimEnd()} ^${id}`;
+	return { ok: true, content: lines.join("\n") };
+}

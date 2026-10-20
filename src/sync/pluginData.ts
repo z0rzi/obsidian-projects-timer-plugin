@@ -1,12 +1,20 @@
 import type { PushedProjects } from "./pushPlan";
+import type { PushedTasks } from "./taskPlan";
 
 /** What the plugin remembers about the Client app between sessions (one machine only). */
 export interface SyncState {
 	/** Last-pushed shared fields of each Project, by app id: the base for "changed (old → new)". */
 	pushedProjects: PushedProjects;
+	/** Same for Tasks, by app id (= block ID). */
+	pushedTasks: PushedTasks;
+	/**
+	 * Done lines without a date (`[x]` steps, undated `#done`) that were left
+	 * out of the first Push, as `path\nline`. Unset until a first Push applied.
+	 */
+	doneHistory?: string[];
 }
 
-const emptySync = (): SyncState => ({ pushedProjects: {} });
+const emptySync = (): SyncState => ({ pushedProjects: {}, pushedTasks: {} });
 
 /**
  * The plugin's data.json: settings at the top level (as before) plus the
