@@ -46,6 +46,7 @@ Tasks appear in the Kanban board and are linked to their project if the note has
 - **Open Tasks Kanban** — Open the Kanban board.
 - **Open Projects List** — Browse all project files.
 - **Open Activities** — View recent logged activities.
+- **Push to Suivi** — Review pending Project changes (new / changed old → new / deleted) and send the ticked ones to the Client app.
 
 ## Settings
 
@@ -54,6 +55,11 @@ Tasks appear in the Kanban board and are linked to their project if the note has
 - **Tasks kanban file** — Optional kanban source file.
 - **Hours per day / Days per week** — Your expected schedule.
 - **Hourly rate** — For revenue estimates in the status bar.
+- **Suivi URL / Suivi API token** — The Client app to push to, and a personal API token created on its Paramètres page.
+
+## Network use
+
+The plugin makes network requests only to the Suivi URL you set, and only when you run **Push to Suivi**. It sends, for each note directly in the projects folder not marked `prive: true`: the file name (title), the `# Description` section, `status:` and `priority:` (P5 if missing). Time logs, other sections and other notes are never sent. The app's id is written back as `suivi_id:` in the Project's frontmatter. Sync state (what was last pushed) is kept in the plugin's `data.json` under `sync`.
 
 ## Development
 

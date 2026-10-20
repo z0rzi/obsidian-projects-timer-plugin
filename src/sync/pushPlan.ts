@@ -32,11 +32,16 @@ const FIELDS = ["title", "description", "status", "priority"] as const;
 /**
  * Compares the vault's shared Projects with what was last pushed. Projects
  * never pushed and already archived stay vault-only; a pushed Project that
- * is no longer offered (file deleted or marked prive) is offered as an archive.
+ * is no longer offered (file deleted or marked prive) is offered as an archive,
+ * unless its id is in `unreadable` (file there but couldn't be read).
  */
-export function planProjectPush(local: SharedProject[], pushed: PushedProjects): PendingChange[] {
+export function planProjectPush(
+	local: SharedProject[],
+	pushed: PushedProjects,
+	unreadable: string[] = [],
+): PendingChange[] {
 	const changes: PendingChange[] = [];
-	const seen = new Set<string>();
+	const seen = new Set<string>(unreadable);
 
 	for (const p of local) {
 		if (!p.suiviId) {

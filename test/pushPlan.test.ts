@@ -80,6 +80,12 @@ describe("planProjectPush", () => {
 		]);
 	});
 
+	it("does not archive a pushed Project whose file couldn't be read", () => {
+		const pushed = { t7f3a: { path: "2.projects/Widget.md", fields } };
+
+		expect(planProjectPush([], pushed, ["t7f3a"])).toEqual([]);
+	});
+
 	it("sends every field of a Project with an id this machine never pushed", () => {
 		const [change] = planProjectPush([local({ suiviId: "abcde" })], {});
 

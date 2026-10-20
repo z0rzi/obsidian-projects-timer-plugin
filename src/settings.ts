@@ -17,6 +17,10 @@ export interface ProjectsTimerSettings {
 	hoursPerDay: number;
 	daysPerWeek: number;
 	hourlyRate: number;
+	/** Client app URL, e.g. https://suivi.mbz-dev.com */
+	suiviUrl: string;
+	/** Personal API token from the Client app's Paramètres page. */
+	suiviToken: string;
 }
 
 export const DEFAULT_SETTINGS: ProjectsTimerSettings = {
@@ -27,6 +31,8 @@ export const DEFAULT_SETTINGS: ProjectsTimerSettings = {
 	hoursPerDay: 8,
 	daysPerWeek: 5,
 	hourlyRate: 0,
+	suiviUrl: "",
+	suiviToken: "",
 };
 
 class FolderSuggest extends AbstractInputSuggest<string> {
@@ -196,5 +202,31 @@ export class ProjectsTimerSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		new Setting(this.containerEl).setName("Client app (Suivi)").setHeading();
+
+		new Setting(this.containerEl)
+			.setName("Suivi URL")
+			.setDesc("Address of the Client app. Push sends Project titles, descriptions, statuses and priorities there.")
+			.addText((text) =>
+				text
+					.setPlaceholder("https://suivi.mbz-dev.com")
+					.setValue(this.plugin.settings.suiviUrl)
+					.onChange(async (value) => {
+						this.plugin.settings.suiviUrl = value.trim();
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(this.containerEl)
+			.setName("Suivi API token")
+			.setDesc("Created on the Paramètres page of the Client app (Developer account).")
+			.addText((text) => {
+				text.inputEl.type = "password";
+				text.setValue(this.plugin.settings.suiviToken).onChange(async (value) => {
+					this.plugin.settings.suiviToken = value.trim();
+					await this.plugin.saveSettings();
+				});
+			});
 	}
 }

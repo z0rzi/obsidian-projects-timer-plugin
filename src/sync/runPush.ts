@@ -25,7 +25,7 @@ export async function runPush(selected: PendingChange[], deps: PushDeps): Promis
 	if (selected.length === 0) return { applied: 0, failed: [] };
 	const results = await deps.remote.push(selected.map((c) => c.change));
 	if (results.length !== selected.length) {
-		throw new RemoteError("server", `Suivi a répondu ${results.length} résultats pour ${selected.length} changements.`);
+		throw new RemoteError("server", `Suivi answered ${results.length} results for ${selected.length} changes.`);
 	}
 
 	const outcome: PushOutcome = { applied: 0, failed: [] };
@@ -51,7 +51,7 @@ export async function runPush(selected: PendingChange[], deps: PushDeps): Promis
 		} catch (e) {
 			outcome.failed.push({
 				title: c.title,
-				error: `créé dans Suivi mais suivi_id: ${c.id} non écrit (${(e as Error).message}) ; ajoutez-le à la main`,
+				error: `created in Suivi but suivi_id: ${c.id} could not be written (${(e as Error).message}); add it by hand`,
 			});
 		}
 	}

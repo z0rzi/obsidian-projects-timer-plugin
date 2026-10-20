@@ -45,7 +45,7 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		const base = config.url.trim().replace(/\/+$/, "");
 		const token = config.token.trim();
 		if (!base || !token) {
-			throw new RemoteError("config", "Suivi : renseignez l'adresse de l'app et le jeton API dans les réglages du plugin.");
+			throw new RemoteError("config", "Suivi: set the app URL and API token in the plugin settings.");
 		}
 		let res: { status: number; json: unknown };
 		try {
@@ -56,17 +56,17 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 				body: body === undefined ? undefined : JSON.stringify(body),
 			});
 		} catch (e) {
-			throw new RemoteError("network", `Suivi injoignable (${base}) : ${(e as Error).message}`);
+			throw new RemoteError("network", `Suivi unreachable at ${base}: ${(e as Error).message}`);
 		}
 		const error = (res.json as Partial<ApiError> | null)?.error;
 		if (res.status === 401 || res.status === 403) {
 			throw new RemoteError(
 				"auth",
-				`Suivi a refusé le jeton API${error ? ` (${error})` : ""}. Vérifiez-le dans les réglages du plugin.`,
+				`Suivi rejected the API token${error ? ` (${error})` : ""}. Check it in the plugin settings.`,
 			);
 		}
 		if (res.status < 200 || res.status >= 300 || res.json === null) {
-			throw new RemoteError("server", `Erreur de Suivi (HTTP ${res.status})${error ? ` : ${error}` : ""}`);
+			throw new RemoteError("server", `Suivi error (HTTP ${res.status})${error ? `: ${error}` : ""}`);
 		}
 		return res.json as T;
 	}

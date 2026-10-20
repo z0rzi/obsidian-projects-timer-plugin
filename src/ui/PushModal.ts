@@ -1,0 +1,88 @@
+import { App, Modal, Setting } from "obsidian";
+import type { PendingChange } from "../sync/pushPlan";
+
+const GROUPS: { group: PendingChange["group"]; heading: string }[] = [
+	{ group: "new", heading: "New" },
+	{ group: "changed", heading: "Changed" },
+	{ group: "deleted", heading: "Deleted (archived in Suivi)" },
+];
+
+const STATUS_LABELS: Record<string, string> = {
+	a_faire: "À faire",
+	en_cours: "En cours",
+	en_pause: "En pause",
+	a_valider: "À valider",
+	termine: "Terminé",
+};
+
+function show(field: string, value: string | number | null): string {
+	if (value === null) return "?";
+	if (field === "status") return STATUS_LABELS[value] ?? String(value);
+	if (field === "priority") return `P${value}`;
+	if (field === "description") {
+		const s = String(value).replace(/\s+/g, " ").trim();
+		return s ? `“${s.length > 60 ? `${s.slice(0, 60)}…` : s}”` : "(empty)";
+	}
+	return String(value);
+}
+
+/** Lists pending changes grouped new / changed (old → new) / deleted, all ticked; pushes the ticked ones. */
+export class PushModal extends Modal {
+	private readonly ticked: Set<string>;
+
+	constructor(
+		app: App,
+		private readonly changes: PendingChange[],
+		private readonly onPush: (selected: PendingChange[]) => void,
+	) {
+		super(app);
+		this.ticked = new Set(changes.map((c) => c.key));
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		this.setTitle("Push to Suivi");
+
+		if (this.changes.length === 0) {
+			contentEl.createEl("p", { text: "Nothing to push." });
+			return;
+		}
+
+		for (const { group, heading } of GROUPS) {
+			const items = this.changes.filter((c) => c.group === group);
+			if (items.length === 0) continue;
+			contentEl.createEl("h4", { text: heading });
+			for (const change of items) {
+				const setting = new Setting(contentEl).setName(change.title).addToggle((t) =>
+					t.setValue(true).onChange((on) => {
+						if (on) this.ticked.add(change.key);
+						else this.ticked.delete(change.key);
+					}),
+				);
+				if (change.group === "changed") {
+					const desc = setting.descEl;
+					for (const d of change.diffs) {
+						desc.createDiv({ text: `${d.field}: ${show(d.field, d.from)} → ${show(d.field, d.to)}` });
+					}
+				}
+			}
+		}
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+			.addButton((b) =>
+				b
+					.setButtonText("Push")
+					.setCta()
+					.onClick(() => {
+						const selected = this.changes.filter((c) => this.ticked.has(c.key));
+						this.close();
+						this.onPush(selected);
+					}),
+			);
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}

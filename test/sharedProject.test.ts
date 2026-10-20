@@ -72,9 +72,9 @@ describe("readSharedProject", () => {
 	});
 
 	it("reports an unknown status instead of guessing", () => {
-		const r = readSharedProject("p/X.md", note("status: Fini", ""));
+		const r = readSharedProject("p/X.md", note("status: Fini\nsuivi_id: t7f3a", ""));
 
-		expect(r).toEqual({ ok: false, path: "p/X.md", error: expect.stringContaining("Fini") });
+		expect(r).toEqual({ ok: false, path: "p/X.md", suiviId: "t7f3a", error: expect.stringContaining("Fini") });
 	});
 
 	it("defaults a missing priority to P5 and an empty description when there is no section", () => {

@@ -12,7 +12,7 @@ export interface SharedProject {
 
 export type ReadResult =
 	| { ok: true; project: SharedProject }
-	| { ok: false; path: string; error: string };
+	| { ok: false; path: string; suiviId?: string; error: string };
 
 const STATUSES: Record<string, ProjectStatus> = {
 	"a faire": "a_faire",
@@ -41,7 +41,8 @@ export function readSharedProject(path: string, content: string): ReadResult | n
 	else if (fm.status) {
 		const known = STATUSES[normalize(fm.status)];
 		if (!known) {
-			return { ok: false, path, error: `Statut inconnu « ${fm.status} » dans ${path}` };
+			const error = `Unknown status "${fm.status}" in ${path}`;
+			return { ok: false, path, ...(fm.suivi_id ? { suiviId: fm.suivi_id } : {}), error };
 		}
 		status = known;
 	}
