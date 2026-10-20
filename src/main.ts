@@ -22,6 +22,8 @@ import { Activity, ProjectCard, Task, TimeSource } from "./types";
 import { parseTasks } from "./taskParser";
 import { parseProjectCard } from "./projectCards";
 import { AddActivityModal } from "./ui/AddActivityModal";
+import { PluginData } from "./sync/pluginData";
+import { registerPush } from "./sync/registerPush";
 import {
 	TASKS_KANBAN_VIEW_TYPE,
 	TasksKanbanView,
@@ -46,6 +48,7 @@ function makeTaskHash(task: Task) {
 
 export default class ProjectsTimerPlugin extends Plugin {
 	settings: ProjectsTimerSettings;
+	data: PluginData<ProjectsTimerSettings>;
 
 	revenueSpan: HTMLElement;
 	todayWorkedSpan: HTMLElement;
@@ -602,6 +605,8 @@ export default class ProjectsTimerPlugin extends Plugin {
 			},
 		);
 
+		registerPush(this, this.data);
+
 		this.addCommand({
 			id: "open-tasks-kanban",
 			name: "Open Tasks Kanban",
@@ -855,15 +860,17 @@ export default class ProjectsTimerPlugin extends Plugin {
 	onunload() {}
 
 	async loadSettings() {
-		this.settings = Object.assign(
-			{},
+		this.data = await PluginData.load(
 			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<ProjectsTimerSettings>,
+			() => this.loadData(),
+			(data) => this.saveData(data),
 		);
+		this.settings = this.data.settings;
 	}
 
+	/** Saves settings together with the sync state (both live in data.json). */
 	async saveSettings() {
-		await this.saveData(this.settings);
+		await this.data.save();
 	}
 
 	private findProjectBlock(contentLines: string[]) {

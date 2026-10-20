@@ -1,0 +1,119 @@
+import type { ProjectFields, ProjectStatus } from "../remote/api";
+
+/** What the Client app sees of a Project file. Everything else stays in the vault. */
+export interface SharedProject {
+	path: string;
+	/** Id given by the app at first Push (`suivi_id:` frontmatter). */
+	suiviId?: string;
+	/** `archived: true` in frontmatter (pushed as Terminé). */
+	archived: boolean;
+	fields: ProjectFields;
+}
+
+export type ReadResult =
+	| { ok: true; project: SharedProject }
+	| { ok: false; path: string; suiviId?: string; error: string };
+
+const STATUSES: Record<string, ProjectStatus> = {
+	"a faire": "a_faire",
+	"en cours": "en_cours",
+	"en pause": "en_pause",
+	"a valider": "a_valider",
+	termine: "termine",
+};
+
+/** Priority pushed for a Project without a numeric `priority:`. */
+export const DEFAULT_PRIORITY = 5;
+
+/**
+ * Reads the shared fields of a Project note: title (file name), the
+ * `# Description` section, `status:` and `priority:` frontmatter. Returns
+ * null for `prive: true` Projects, which never leave the vault.
+ */
+export function readSharedProject(path: string, content: string): ReadResult | null {
+	const lines = content.split("\n");
+	const fm = readFrontmatter(lines);
+	if (fm.prive === "true") return null;
+
+	const archived = fm.archived === "true";
+	let status: ProjectStatus = "a_faire";
+	if (archived) status = "termine";
+	else if (fm.status) {
+		const known = STATUSES[normalize(fm.status)];
+		if (!known) {
+			const error = `Unknown status "${fm.status}" in ${path}`;
+			return { ok: false, path, ...(fm.suivi_id ? { suiviId: fm.suivi_id } : {}), error };
+		}
+		status = known;
+	}
+
+	const priority = /^\d+$/.test(fm.priority ?? "") ? Math.min(Number(fm.priority), 5) : DEFAULT_PRIORITY;
+
+	return {
+		ok: true,
+		project: {
+			path,
+			suiviId: fm.suivi_id || undefined,
+			archived,
+			fields: {
+				title: basename(path),
+				description: descriptionSection(lines, fm.end),
+				status,
+				priority,
+			},
+		},
+	};
+}
+
+/** Raw `key: value` strings of the frontmatter (quotes stripped, no type coercion). */
+function readFrontmatter(lines: string[]): Record<string, string> & { end: number } {
+	const out: Record<string, string> = {};
+	if (lines[0]?.trim() !== "---") return Object.assign(out, { end: 0 });
+	let i = 1;
+	for (; i < lines.length; i++) {
+		const line = lines[i]!;
+		if (line.trim() === "---") break;
+		const m = line.match(/^(\w+)\s*:\s*(.*)$/);
+		if (m) out[m[1]!] = m[2]!.trim().replace(/^(["'])(.*)\1$/, "$2");
+	}
+	return Object.assign(out, { end: i + 1 });
+}
+
+/** Body of the `# Description` heading (levels 1–3), up to the next heading of the same or higher level. */
+function descriptionSection(lines: string[], from: number): string {
+	let start = -1;
+	let level = 0;
+	for (let i = from; i < lines.length; i++) {
+		const m = lines[i]!.match(/^(#{1,6})\s+(.+?)\s*$/);
+		if (!m) continue;
+		if (start < 0) {
+			if (m[1]!.length <= 3 && m[2]!.toLowerCase() === "description") {
+				start = i + 1;
+				level = m[1]!.length;
+			}
+		} else if (m[1]!.length <= level) {
+			return trimSection(lines.slice(start, i));
+		}
+	}
+	return start < 0 ? "" : trimSection(lines.slice(start));
+}
+
+function trimSection(lines: string[]): string {
+	// The vault's template puts a `---` rule under each heading.
+	const body = lines[0]?.trim() === "---" ? lines.slice(1) : lines;
+	return body.join("\n").trim();
+}
+
+function normalize(label: string): string {
+	return label
+		.normalize("NFD")
+		.replace(/[̀-ͯ]/g, "")
+		.toLowerCase()
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function basename(path: string): string {
+	const file = path.slice(path.lastIndexOf("/") + 1);
+	return file.endsWith(".md") ? file.slice(0, -3) : file;
+}
