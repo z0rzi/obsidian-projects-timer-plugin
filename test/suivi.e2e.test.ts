@@ -20,6 +20,7 @@ import { writeRemotePriority } from "../src/sync/pullPriority";
 import { PULL_HANDLERS, runPull, type VaultFiles } from "../src/sync/runPull";
 import { withInboxNotice } from "../src/inbox/inboxNotice";
 import { InboxStore } from "../src/inbox/inboxStore";
+import { placeLine, runTriage } from "../src/inbox/triage";
 
 const url = process.env.SUIVI_E2E_URL ?? "";
 const token = process.env.SUIVI_E2E_TOKEN ?? "";
@@ -304,6 +305,72 @@ describe.skipIf(!url || !token || !clientSession)("Inbox against a running Suivi
 		expect(ours(restarted).map((e) => e.kind)).toEqual(["priority"]);
 		await restarted.markAllRead();
 		await store.refresh();
-		expect(store.current.sections[0]!.entries).toEqual([]);
+		expect(store.current.sections.find((x) => x.id === "notifications")!.entries).toEqual([]);
 	});
 });
+
+describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a running Suivi", () => {
+	it("JMJ's Bug reaches À trier after a Pull; Insérer ici writes its line and the same item becomes a Task", async () => {
+		const remote = createHttpRemote({ url, token }, fetchTransport);
+		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
+		const files: VaultFiles = { read: async () => null, process: async () => {} };
+		await runPull({ remote, sync, save: async () => {}, files }); // catch up
+
+		const title = `Ticket ${stamp}`;
+		const res = await fetch(`${url}/tickets`, {
+			method: "POST",
+			headers: { cookie: `suivi_session=${clientSession}`, "content-type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({ title, type: "bug", description: "Rien ne s'affiche ![](/uploads/x.png)" }).toString(),
+			redirect: "manual",
+		});
+		expect(res.status).toBe(303);
+		const id = res.headers.get("location")!.replace("/taches/", "");
+		await remote.comment(id, "Je regarde");
+
+		const noticed: string[] = [];
+		await runPull({ remote, sync, save: async () => {}, files }, withInboxNotice(PULL_HANDLERS, (e) => noticed.push(e.type)));
+		expect(noticed).toContain("ticket.created");
+
+		const store = new InboxStore(remote, () => ({}), () => {});
+		await store.refresh();
+		const toTriage = store.current.sections.find((s) => s.id === "to-triage")!;
+		const entry = toTriage.entries.find((e) => e.item.id === id)!;
+		expect(entry).toMatchObject({ kind: "ticket", ticketType: "bug", detail: "Rien ne s'affiche ![](/uploads/x.png)" });
+
+		const note = ["# Réunion", "", "suite"];
+		const result = await runTriage(entry.item, { type: "bug", priority: 2 }, {
+			remote,
+			sync,
+			save: async () => {},
+			target: () => ({ path: "1.meetings/r.md", projectId: null }),
+			insert: (line) => {
+				const at = placeLine(note, 1, line);
+				note.splice(1, 1, ...at.text.split("\n"));
+			},
+		});
+		expect(result).toEqual({ ok: true, line: `#bug p2 ${title} ^${id}` });
+		expect(note).toEqual(["# Réunion", `#bug p2 ${title} ^${id}`, "", "suite"]);
+
+		await store.refresh();
+		expect(store.current.sections.find((s) => s.id === "to-triage")!.entries.some((e) => e.item.id === id)).toBe(false);
+		expect((await remote.comments(id)).map((c) => c.body)).toEqual(["Je regarde"]);
+
+		// The next Push sees the line as already pushed.
+		const local = readTagTasks("1.meetings/r.md", note.join("\n"), null);
+		expect(planTaskPush(local, {}, sync.pushedTasks, { now: new Date() }).changes).toEqual([]);
+		// Triaging twice is refused.
+		expect(await runTriage(entry.item, { type: "bug", priority: 2 }, { ...noopDeps(remote, sync) })).toMatchObject({ ok: false });
+	});
+});
+
+function noopDeps(remote: ReturnType<typeof createHttpRemote>, sync: SyncState) {
+	return {
+		remote,
+		sync,
+		save: async () => {},
+		target: () => ({ path: "x.md", projectId: null }),
+		insert: () => {
+			throw new Error("must not write");
+		},
+	};
+}

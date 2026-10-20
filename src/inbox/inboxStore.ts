@@ -1,4 +1,4 @@
-import type { InboxNotification, InboxResponse } from "../remote/api";
+import type { InboxNotification, InboxResponse, InboxTicket, TaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { PullConflict } from "../sync/pullPriority";
 
@@ -6,7 +6,7 @@ import type { PullConflict } from "../sync/pullPriority";
 export interface InboxEntry {
 	/** Stable across reloads: `e<event id>` or `c<conflict key>`. */
 	key: string;
-	kind: "comment" | "priority" | "conflict";
+	kind: "comment" | "priority" | "conflict" | "ticket";
 	/** What opening the entry goes to. */
 	item: { kind: "project" | "task" | "review"; id: string; title: string };
 	title: string;
@@ -14,8 +14,10 @@ export interface InboxEntry {
 	/** Client who did it, ISO date. */
 	by?: string;
 	at?: string;
-	/** Events marked read with the entry; empty = it can't be (a conflict settles in Push). */
+	/** Events marked read with the entry; empty = it can't be (a conflict settles in Push, a ticket by Triage). */
 	eventIds: number[];
+	/** `ticket`: the app type of the item to triage (bug, amelioration). */
+	ticketType?: TaskType;
 }
 
 export interface InboxSection {
@@ -34,11 +36,9 @@ export interface InboxState {
 
 type Conflicts = () => Record<string, PullConflict> | undefined;
 
-/**
- * Builds the sections from the app's answer and the local conflicts. Later
- * sections (À trier) go in this list.
- */
+/** Builds the sections from the app's answer and the local conflicts, in display order. */
 const SECTIONS: ((inbox: InboxResponse, conflicts: PullConflict[]) => InboxSection)[] = [
+	(inbox) => ({ id: "to-triage", title: "À trier", entries: (inbox.to_triage ?? []).map(ticketEntry) }),
 	(inbox, conflicts) => ({
 		id: "notifications",
 		title: "Notifications",
@@ -55,6 +55,22 @@ function notificationEntry(n: InboxNotification): InboxEntry {
 		return { ...base, kind: "comment", title: `Comment on ${n.item_title}`, detail: n.body ?? "" };
 	}
 	return { ...base, kind: "priority", title: `Priority of ${n.item_title}`, detail: `${p(n.from)} → ${p(n.to)}` };
+}
+
+const TICKET_LABELS: Partial<Record<TaskType, string>> = { bug: "Bug", amelioration: "Amélioration" };
+
+function ticketEntry(t: InboxTicket): InboxEntry {
+	return {
+		key: `t${t.id}`,
+		kind: "ticket",
+		ticketType: t.type,
+		item: { kind: "task", id: t.id, title: t.title },
+		title: `${TICKET_LABELS[t.type] ?? t.type}: ${t.title}`,
+		detail: t.description,
+		by: t.author_email,
+		at: t.created_at,
+		eventIds: [],
+	};
 }
 
 function conflictEntry(c: PullConflict): InboxEntry {
@@ -78,7 +94,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export class InboxStore {
 	private state: InboxState = { status: "idle", sections: [] };
 	private notifications: InboxNotification[] = [];
-	private inbox: InboxResponse = { notifications: [] };
+	private inbox: InboxResponse = { notifications: [], to_triage: [] };
 
 	constructor(
 		private readonly remote: Remote,
