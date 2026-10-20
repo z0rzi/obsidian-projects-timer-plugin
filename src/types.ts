@@ -34,6 +34,8 @@ export type ProjectCardItem = {
 	line: number;
 	checked: boolean;
 	blockId?: string;
+	/** Status token carried by the step itself, replacing the Project's priority. */
+	override?: { priority: number; status: TaskStatus };
 	/** Line content when parsed, to check it is unchanged before writing. */
 	raw: string;
 };
