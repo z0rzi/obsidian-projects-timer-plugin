@@ -1,4 +1,4 @@
-// End-to-end check of Push against a running Client app (edf-suivi), e.g. on
+// End-to-end check of Push and comments against a running Client app (edf-suivi), e.g. on
 // localhost. Skipped unless SUIVI_E2E_URL and SUIVI_E2E_TOKEN (a Developer
 // API token) are set:
 //   SUIVI_E2E_URL=http://127.0.0.1:3999 SUIVI_E2E_TOKEN=... npx vitest run test/suivi.e2e.test.ts
@@ -13,6 +13,8 @@ import { readSharedProject, type SharedProject } from "../src/sync/sharedProject
 import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
 import { planTaskPush, type ProjectLinks } from "../src/sync/taskPlan";
 import { appendBlockId } from "../src/lineWriter";
+import { commentTargetAt } from "../src/comments/commentTarget";
+import { ThreadSession, type ThreadState } from "../src/comments/threadSession";
 import { settleConflicts, withConflicts } from "../src/sync/conflicts";
 import { writeRemotePriority } from "../src/sync/pullPriority";
 import { runPull, type VaultFiles } from "../src/sync/runPull";
@@ -143,6 +145,32 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 		);
 		expect(await runPush(second, deps)).toEqual({ applied: 3, failed: [] });
 		expect(plan()).toEqual([]);
+	});
+
+	it("follows the thread of the pushed Task under the cursor: reply, edit, delete", async () => {
+		const remote = createHttpRemote({ url, token }, fetchTransport);
+		const [pushed] = await remote.push([
+			{ op: "create", kind: "task", fields: { title: `Fil ${stamp}`, type: "task", status: "a_faire", priority: 2, project_id: null } },
+		]);
+		if (!pushed?.ok) throw new Error(JSON.stringify(pushed));
+		const note = `#task p2 Fil ${stamp} ^${pushed.id}\n`;
+		const target = commentTargetAt("notes.md", note, 0)!;
+		expect(target).toEqual({ kind: "task", id: pushed.id, title: `Fil ${stamp}` });
+
+		const states: ThreadState[] = [];
+		const session = new ThreadSession(remote, (s) => states.push(s));
+		await session.show(target);
+		expect(session.current).toMatchObject({ status: "ready", comments: [] });
+
+		expect(await session.reply("Réponse **depuis Obsidian**")).toBe(true);
+		const [mine] = session.current.comments;
+		expect(mine).toMatchObject({ body: "Réponse **depuis Obsidian**", mine: true, author_role: "developer" });
+
+		expect(await session.edit(mine!.id, "Réponse corrigée")).toBe(true);
+		expect(session.current.comments[0]).toMatchObject({ body: "Réponse corrigée", edited_at: expect.any(String) });
+		expect(await session.remove(mine!.id)).toBe(true);
+		expect(session.current.comments).toEqual([]);
+		await expect(remote.comments("zzzzz")).rejects.toMatchObject({ kind: "server" });
 	});
 });
 
