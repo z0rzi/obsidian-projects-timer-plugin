@@ -129,3 +129,24 @@ describe("HTTP remote, comments", () => {
 		});
 	});
 });
+
+describe("HTTP remote, inbox", () => {
+	const remoteWith = (transport: Transport) => createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport);
+
+	it("reads the unread Notifications", async () => {
+		const body = { notifications: [{ id: 4, type: "comment.created", item_id: "t7f3a" }] };
+		const { sent, transport } = fakeTransport(200, body);
+		expect(await remoteWith(transport).inbox()).toEqual(body);
+		expect(sent[0]).toMatchObject({ url: "https://suivi.test/api/inbox", method: "GET" });
+	});
+
+	it("marks events read with a POST of their ids", async () => {
+		const { sent, transport } = fakeTransport(200, { ok: true });
+		await remoteWith(transport).markRead([4, 7]);
+		expect(sent[0]).toMatchObject({
+			url: "https://suivi.test/api/events/read",
+			method: "POST",
+			body: JSON.stringify({ ids: [4, 7] }),
+		});
+	});
+});

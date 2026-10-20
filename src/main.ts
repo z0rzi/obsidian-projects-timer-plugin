@@ -26,6 +26,7 @@ import { PluginData } from "./sync/pluginData";
 import { registerComments } from "./comments/registerComments";
 import { registerPush } from "./sync/registerPush";
 import { registerPull } from "./sync/registerPull";
+import { registerInbox } from "./inbox/registerInbox";
 import {
 	TASKS_KANBAN_VIEW_TYPE,
 	TasksKanbanView,
@@ -51,6 +52,8 @@ function makeTaskHash(task: Task) {
 export default class ProjectsTimerPlugin extends Plugin {
 	settings: ProjectsTimerSettings;
 	data: PluginData<ProjectsTimerSettings>;
+	/** Suivi Inbox store (unread comments feed the kanban dots); set in onload. */
+	inbox: ReturnType<typeof registerInbox> | null = null;
 
 	revenueSpan: HTMLElement;
 	todayWorkedSpan: HTMLElement;
@@ -607,9 +610,10 @@ export default class ProjectsTimerPlugin extends Plugin {
 			},
 		);
 
-		registerPush(this, this.data);
-		registerPull(this, this.data);
-		registerComments(this, this.data);
+		const comments = registerComments(this, this.data);
+		this.inbox = registerInbox(this, this.data, comments);
+		registerPush(this, this.data, this.inbox.afterPush);
+		registerPull(this, this.data, this.inbox.pullHooks);
 
 		this.addCommand({
 			id: "open-tasks-kanban",

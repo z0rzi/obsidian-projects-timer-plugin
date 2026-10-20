@@ -27,7 +27,10 @@ let idCounter = 0;
 const PLAY_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
 const DONE_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
 
-function cardHtml(id: string, title: string, description: string): string {
+/** Dot on a card or step whose item has unread Client comments (Suivi Inbox). */
+const UNREAD_DOT = '<span class="suivi-unread-dot" aria-label="Unread comments" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--color-accent);margin-right:4px;vertical-align:middle"></span>';
+
+function cardHtml(id: string, title: string, description: string, unread = false): string {
 	const safeTitle = title.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 	const safeDescription = description
 		.replace(/</g, "&lt;")
@@ -40,7 +43,7 @@ function cardHtml(id: string, title: string, description: string): string {
 	);
 
 	return `
-		<span>${highlightedTitle}</span>
+		<span>${unread ? UNREAD_DOT : ""}${highlightedTitle}</span>
 		<br>
 		<small>${safeDescription}</small>
 		<span class="kanban-card-actions">
@@ -54,37 +57,38 @@ function escapeHtml(text: string): string {
 	return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function stepItemHtml(card: ProjectCard, item: ProjectCardItem, extraClass = ""): string {
+function stepItemHtml(card: ProjectCard, item: ProjectCardItem, extraClass = "", unread = new Set<string>()): string {
 	const classes = ["kanban-project-item", item.checked ? "is-checked" : "", extraClass]
 		.filter(Boolean)
 		.join(" ");
 	return `
 		<div class="${classes}" data-project-id="${card.id}" data-line="${item.line}">
 			<input type="checkbox" class="kanban-project-item-checkbox" data-project-id="${card.id}" data-line="${item.line}" ${item.checked ? "checked" : ""} />
-			<span class="kanban-project-item-text">${escapeHtml(item.text)}</span>
+			<span class="kanban-project-item-text">${item.blockId && unread.has(item.blockId) ? UNREAD_DOT : ""}${escapeHtml(item.text)}</span>
 		</div>
 	`;
 }
 
 /** Card of an Override: the step itself, with its Project's name. */
-function overrideCardHtml(card: ProjectCard, item: ProjectCardItem): string {
+function overrideCardHtml(card: ProjectCard, item: ProjectCardItem, unread: Set<string>): string {
 	return `
-		${stepItemHtml(card, item)}
+		${stepItemHtml(card, item, "", unread)}
 		<small style="color: var(--text-faint)">${escapeHtml(card.file.basename)}</small>
 		`;
 }
 
-function projectCardHtml(card: ProjectCard): string {
+/** `unread`: app ids with unread comments; `suiviId`: the Project's own. */
+function projectCardHtml(card: ProjectCard, unread: Set<string>, suiviId?: string): string {
 	const safeTitle = card.file.basename
 		.replace(/</g, "&lt;")
 		.replace(/>/g, "&gt;");
 
 	const itemsHtml = card.items
-		.map((item) => stepItemHtml(card, item, item.override ? "is-override" : ""))
+		.map((item) => stepItemHtml(card, item, item.override ? "is-override" : "", unread))
 		.join("");
 
 	return `
-		<span style="font-weight: bold;">${safeTitle}</span>
+		<span style="font-weight: bold;">${suiviId && unread.has(suiviId) ? UNREAD_DOT : ""}${safeTitle}</span>
 		${itemsHtml}
 		<span class="kanban-card-actions">
 			<span class="kanban-play-btn" data-project-id="${card.id}">${PLAY_ICON}</span>
@@ -137,6 +141,7 @@ export class TasksKanbanView extends ItemView {
 	private clickHandler: ((evt: MouseEvent) => void) | null = null;
 	private taskSub: Subscription | null = null;
 	private projectCardSub: Subscription | null = null;
+	private inboxUnsub: (() => void) | null = null;
 	private currentTasks: Map<string, Task> = new Map();
 	private currentProjectCards: Map<string, ProjectCard> = new Map();
 	/** Override cards by jKanban id. */
@@ -225,6 +230,7 @@ export class TasksKanbanView extends ItemView {
 		this.projectCardSub = this.plugin.allProjectCards.subscribe(() => {
 			this.updateBoards(this.plugin.allTasks.getValue());
 		});
+		this.inboxUnsub = this.plugin.inbox?.subscribe(() => this.updateBoards(this.plugin.allTasks.getValue())) ?? null;
 	}
 
 	private updateBoards(tasks: Task[]) {
@@ -273,7 +279,18 @@ export class TasksKanbanView extends ItemView {
 						.join(",")}`,
 			)
 			.join("|");
-		return `${taskPart}##${cardPart}`;
+		return `${taskPart}##${cardPart}##${[...this.unread()].sort().join(",")}`;
+	}
+
+	/** App ids of items with unread Client comments. */
+	private unread(): Set<string> {
+		return this.plugin.inbox?.store.unreadComments() ?? new Set();
+	}
+
+	/** App id of the Project pushed from `path`. */
+	private suiviIdOf(path: string): string | undefined {
+		const pushed = this.plugin.data.sync.pushedProjects;
+		return Object.keys(pushed).find((id) => pushed[id]!.path === path);
 	}
 
 	private renderBoards(tasks: Task[], projectCards: ProjectCard[]) {
@@ -338,6 +355,7 @@ export class TasksKanbanView extends ItemView {
 		];
 
 		const typeOrder = TASKS_TYPES.map((t) => t.tag);
+		const unread = this.unread();
 		tasks.sort((a, b) => {
 			const aType = typeOrder.indexOf(a.type);
 			const bType = typeOrder.indexOf(b.type);
@@ -358,6 +376,7 @@ export class TasksKanbanView extends ItemView {
 					String(task.id),
 					task.title,
 					task.description.trim(),
+					!!task.blockId && unread.has(task.blockId),
 				),
 				type: task.type,
 			});
@@ -370,7 +389,7 @@ export class TasksKanbanView extends ItemView {
 
 			board.items.push({
 				id: `project-${card.id}`,
-				title: projectCardHtml(card),
+				title: projectCardHtml(card, unread, this.suiviIdOf(card.file.path)),
 				type: "project",
 			});
 		}
@@ -384,7 +403,7 @@ export class TasksKanbanView extends ItemView {
 				this.currentSteps.set(id, { card, item });
 				board.items.push({
 					id,
-					title: overrideCardHtml(card, item),
+					title: overrideCardHtml(card, item, unread),
 					type: OVERRIDE_CARD_STYLE.label,
 				});
 			}
@@ -879,6 +898,8 @@ export class TasksKanbanView extends ItemView {
 			this.projectCardSub.unsubscribe();
 			this.projectCardSub = null;
 		}
+		this.inboxUnsub?.();
+		this.inboxUnsub = null;
 		const rootEl = document.getElementById(this.rootId);
 		if (rootEl && this.clickHandler) {
 			rootEl.removeEventListener("click", this.clickHandler, true);

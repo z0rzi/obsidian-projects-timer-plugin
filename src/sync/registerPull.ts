@@ -3,7 +3,14 @@ import { obsidianTransport } from "../remote/obsidianTransport";
 import { createHttpRemote, RemoteError } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
 import type { PluginData } from "./pluginData";
-import { runPull, type VaultFiles } from "./runPull";
+import { PULL_HANDLERS, runPull, type PullHandler, type VaultFiles } from "./runPull";
+import type { EventType } from "../remote/api";
+
+/** Lets other features see the Pull: extra handlers, and a call once each Pull ended. */
+export interface PullHooks {
+	handlers?: (base: Partial<Record<EventType, PullHandler>>) => Partial<Record<EventType, PullHandler>>;
+	afterPull?: () => void;
+}
 
 const PULL_EVERY_MS = 5 * 60_000;
 
@@ -28,14 +35,15 @@ export function vaultFiles(plugin: Plugin): VaultFiles {
  * "Pull from Suivi" command. Automatic Pulls stay quiet unless something
  * happened; the command always reports.
  */
-export function registerPull(plugin: Plugin, data: PluginData<ProjectsTimerSettings>) {
+export function registerPull(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, hooks: PullHooks = {}) {
+	const handlers = hooks.handlers ? hooks.handlers(PULL_HANDLERS) : PULL_HANDLERS;
 	async function pull(manual: boolean) {
 		const { suiviUrl, suiviToken } = data.settings;
 		if (!manual && (!suiviUrl || !suiviToken)) return;
 		const remote = createHttpRemote({ url: suiviUrl, token: suiviToken }, obsidianTransport);
 		try {
 			const outcome = await data.exclusive(() =>
-				runPull({ remote, sync: data.sync, save: () => data.save(), files: vaultFiles(plugin) }),
+				runPull({ remote, sync: data.sync, save: () => data.save(), files: vaultFiles(plugin) }, handlers),
 			);
 			for (const f of outcome.failed) new Notice(`Pull: ${f.title}: ${f.error}`, 10_000);
 			if (outcome.conflicts > 0) {
@@ -48,6 +56,7 @@ export function registerPull(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 				new Notice(e instanceof RemoteError ? e.message : `Pull failed: ${(e as Error).message}`, 10_000);
 			}
 		}
+		hooks.afterPull?.();
 	}
 
 	plugin.app.workspace.onLayoutReady(() => void pull(false));

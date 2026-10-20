@@ -192,3 +192,47 @@ export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 export interface UploadResponse {
   url: string;
 }
+
+/**
+ * An Inbox Notification: something the Client did that the Developer only
+ * needs to read. Built from an event of the log; the Developer's own events
+ * never appear.
+ */
+export interface InboxNotification {
+  /** Id of the event; send it to `POST /api/events/read`. */
+  id: number;
+  /** ISO date-time. */
+  at: string;
+  actor_email: string;
+  /** `comment.created`: a new comment; `item.updated`: a Client priority change (`from` → `to`). */
+  type: "comment.created" | "item.updated";
+  /** The Project, Task or Review concerned (for a comment, the one it's on). */
+  item_id: string;
+  item_kind: "project" | "task" | "review";
+  item_title: string;
+  /** `comment.created`: id and current text of the comment. */
+  comment_id?: string;
+  body?: string;
+  /** `item.updated`: the field changed and its old and new values. */
+  field?: string;
+  from?: unknown;
+  to?: unknown;
+}
+
+/**
+ * `GET /api/inbox` response: the Notifications the Developer hasn't marked
+ * read, oldest first. Comments since deleted and archived items are left out.
+ */
+export interface InboxResponse {
+  notifications: InboxNotification[];
+}
+
+/** `POST /api/events/read` body: events to mark read for the caller (unknown ids are ignored). */
+export interface MarkReadRequest {
+  ids: number[];
+}
+
+/** `POST /api/events/read` response. */
+export interface MarkReadResponse {
+  ok: true;
+}
