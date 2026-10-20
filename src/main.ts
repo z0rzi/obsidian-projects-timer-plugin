@@ -30,6 +30,7 @@ import {
 	ProjectsListView,
 } from "./views/ProjectsListView";
 import { ACTIVITIES_VIEW_TYPE, ActivitiesView } from "./views/ActivitiesView";
+import { splitBlockId } from "./blockId";
 
 function makeTaskHash(task: Task) {
 	return [
@@ -39,6 +40,7 @@ function makeTaskHash(task: Task) {
 		task.description,
 		task.file.path,
 		task.line,
+		task.raw,
 	].join("@");
 }
 
@@ -842,9 +844,12 @@ export default class ProjectsTimerPlugin extends Plugin {
 					return "";
 				});
 
+				const { text: shownTitle, blockId } = splitBlockId(title);
 				currentTask = {
 					id: `${file.path}:${lineNr}`,
-					title,
+					title: shownTitle,
+					...(blockId ? { blockId } : {}),
+					raw: line,
 					priority,
 					file,
 					projectFile: projectFile ?? undefined,

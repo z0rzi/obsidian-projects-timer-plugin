@@ -11,7 +11,8 @@ import type ProjectsTimerPlugin from "../main";
 import { ProjectCard, Task, TASKS_TYPES } from "../types";
 import { Subscription } from "rxjs";
 import { AddActivityModal } from "../ui/AddActivityModal";
-import { setFrontmatterPriority, toggleCheckboxLine } from "../projectCards";
+import { setFrontmatterPriority } from "../projectCards";
+import { rewriteTaskTag, toggleCheckbox, WriteResult } from "../lineWriter";
 
 declare global {
 	interface Window {
@@ -528,19 +529,35 @@ export class TasksKanbanView extends ItemView {
 	}
 
 	private async updateTaskTag(task: Task, newTag: string) {
+		await this.writeLine(task.file, "Failed to update task tag", (content) =>
+			rewriteTaskTag(content, task, newTag),
+		);
+	}
+
+	/** Rewrites one line located by identity; refuses with a notice if it can't be found safely. */
+	private async writeLine(
+		file: TFile,
+		failMessage: string,
+		rewrite: (content: string) => WriteResult,
+	) {
+		let refused: WriteResult | null = null;
 		try {
-			const content = await this.app.vault.read(task.file);
-			const lines = content.split("\n");
-			const line = lines[task.line];
-			if (!line) return;
-
-			const newLine = `${newTag} ${task.title.trim()}`;
-			if (line === newLine) return;
-
-			lines[task.line] = newLine;
-			await this.app.vault.modify(task.file, lines.join("\n"));
+			await this.app.vault.process(file, (content) => {
+				const result = rewrite(content);
+				if (!result.ok) {
+					refused = result;
+					return content;
+				}
+				return result.content;
+			});
 		} catch (e) {
-			new Notice("Failed to update task tag");
+			new Notice(failMessage);
+			return;
+		}
+		if (refused) {
+			new Notice(
+				`Not updated: the line in ${file.basename} changed since the kanban loaded. Reload and try again.`,
+			);
 		}
 	}
 
@@ -557,20 +574,11 @@ export class TasksKanbanView extends ItemView {
 	}
 
 	private async updateProjectCheckbox(card: ProjectCard, line: number) {
-		try {
-			const content = await this.app.vault.adapter.read(card.file.path);
-			const lines = content.split("\n");
-			const targetLine = lines[line];
-			if (!targetLine) return;
-
-			const newLine = toggleCheckboxLine(targetLine);
-			if (!newLine) return;
-
-			lines[line] = newLine;
-			await this.app.vault.modify(card.file, lines.join("\n"));
-		} catch (e) {
-			new Notice("Failed to update task checkbox");
-		}
+		const item = card.items.find((i) => i.line === line);
+		if (!item) return;
+		await this.writeLine(card.file, "Failed to update task checkbox", (content) =>
+			toggleCheckbox(content, item),
+		);
 	}
 
 	private startTimerForProjectCard(card: ProjectCard) {
@@ -581,6 +589,7 @@ export class TasksKanbanView extends ItemView {
 			file: card.file,
 			projectFile: card.file,
 			line: 0,
+			raw: "",
 			priority: card.priority,
 			// "project" is not yet part of the committed TaskTagLabel union
 			// (TASKS_TYPES gains a "project" entry via a separate, still-uncommitted
