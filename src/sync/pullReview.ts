@@ -1,3 +1,4 @@
+import { localDay } from "../localDate";
 import { rewriteStepToken, rewriteTaskTag, setTaskToken, toggleCheckbox, type WriteResult } from "../lineWriter";
 import type { ApiEvent, ReviewAnsweredPayload } from "../remote/api";
 import type { PullContext } from "./runPull";
@@ -27,7 +28,7 @@ export async function pullReviewAnswered(event: ApiEvent, ctx: PullContext): Pro
 				);
 	if (!line) throw new Error(`^${taskId} is not in ${task.path}`);
 	const isStep = line.type === "step";
-	const date = event.at.slice(0, 10);
+	const date = localDay(new Date(event.at));
 	const ref = { line: -1, raw: "", blockId: taskId };
 
 	let refused: string | null = null;

@@ -71,6 +71,13 @@ describe("Pull: Review answers", () => {
 		expect(w.pending()).toEqual([]);
 	});
 
+	it("Validé: dates #done with the local day of the answer", async () => {
+		const late = { ...answered("valide", "t7f3a"), at: "2026-10-21T23:30:00.000Z" };
+		const w = world([late]);
+		await w.pull();
+		expect(w.files.get(meeting)).toBe("#done 2026-10-22 Widget ^t7f3a\nnotes");
+	});
+
 	it("À reprendre: the Task line becomes p0, with nothing left to push", async () => {
 		const w = world([
 			answered("a_reprendre", "t7f3a"),

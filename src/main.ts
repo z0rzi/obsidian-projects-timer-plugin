@@ -20,6 +20,7 @@ import {
 } from "./settings";
 import { Activity, ProjectCard, Task, TimeSource } from "./types";
 import { parseTasks } from "./taskParser";
+import { localDay } from "./localDate";
 import { parseProjectCard } from "./projectCards";
 import { AddActivityModal } from "./ui/AddActivityModal";
 import { PluginData } from "./sync/pluginData";
@@ -948,7 +949,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 			return;
 		}
 
-		const today = new Date().toISOString().split("T")[0];
+		const today = localDay();
 		const newLine = `${today};${durationMins};${description}`;
 
 		contentLines.splice(startLine, 0, newLine);

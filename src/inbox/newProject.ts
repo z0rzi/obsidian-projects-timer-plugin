@@ -1,3 +1,4 @@
+import { localDay } from "../localDate";
 import type { ProjectFields, ProjectStatus } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { SyncState } from "../sync/pluginData";
@@ -78,11 +79,17 @@ const STATUS_WORDS: Record<ProjectStatus, string> = {
  * description under its `# Description` heading (added after the
  * frontmatter if missing).
  */
-export function projectFile(template: string, title: string, id: string, fields: ProjectFields): string {
+export function projectFile(
+	template: string,
+	title: string,
+	id: string,
+	fields: ProjectFields,
+	now: Date = new Date(),
+): string {
 	const filled = template
 		.replace(/\r\n/g, "\n")
 		.replace(/\{\{title\}\}/g, title)
-		.replace(/\{\{date\}\}/g, new Date().toISOString().slice(0, 10));
+		.replace(/\{\{date\}\}/g, localDay(now));
 	let lines = filled ? filled.split("\n") : [];
 	if (lines[0]?.trim() !== "---") lines = ["---", "---", ...lines];
 	let end = lines.findIndex((l, i) => i > 0 && l.trim() === "---");

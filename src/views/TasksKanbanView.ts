@@ -13,6 +13,7 @@ import { Subscription } from "rxjs";
 import { AddActivityModal } from "../ui/AddActivityModal";
 import { setFrontmatterPriority } from "../projectCards";
 import { rewriteStepToken, rewriteTaskTag, toggleCheckbox, WriteResult } from "../lineWriter";
+import { localDay } from "../localDate";
 
 declare global {
 	interface Window {
@@ -627,7 +628,7 @@ export class TasksKanbanView extends ItemView {
 				if (!rawId) return;
 				const task = this.currentTasks.get(rawId);
 				if (!task) return;
-				const strDate = new Date().toISOString().split("T")[0];
+				const strDate = localDay();
 				this.updateTaskTag(task, "#done " + strDate);
 			}
 		};
