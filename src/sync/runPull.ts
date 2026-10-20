@@ -2,6 +2,7 @@ import type { ApiEvent, EventType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { SyncState } from "./pluginData";
 import { pullItemUpdated } from "./pullPriority";
+import { pullReviewAnswered } from "./pullReview";
 
 /** The few vault operations a Pull needs (an in-memory map in tests). */
 export interface VaultFiles {
@@ -41,6 +42,7 @@ export type PullHandler = (event: ApiEvent, ctx: PullContext) => Promise<void>;
  */
 export const PULL_HANDLERS: Partial<Record<EventType, PullHandler>> = {
 	"item.updated": pullItemUpdated,
+	"review.answered": pullReviewAnswered,
 };
 
 /**

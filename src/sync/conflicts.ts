@@ -105,7 +105,7 @@ export function withConflicts(
 	const kept = pending.flatMap((p): PendingChange[] => {
 		if (p.group !== "changed" || !conflicting.has(p.id)) return [p];
 		const base = (p.change.kind === "project" ? sync.pushedProjects[p.id] : sync.pushedTasks[p.id])!.fields.priority;
-		const { priority: _dropped, ...sent } = (p.change as Extract<PushChange, { op: "update" }>).fields;
+		const { priority: _dropped, ...sent } = (p.change as Extract<PushChange, { op: "update"; kind: "project" | "task" }>).fields;
 		const diffs = p.diffs.filter((d) => d.field !== "priority");
 		if (diffs.length === 0) return [];
 		return [

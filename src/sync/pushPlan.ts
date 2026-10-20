@@ -2,6 +2,7 @@ import type { ProjectFields, PushChange } from "../remote/api";
 import type { PendingConflict } from "./conflicts";
 import type { SharedProject } from "./sharedProject";
 import type { PendingTaskChange } from "./taskPlan";
+import type { PendingReviewChange } from "./reviewPlan";
 
 /** Last-pushed state of each Project, by app id. */
 export type PushedProjects = Record<string, { path: string; fields: ProjectFields }>;
@@ -31,8 +32,8 @@ export type PendingProjectChange =
 	  }
 	| { group: "deleted"; key: string; id: string; title: string; change: ProjectChange };
 
-/** One line of the Push modal, Project or Task (tell them apart by `change.kind`), or a Pull conflict. */
-export type PendingChange = PendingProjectChange | PendingTaskChange | PendingConflict;
+/** One line of the Push modal, Project, Task or Review (tell them apart by `change.kind`), or a Pull conflict. */
+export type PendingChange = PendingProjectChange | PendingTaskChange | PendingReviewChange | PendingConflict;
 
 const FIELDS = ["title", "description", "status", "priority"] as const;
 

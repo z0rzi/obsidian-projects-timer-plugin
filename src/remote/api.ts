@@ -62,6 +62,40 @@ export interface TaskFields {
   done_on?: string | null;
 }
 
+/**
+ * Fields of a Review the Developer sets by Push (a note of the vault's reviews
+ * folder). Creating it publishes it: the Client is emailed and the linked Task
+ * becomes a_valider. Updating title or body of a Review answered À reprendre
+ * publishes it again (back to en_attente, Task a_valider again).
+ */
+export interface ReviewFields {
+  title: string;
+  /**
+   * Markdown, shared whole. Images are `![](/uploads/<name>)` (upload them
+   * first); a Loom share URL alone on a line becomes an embedded player.
+   */
+  body: string;
+  /** App id of the Project the Review is about. */
+  project_id: string;
+  /** App id of the Task it asks to validate, or null. */
+  task_id: string | null;
+}
+
+/** Review answer codes; the app shows them as En attente, Validé, À reprendre. */
+export const REVIEW_ANSWERS = ["en_attente", "valide", "a_reprendre"] as const;
+export type ReviewAnswer = (typeof REVIEW_ANSWERS)[number];
+
+/**
+ * Payload of `review.answered` (the item is the Review): the Client's answer
+ * and the Task it settles. `valide` makes the Task termine (vault: `#done
+ * <date>`), `a_reprendre` makes it en_cours P0 (vault: `p0`); the app emits
+ * those Task changes as `item.updated` events carrying `review: <review id>`.
+ */
+export interface ReviewAnsweredPayload {
+  answer: Exclude<ReviewAnswer, "en_attente">;
+  task_id: string | null;
+}
+
 /** One vault change in a Push. Items are addressed by the id the app gave them at creation. */
 export type PushChange =
   | { op: "create"; kind: "project"; fields: ProjectFields }
@@ -69,7 +103,10 @@ export type PushChange =
   | { op: "archive"; kind: "project"; id: string }
   | { op: "create"; kind: "task"; fields: TaskFields }
   | { op: "update"; kind: "task"; id: string; fields: Partial<TaskFields> }
-  | { op: "archive"; kind: "task"; id: string };
+  | { op: "archive"; kind: "task"; id: string }
+  | { op: "create"; kind: "review"; fields: ReviewFields }
+  | { op: "update"; kind: "review"; id: string; fields: Partial<ReviewFields> }
+  | { op: "archive"; kind: "review"; id: string };
 
 /** `POST /api/push` body. */
 export interface PushRequest {
@@ -204,8 +241,12 @@ export interface InboxNotification {
   /** ISO date-time. */
   at: string;
   actor_email: string;
-  /** `comment.created`: a new comment; `item.updated`: a Client priority change (`from` → `to`). */
-  type: "comment.created" | "item.updated";
+  /**
+   * `comment.created`: a new comment; `item.updated`: a Client priority change (`from` → `to`);
+   * `review.answered`: the Client answered a Review (`answer`). The Task changes an answer causes
+   * are not Notifications of their own.
+   */
+  type: "comment.created" | "item.updated" | "review.answered";
   /** The Project, Task or Review concerned (for a comment, the one it's on). */
   item_id: string;
   item_kind: "project" | "task" | "review";
@@ -217,6 +258,8 @@ export interface InboxNotification {
   field?: string;
   from?: unknown;
   to?: unknown;
+  /** `review.answered`: the answer given. */
+  answer?: ReviewAnsweredPayload["answer"];
 }
 
 /**
