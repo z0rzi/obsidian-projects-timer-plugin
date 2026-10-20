@@ -7,6 +7,7 @@ export const INBOX_EVENT_TYPES: EventType[] = [
 	"item.updated",
 	"ticket.created",
 	"idea.launched",
+	"review.answered",
 ];
 
 /**

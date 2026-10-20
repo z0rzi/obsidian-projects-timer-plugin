@@ -6,7 +6,7 @@ import type { PullConflict } from "../sync/pullPriority";
 export interface InboxEntry {
 	/** Stable across reloads: `e<event id>` or `c<conflict key>`. */
 	key: string;
-	kind: "comment" | "priority" | "conflict" | "ticket";
+	kind: "comment" | "priority" | "conflict" | "ticket" | "answer";
 	/** What opening the entry goes to. */
 	item: { kind: "project" | "task" | "review"; id: string; title: string };
 	title: string;
@@ -53,6 +53,11 @@ function notificationEntry(n: InboxNotification): InboxEntry {
 	const base = { key: `e${n.id}`, item, by: n.actor_email, at: n.at, eventIds: [n.id] };
 	if (n.type === "comment.created") {
 		return { ...base, kind: "comment", title: `Comment on ${n.item_title}`, detail: n.body ?? "" };
+	}
+	if (n.type === "review.answered") {
+		const answer = n.answer === "valide" ? "Validé" : "À reprendre";
+		const task = n.answer === "valide" ? "its Task is done" : "its Task is back to P0";
+		return { ...base, kind: "answer", title: `Review ${n.item_title}: ${answer}`, detail: task };
 	}
 	return { ...base, kind: "priority", title: `Priority of ${n.item_title}`, detail: `${p(n.from)} → ${p(n.to)}` };
 }

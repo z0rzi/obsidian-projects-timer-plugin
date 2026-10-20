@@ -149,6 +149,23 @@ describe("HTTP remote, inbox", () => {
 			body: JSON.stringify({ ids: [4, 7] }),
 		});
 	});
+
+	it("uploads an image as multipart field `file` and returns its URL", async () => {
+		const { sent, transport } = fakeTransport(200, { url: "/uploads/abc.png" });
+		const png = new Uint8Array([137, 80, 78, 71]).buffer;
+		expect(await remoteWith(transport).upload(png, "capture 1.png")).toBe("/uploads/abc.png");
+		const req = sent[0]!;
+		expect(req).toMatchObject({ url: "https://suivi.test/api/uploads", method: "POST" });
+		const type = req.headers["Content-Type"]!;
+		const boundary = type.match(/^multipart\/form-data; boundary=(.+)$/)?.[1];
+		expect(boundary).toBeTruthy();
+		// Parse it back as a server would.
+		const form = await new Response(req.body as ArrayBuffer, { headers: { "content-type": type } }).formData();
+		const file = form.get("file") as File;
+		expect(file.name).toBe("capture 1.png");
+		expect(file.type).toBe("image/png");
+		expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+	});
 });
 
 describe("HTTP remote, triage", () => {

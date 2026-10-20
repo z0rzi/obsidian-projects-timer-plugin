@@ -5,6 +5,8 @@ import type { Comment } from "../remote/api";
 
 export const COMMENT_PANEL_VIEW_TYPE = "suivi-comments-view";
 
+const KIND_LABELS = { task: "Task", project: "Project", review: "Review" } as const;
+
 const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" });
 
 /**
@@ -89,7 +91,7 @@ export class CommentPanelView extends ItemView {
 				cls: "suivi-comments-empty",
 			});
 		} else {
-			const title = this.headerEl.createEl("h4", { text: `${target.kind === "task" ? "Task" : "Project"}: ${target.title}` });
+			const title = this.headerEl.createEl("h4", { text: `${KIND_LABELS[target.kind]}: ${target.title}` });
 			const reload = title.createEl("button", { cls: "clickable-icon", attr: { "aria-label": "Reload" } });
 			setIcon(reload, "refresh-cw");
 			reload.onclick = () => void this.session.reload();

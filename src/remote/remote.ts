@@ -9,6 +9,7 @@ import type {
 	PushChange,
 	PushResponse,
 	PushResult,
+	UploadResponse,
 	TriageRequest,
 	TriageResponse,
 } from "./api";
@@ -32,6 +33,8 @@ export interface Remote {
 	inbox(): Promise<InboxResponse>;
 	/** Marks the events of Inbox entries read. */
 	markRead(eventIds: number[]): Promise<void>;
+	/** Uploads an image (PNG, JPEG, GIF, WebP); returns its path in the app (`/uploads/<name>`). */
+	upload(data: ArrayBuffer, name: string): Promise<string>;
 	/** Turns an item À trier into a Task; returns its shared fields as the app now has them. */
 	triage(itemId: string, as: TriageRequest): Promise<TriageResponse>;
 }
@@ -55,7 +58,7 @@ export interface TransportRequest {
 	url: string;
 	method: HttpMethod;
 	headers: Record<string, string>;
-	body?: string;
+	body?: string | ArrayBuffer;
 }
 
 /** Sends one HTTP request. `json` is the parsed body, or null if it isn't JSON. */
@@ -70,7 +73,7 @@ export interface RemoteConfig {
 
 /** The `edf-suivi` HTTP API. */
 export function createHttpRemote(config: RemoteConfig, transport: Transport): Remote {
-	async function call<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+	async function call<T>(method: HttpMethod, path: string, body?: unknown, raw?: Multipart): Promise<T> {
 		const base = config.url.trim().replace(/\/+$/, "");
 		const token = config.token.trim();
 		if (!base || !token) {
@@ -81,8 +84,8 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 			res = await transport({
 				url: `${base}/api${path}`,
 				method,
-				headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-				body: body === undefined ? undefined : JSON.stringify(body),
+				headers: { Authorization: `Bearer ${token}`, "Content-Type": raw?.contentType ?? "application/json" },
+				body: raw ? raw.body : body === undefined ? undefined : JSON.stringify(body),
 			});
 		} catch (e) {
 			throw new RemoteError("network", `Suivi unreachable at ${base}: ${(e as Error).message}`);
@@ -124,8 +127,41 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		async markRead(ids) {
 			await call<MarkReadResponse>("POST", "/events/read", { ids });
 		},
+		async upload(data, name) {
+			return (await call<UploadResponse>("POST", "/uploads", undefined, multipart(data, name))).url;
+		},
 		async triage(itemId, as) {
 			return call<TriageResponse>("POST", `/items/${encodeURIComponent(itemId)}/triage`, as);
 		},
 	};
+}
+
+interface Multipart {
+	contentType: string;
+	body: ArrayBuffer;
+}
+
+const MIME: Record<string, string> = {
+	png: "image/png",
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	gif: "image/gif",
+	webp: "image/webp",
+};
+
+/** A `multipart/form-data` body with one field `file` (built by hand: `requestUrl` takes no FormData). */
+function multipart(data: ArrayBuffer, name: string): Multipart {
+	const boundary = `----suivi${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+	const type = MIME[name.slice(name.lastIndexOf(".") + 1).toLowerCase()] ?? "application/octet-stream";
+	const safeName = name.replace(/["\r\n\\]/g, "_");
+	const enc = new TextEncoder();
+	const head = enc.encode(
+		`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${safeName}"\r\nContent-Type: ${type}\r\n\r\n`,
+	);
+	const tail = enc.encode(`\r\n--${boundary}--\r\n`);
+	const body = new Uint8Array(head.length + data.byteLength + tail.length);
+	body.set(head, 0);
+	body.set(new Uint8Array(data), head.length);
+	body.set(tail, head.length + data.byteLength);
+	return { contentType: `multipart/form-data; boundary=${boundary}`, body: body.buffer };
 }

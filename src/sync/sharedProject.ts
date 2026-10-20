@@ -66,7 +66,7 @@ export function readSharedProject(path: string, content: string): ReadResult | n
 }
 
 /** Raw `key: value` strings of the frontmatter (quotes stripped, no type coercion). */
-function readFrontmatter(lines: string[]): Record<string, string> & { end: number } {
+export function readFrontmatter(lines: string[]): Record<string, string> & { end: number } {
 	const out: Record<string, string> = {};
 	if (lines[0]?.trim() !== "---") return Object.assign(out, { end: 0 });
 	let i = 1;

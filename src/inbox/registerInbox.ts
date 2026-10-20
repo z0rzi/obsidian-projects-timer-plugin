@@ -49,8 +49,10 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	async function open(entry: InboxEntry) {
 		const at = await itemLocation(data.sync, vaultFiles(plugin), entry.item);
 		if (at) await openLine(at.path, at.line);
-		else if (entry.kind !== "comment" && entry.kind !== "ticket") new Notice(`${entry.item.title} is not in this vault.`);
-		if ((entry.kind === "comment" || entry.kind === "ticket") && entry.item.kind !== "review") {
+		else if (entry.kind !== "comment" && entry.kind !== "ticket" && entry.kind !== "answer") {
+			new Notice(`${entry.item.title} is not in this vault.`);
+		}
+		if (entry.kind === "comment" || entry.kind === "ticket" || entry.kind === "answer") {
 			await deps.openThread({ kind: entry.item.kind, id: entry.item.id, title: entry.item.title });
 		}
 	}

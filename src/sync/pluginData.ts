@@ -1,6 +1,7 @@
 import type { PullConflict } from "./pullPriority";
 import type { PushedProjects } from "./pushPlan";
 import type { PushedTasks } from "./taskPlan";
+import type { PushedReviews } from "./reviewPlan";
 
 /** What the plugin remembers about the Client app between sessions (one machine only). */
 export interface SyncState {
@@ -8,6 +9,8 @@ export interface SyncState {
 	pushedProjects: PushedProjects;
 	/** Same for Tasks, by app id (= block ID). */
 	pushedTasks: PushedTasks;
+	/** Same for Reviews, by app id (= `suivi_id:` of the note); unset until one is pushed. */
+	pushedReviews?: PushedReviews;
 	/**
 	 * Done lines without a date (`[x]` steps, undated `#done`) that were left
 	 * out of the first Push, as `path\nline`. Unset until a first Push applied.

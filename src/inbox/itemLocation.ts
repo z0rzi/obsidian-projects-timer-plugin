@@ -16,7 +16,10 @@ export async function itemLocation(
 		const pushed = sync.pushedProjects[item.id];
 		return pushed ? { path: pushed.path, line: 0 } : null;
 	}
-	if (item.kind !== "task") return null;
+	if (item.kind === "review") {
+		const pushed = sync.pushedReviews?.[item.id];
+		return pushed ? { path: pushed.path, line: 0 } : null;
+	}
 	const pushed = sync.pushedTasks[item.id];
 	if (!pushed) return null;
 	const content = await files.read(pushed.path);

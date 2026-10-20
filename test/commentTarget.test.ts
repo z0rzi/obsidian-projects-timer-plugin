@@ -54,4 +54,11 @@ describe("comment target under the cursor", () => {
 		expect(at(0, "---\nprive: true\nsuivi_id: p2xyz\n---\n")).toBeNull();
 		expect(at(0, "#task p1 Secret #private ^t2bbb\n", "notes.md")).toBeNull();
 	});
+
+	it("is the pushed Review anywhere in a Review note", () => {
+		const note = "---\nproject: Widget\nsuivi_id: r1abc\n---\nTexte\n#task p1 Pas une tâche ici ^t9zzz\n";
+		const path = "2.projects/reviews/Démo.md";
+		expect(commentTargetAt(path, note, 5, "2.projects/reviews")).toEqual({ kind: "review", id: "r1abc", title: "Démo" });
+		expect(commentTargetAt(path, "---\nproject: Widget\n---\n", 0, "2.projects/reviews")).toBeNull();
+	});
 });
