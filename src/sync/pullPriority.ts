@@ -28,6 +28,11 @@ export interface PullConflict {
 	answer?: ItemAnswer;
 }
 
+/** The Answer behind a `status` conflict: older data has none, and meant Validé. */
+export function conflictAnswer(c: { answer?: ItemAnswer }): ItemAnswer {
+	return c.answer ?? "valide";
+}
+
 export const conflictKey = (id: string, field: string) => `${id}:${field}`;
 
 /** `item.updated`: dispatches on the field; only priority comes from the Client today. */

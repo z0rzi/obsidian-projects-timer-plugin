@@ -65,7 +65,8 @@ function fileName(title: string): string {
 		.replace(/^\.+/, "");
 }
 
-const STATUS_WORDS: Record<ProjectStatus, string> = {
+/** A Project status as the vault and the Push modal write it. */
+export const STATUS_WORDS: Record<ProjectStatus, string> = {
 	a_faire: "À faire",
 	en_cours: "En cours",
 	en_pause: "En pause",

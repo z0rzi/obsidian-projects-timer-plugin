@@ -27,6 +27,15 @@ export interface SyncState {
 	appImages?: Record<string, { url: string; bytes: number }>;
 }
 
+/** The last-pushed snapshot of the Project or Task `id`. */
+export function pushedItem(
+	sync: SyncState,
+	kind: "project" | "task",
+	id: string,
+): PushedProjects[string] | PushedTasks[string] | undefined {
+	return kind === "project" ? sync.pushedProjects[id] : sync.pushedTasks[id];
+}
+
 const emptySync = (): SyncState => ({ pushedProjects: {}, pushedTasks: {} });
 
 /** The keys a SyncState has; anything else in data.json (state of removed features) is dropped on load. */

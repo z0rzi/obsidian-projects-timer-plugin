@@ -2,8 +2,9 @@ import type { LineRef } from "../lineWriter";
 import type { ProjectStatus, PushChange, PushedTaskStatus, PushResult } from "../remote/api";
 import { recordAnswer, type AnswerWrite } from "./pullAnswer";
 import { RemoteError, type Remote } from "../remote/remote";
-import type { SyncState } from "./pluginData";
+import { pushedItem, type SyncState } from "./pluginData";
 import type { PendingConflict } from "./conflicts";
+import { conflictAnswer } from "./pullPriority";
 import type { PendingChange, PendingProjectChange } from "./pushPlan";
 import type { PendingTaskChange } from "./taskPlan";
 
@@ -71,11 +72,11 @@ export async function runPush(selected: PendingChange[], deps: PushDeps): Promis
 async function settleConflicts(selected: PendingConflict[], deps: PushDeps, outcome: PushOutcome) {
 	if (selected.length === 0) return;
 	const settled = (c: PendingConflict, choice: "mine" | "theirs") => {
-		const pushed = c.kind === "project" ? deps.sync.pushedProjects[c.id] : deps.sync.pushedTasks[c.id];
+		const pushed = pushedItem(deps.sync, c.kind, c.id);
 		const task = c.kind === "task" ? deps.sync.pushedTasks[c.id] : undefined;
 		const project = c.kind === "project" ? deps.sync.pushedProjects[c.id] : undefined;
 		if (c.field === "status" && choice === "theirs") {
-			recordAnswer(deps.sync, { kind: c.kind, id: c.id, answer: c.answer ?? "valide", doneOn: c.doneOn ?? null });
+			recordAnswer(deps.sync, { kind: c.kind, id: c.id, answer: conflictAnswer(c), doneOn: c.doneOn ?? null });
 		} else if (c.field === "status" && task) {
 			const { done_on: _old, ...rest } = task.fields;
 			task.fields = { ...rest, status: c.localStatus as PushedTaskStatus, priority: c.localValue };
@@ -102,7 +103,7 @@ async function settleConflicts(selected: PendingConflict[], deps: PushDeps, outc
 		try {
 			if (c.field === "status") {
 				if (!deps.writeAnswer) throw new Error("no vault writer");
-				const answer = c.answer ?? "valide";
+				const answer = conflictAnswer(c);
 				await deps.writeAnswer({ kind: c.kind, id: c.id, path: c.path, answer, doneOn: c.doneOn ?? null });
 			} else {
 				if (!deps.writePriority) throw new Error("no vault writer");

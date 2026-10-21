@@ -1,8 +1,9 @@
 import type { ItemAnswer, ProjectStatus, PushChange, PushedTaskStatus } from "../remote/api";
 import { holdsAnswer, recordAnswer } from "./pullAnswer";
-import type { SyncState } from "./pluginData";
+import { STATUS_WORDS } from "../inbox/newProject";
+import { pushedItem, type SyncState } from "./pluginData";
 import type { PendingChange } from "./pushPlan";
-import { conflictKey, type PullConflict } from "./pullPriority";
+import { conflictAnswer, conflictKey, type PullConflict } from "./pullPriority";
 import type { SharedProject } from "./sharedProject";
 import type { LocalTask } from "./sharedTask";
 
@@ -62,12 +63,12 @@ export function settleConflicts(sync: SyncState, projects: SharedProject[], task
 		const now = local.get(c.id);
 		if (!now) continue;
 		if (c.field === "status") {
-			const answer = c.answer ?? "valide";
+			const answer = conflictAnswer(c);
 			if (!holdsAnswer(c.kind, answer, now)) continue;
 			recordAnswer(sync, { kind: c.kind, id: c.id, answer, doneOn: c.doneOn ?? null });
 		} else {
 			if (now.priority !== c.remote) continue;
-			const pushed = c.kind === "project" ? sync.pushedProjects[c.id] : sync.pushedTasks[c.id];
+			const pushed = pushedItem(sync, c.kind, c.id);
 			if (pushed && c.remote !== null) pushed.fields.priority = c.remote;
 		}
 		delete sync.conflicts[key];
@@ -95,7 +96,7 @@ export function withConflicts(
 
 	for (const c of conflicts) {
 		const now = local.get(c.id);
-		const pushed = c.kind === "project" ? sync.pushedProjects[c.id] : sync.pushedTasks[c.id];
+		const pushed = pushedItem(sync, c.kind, c.id);
 		if (!now || !pushed) continue;
 		const fields = held.get(c.id) ?? new Set<string>();
 		for (const f of c.kind === "project" ? [c.field] : HELD[c.field]) fields.add(f);
@@ -110,8 +111,8 @@ export function withConflicts(
 			field: c.field,
 			path: now.path,
 			title: now.title,
-			local: projectStatus ? PROJECT_STATUS_LABELS[now.status as ProjectStatus] : label(now.priority, now.status),
-			remote: status ? answerLabel(c.kind, c.answer ?? "valide") : label(c.remote),
+			local: projectStatus ? STATUS_WORDS[now.status as ProjectStatus] : label(now.priority, now.status),
+			remote: status ? answerLabel(c.kind, conflictAnswer(c)) : label(c.remote),
 			localValue: now.priority,
 			remoteValue: c.remote,
 			...(status ? { localStatus: now.status, doneOn: c.doneOn ?? null } : {}),
@@ -125,7 +126,7 @@ export function withConflicts(
 	const kept = pending.flatMap((p): PendingChange[] => {
 		const fields = p.group === "changed" ? held.get(p.id) : undefined;
 		if (p.group !== "changed" || !fields) return [p];
-		const pushed = p.change.kind === "project" ? sync.pushedProjects[p.id] : sync.pushedTasks[p.id];
+		const pushed = pushedItem(sync, p.change.kind, p.id);
 		const base = pushed!.fields as unknown as Loose;
 		const sent = { ...((p.change as { fields?: Loose }).fields ?? {}) };
 		// The snapshot recorded if this change is pushed keeps the held fields at their last-pushed value.
@@ -153,14 +154,6 @@ function mineChange(c: PullConflict, now: Local): PendingConflict["change"] {
 	}
 	return { op: "update", kind: "task", id: c.id, fields: { priority: now.priority } };
 }
-
-const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-	a_faire: "À faire",
-	en_cours: "En cours",
-	en_pause: "En pause",
-	a_valider: "À valider",
-	termine: "Terminé",
-};
 
 /** Suivi's side of a `status` conflict: where the Answer puts the item. */
 function answerLabel(kind: PullConflict["kind"], answer: ItemAnswer): string {
