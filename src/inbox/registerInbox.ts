@@ -140,7 +140,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		(leaf: WorkspaceLeaf) => new InboxView(leaf, store, subscribe, (e) => void open(e), triage, newProject),
 	);
 
-	const openInbox = () => void openView(app, INBOX_VIEW_TYPE, "Suivi inbox", { active: true });
+	const openInbox = () => void openView(app, INBOX_VIEW_TYPE, "Suivi inbox", { active: true }, InboxView);
 	plugin.addCommand({ id: "open-suivi-inbox", name: "Open Suivi inbox", callback: openInbox });
 	plugin.addRibbonIcon("inbox", "Open Suivi inbox", openInbox);
 

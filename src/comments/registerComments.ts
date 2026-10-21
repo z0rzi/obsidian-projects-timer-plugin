@@ -45,7 +45,8 @@ export function registerComments(plugin: Plugin, data: PluginData<ProjectsTimerS
 	plugin.registerEvent(app.workspace.on("active-leaf-change", () => void followCursor()));
 
 	async function openPanel() {
-		if (!(await openView(app, COMMENT_PANEL_VIEW_TYPE, "Suivi comments panel", { active: false }))) return;
+		const leaf = await openView(app, COMMENT_PANEL_VIEW_TYPE, "Suivi comments panel", { active: false }, CommentPanelView);
+		if (!leaf) return;
 		last = "";
 		void followCursor();
 	}
