@@ -4,6 +4,8 @@ import { placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
 import type { InboxTicket, TaskFields, TriageRequest } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
 import type { SyncState } from "../src/sync/pluginData";
+import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
+import { planTaskPush } from "../src/sync/taskPlan";
 
 const ticket = (id = "t7f3a", type: InboxTicket["type"] = "bug"): InboxTicket => ({
 	id,
@@ -63,9 +65,13 @@ describe("placeLine", () => {
 		expect(placeLine(["intro", "suite"], 0, "#bug p2 X").text).toBe("\n#bug p2 X\n");
 		expect(placeLine(["", "suite"], 0, "#bug p2 X").text).toBe("#bug p2 X\n");
 	});
+
+	it("keeps that blank line after the body too", () => {
+		expect(placeLine(["intro", "suite"], 0, "#bug p2 X\n\tcorps").text).toBe("\n#bug p2 X\n\tcorps\n");
+	});
 });
 
-function deps(overrides: Partial<TriageDeps> = {}) {
+function deps(overrides: Partial<TriageDeps> = {}, description = "Rien ne s'affiche") {
 	const sent: [string, TriageRequest][] = [];
 	const inserted: string[] = [];
 	const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
@@ -77,11 +83,11 @@ function deps(overrides: Partial<TriageDeps> = {}) {
 				const fields: TaskFields = {
 					title: "Heatmap vide",
 					type: as.type,
-					step: false,
+					step: as.step,
 					status: as.priority === 0 ? "en_cours" : "a_faire",
 					priority: as.priority,
 					project_id: as.project_id,
-					description: "Rien ne s'affiche",
+					description,
 				};
 				return { id, as: "task", fields };
 			},
@@ -90,7 +96,7 @@ function deps(overrides: Partial<TriageDeps> = {}) {
 		save: async () => {
 			saved++;
 		},
-		target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc" }),
+		target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step: false }),
 		insert: (line) => inserted.push(line),
 		...overrides,
 	};
@@ -104,7 +110,7 @@ describe("runTriage (Insérer ici)", () => {
 
 		expect(result).toEqual({ ok: true, line: "#bug p2 Heatmap vide ^t7f3a" });
 		expect(sent).toEqual([["t7f3a", { as: "task", type: "bug", step: false, priority: 2, project_id: "p1abc" }]]);
-		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a"]);
+		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche"]);
 		expect(sync.pushedTasks.t7f3a).toEqual({
 			path: "2.projects/Widget.md",
 			fields: { title: "Heatmap vide", type: "bug", step: false, status: "a_faire", priority: 2, project_id: "p1abc", description: "Rien ne s'affiche" },
@@ -112,8 +118,22 @@ describe("runTriage (Insérer ici)", () => {
 		expect(saved()).toBe(1);
 	});
 
+	it("writes the Description under the line, one tab in, blank lines kept empty", async () => {
+		const { d, inserted, sync } = deps({}, "Rien ne s'affiche\r\n\r\n  - sur Chrome\n![](/uploads/u1.png)\n\n");
+		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
+		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n\t  - sur Chrome\n\t![](/uploads/u1.png)"]);
+		expect(sync.pushedTasks.t7f3a!.fields.description).toBe("Rien ne s'affiche\n\n  - sur Chrome\n![](/uploads/u1.png)");
+	});
+
+	it("writes only the line for an empty Description", async () => {
+		const { d, inserted, sync } = deps({}, "");
+		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
+		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a"]);
+		expect(sync.pushedTasks.t7f3a!.fields.description).toBe("");
+	});
+
 	it("keeps the title on one line", async () => {
-		const { d, inserted } = deps();
+		const { d, inserted } = deps({}, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap\n  vide " }, { type: "task", priority: 0 }, d);
 		expect(inserted).toEqual(["#task p0 Heatmap vide ^t7f3a"]);
 	});
@@ -138,5 +158,59 @@ describe("runTriage (Insérer ici)", () => {
 		expect(result).toEqual({ ok: false, error: "Suivi error (HTTP 409): Pas à trier : t7f3a" });
 		expect(inserted).toEqual([]);
 		expect(sync.pushedTasks).toEqual({});
+	});
+
+	it("writes a Project step in a Project note's Tasks section, sent with step: true", async () => {
+		const { d, sent, inserted, sync } = deps({ target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step: true }) });
+		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
+		expect(result).toEqual({ ok: true, line: "- [ ] #bug p2 Heatmap vide ^t7f3a" });
+		expect(sent).toEqual([["t7f3a", { as: "task", type: "bug", step: true, priority: 2, project_id: "p1abc" }]]);
+		expect(inserted).toEqual(["- [ ] #bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche"]);
+		expect(sync.pushedTasks.t7f3a!.fields).toMatchObject({ step: true, description: "Rien ne s'affiche" });
+	});
+
+	it("writes no token for a step that inherits the Project's priority", async () => {
+		const { d, sent, inserted } = deps({ target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step: true }) }, "");
+		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "task", priority: null }, d);
+		expect(sent).toEqual([["t7f3a", { as: "task", type: "task", step: true, priority: null, project_id: "p1abc" }]]);
+		expect(inserted).toEqual(["- [ ] #task Heatmap vide ^t7f3a"]);
+	});
+});
+
+describe("Triage then Push", () => {
+	const description = "Rien ne s'affiche\n\n  - sur Chrome\n![](/uploads/u1.png)\n";
+	const links = { "2.projects/Widget.md": { id: "p1abc", title: "Widget" } };
+
+	/** Runs the Triage into `note` at `cursor`, returns the note as written. */
+	async function triageInto(note: string[], cursor: number, step: boolean, priority: number | null) {
+		let content = note.join("\n");
+		const { d, sync } = deps(
+			{
+				target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step }),
+				insert: (text) => {
+					const at = placeLine(note, cursor, text);
+					const lines = [...note];
+					lines[cursor] = lines[cursor]!.slice(0, at.from.ch) + at.text + lines[cursor]!.slice(at.to.ch);
+					content = lines.join("\n");
+				},
+			},
+			description,
+		);
+		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority }, d);
+		return { content, sync };
+	}
+
+	it("leaves nothing to push for a Tag task", async () => {
+		const { content, sync } = await triageInto(["# Réunion", "", "Suite"], 0, false, 2);
+		const local = readTagTasks("2.projects/Widget.md", content, "2.projects/Widget.md");
+		expect(local).toHaveLength(1);
+		expect(planTaskPush(local, links, sync.pushedTasks, { now: new Date() }).changes).toEqual([]);
+	});
+
+	it("leaves nothing to push for a step that inherits", async () => {
+		const { content, sync } = await triageInto(["## Tasks", "- [ ] Étape ^s1", "## Notes"], 1, true, null);
+		const local = readProjectSteps("2.projects/Widget.md", content).filter((t) => t.blockId === "t7f3a");
+		expect(local).toHaveLength(1);
+		expect(planTaskPush(local, links, sync.pushedTasks, { now: new Date() }).changes).toEqual([]);
 	});
 });

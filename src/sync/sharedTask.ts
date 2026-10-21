@@ -42,7 +42,7 @@ function fromToken(token: StatusToken | null): Pick<LocalTask, "status" | "prior
 }
 
 /** The body as shared: the first line's indentation (tab or spaces) removed from every line. */
-function deindent(body: string): string {
+export function deindent(body: string): string {
 	const indent = /^\s*/.exec(body)![0];
 	return body
 		.split("\n")
