@@ -40,10 +40,12 @@ export class InboxView extends ItemView {
 	}
 
 	async onOpen() {
+		this.contentEl.empty();
 		this.contentEl.addClass("suivi-inbox");
 		this.unsubscribe = this.subscribe((state) => this.render(state));
-		this.store.rebuild();
+		// Draw before rebuilding so the pane is never blank if the store's rebuild throws.
 		this.render(this.store.current);
+		this.store.rebuild();
 		if (this.store.current.status === "idle") void this.store.refresh();
 	}
 
@@ -52,9 +54,19 @@ export class InboxView extends ItemView {
 		this.unsubscribe = null;
 	}
 
+	/** Redraws the pane; a failure is written into it instead of leaving it blank. */
 	private render(state: InboxState) {
 		const root = this.contentEl;
 		root.empty();
+		try {
+			this.draw(root, state);
+		} catch (e) {
+			const message = e instanceof Error ? e.message : String(e);
+			root.createEl("p", { text: `Suivi inbox failed to render: ${message}`, cls: "mod-warning" });
+		}
+	}
+
+	private draw(root: HTMLElement, state: InboxState) {
 		const header = root.createDiv({ cls: "suivi-inbox-header" });
 		header.style.display = "flex";
 		header.style.gap = "4px";

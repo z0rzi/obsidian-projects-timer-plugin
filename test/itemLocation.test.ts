@@ -39,4 +39,8 @@ describe("item location", () => {
 		const gone = files({ "1.meetings/m.md": "#task p3 Fix heatmap\n" });
 		expect(await itemLocation(sync, gone, { kind: "task", id: "t7f3a" })).toBeNull();
 	});
+
+	it("is null for an entry without an item, instead of throwing", async () => {
+		expect(await itemLocation(sync, vault, undefined)).toBeNull();
+	});
 });

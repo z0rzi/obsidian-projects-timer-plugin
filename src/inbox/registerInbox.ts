@@ -33,6 +33,11 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	const store = new InboxStore(remote, () => data.sync.conflicts, emit);
 
 	async function open(entry: InboxEntry) {
+		// An entry the app sent without an item (or an older stored shape) must not break the panel.
+		if (!entry.item) {
+			new Notice(`${entry.title}: nothing to open.`);
+			return;
+		}
 		const at = await itemLocation(data.sync, vaultFiles(app), entry.item);
 		if (at) await openLine(at.path, at.line);
 		else if (entry.kind !== "comment" && entry.kind !== "ticket" && entry.kind !== "answer") {
