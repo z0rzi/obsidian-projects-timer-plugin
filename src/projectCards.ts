@@ -1,7 +1,7 @@
 import { TFile } from "obsidian";
 import { ProjectCard, ProjectCardItem } from "./types";
 import { splitBlockId } from "./blockId";
-import { readIndentedBody, readStatusToken } from "./taskParser";
+import { readIndentedBody, readStatusToken, readTypeTag } from "./taskParser";
 
 export function findTasksHeadingSection(
 	lines: string[],
@@ -45,12 +45,14 @@ export function extractCheckboxItems(
 		const match = line.match(checkboxPattern);
 		if (!match) continue;
 
-		const { token, rest } = readStatusToken(match[2]!.trim());
+		const tagged = readTypeTag(match[2]!.trim());
+		const { token, rest } = readStatusToken(tagged.rest);
 		const { text, blockId } = splitBlockId(rest);
 		items.push({
 			text,
 			line: i,
 			checked: match[1]!.toLowerCase() === "x",
+			type: tagged.type,
 			...(blockId ? { blockId } : {}),
 			...(token ? { override: token } : {}),
 			raw: line,

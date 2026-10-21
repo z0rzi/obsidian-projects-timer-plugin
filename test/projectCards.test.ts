@@ -7,8 +7,8 @@ describe("extractCheckboxItems", () => {
 		const lines = ["- [ ] Étape ^s1", "- [x] Sans id"];
 
 		expect(extractCheckboxItems(lines, 0, 2)).toEqual([
-			{ text: "Étape", line: 0, checked: false, blockId: "s1", raw: "- [ ] Étape ^s1", body: "" },
-			{ text: "Sans id", line: 1, checked: true, raw: "- [x] Sans id", body: "" },
+			{ text: "Étape", line: 0, checked: false, type: "task", blockId: "s1", raw: "- [ ] Étape ^s1", body: "" },
+			{ text: "Sans id", line: 1, checked: true, type: "task", raw: "- [x] Sans id", body: "" },
 		]);
 	});
 
@@ -24,6 +24,7 @@ describe("extractCheckboxItems", () => {
 			text: "fix the x axis",
 			line: 0,
 			checked: false,
+			type: "task",
 			blockId: "t91c2",
 			override: { priority: 1, status: "priority" },
 			raw: "- [ ] p1 fix the x axis ^t91c2",
@@ -39,6 +40,22 @@ describe("extractCheckboxItems", () => {
 			{ priority: 1, status: "review" },
 		]);
 		expect(items.map((i) => i.text)).toEqual(["En cours", "Export CSV"]);
+	});
+
+	it("reads a type tag right after the checkbox, then the token", () => {
+		const items = extractCheckboxItems(
+			["- [ ] #bug p2 Axe faux ^t1", "- [x] #quick Relire", "- [ ] #wait pr Retour JMJ", "- [ ] #task Écrire", "- [ ] #done Pas un type"],
+			0,
+			5,
+		);
+
+		expect(items.map((i) => [i.type, i.override?.priority ?? null, i.text])).toEqual([
+			["bug", 2, "Axe faux"],
+			["quick", null, "Relire"],
+			["wait", 1, "Retour JMJ"],
+			["task", null, "Écrire"],
+			["task", null, "#done Pas un type"],
+		]);
 	});
 
 	it.each(["P1 Titre", "p7 Titre", "pr1 Titre", "Étape2 du calcul"])(

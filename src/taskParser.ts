@@ -1,6 +1,6 @@
 import type { TFile } from "obsidian";
 import { splitBlockId } from "./blockId";
-import { Task, TaskStatus, TASKS_TYPES } from "./types";
+import { Task, TaskStatus, TaskTagLabel, TASKS_TYPES } from "./types";
 
 const DEFAULT_PRIORITY = 1;
 const PRIORITY_TOKEN = /^p([0-5])$/;
@@ -21,6 +21,20 @@ export function readStatusToken(text: string): { token: StatusToken | null; rest
 	if (match) return { token: { priority: +match[1]!, status: "priority" }, rest: others.join(" ") };
 	if (firstWord === REVIEW_TOKEN) return { token: { priority: DEFAULT_PRIORITY, status: "review" }, rest: others.join(" ") };
 	return { token: null, rest: text };
+}
+
+/** Regex source of a Project step's type tag: `#task`, `#bug`, `#quick` or `#wait`. */
+export const TYPE_TAG_SOURCE = `#(?:${TASKS_TYPES.map((t) => t.tag).join("|")})`;
+
+/**
+ * Type tag of a Project step = first word of `text` when it is `#task`,
+ * `#bug`, `#quick` or `#wait`. Returns the type ("task" if absent) and the
+ * text after it.
+ */
+export function readTypeTag(text: string): { type: TaskTagLabel; rest: string } {
+	const [firstWord = "", ...others] = text.split(" ");
+	const type = TASKS_TYPES.find((t) => firstWord === `#${t.tag}`)?.tag;
+	return type ? { type, rest: others.join(" ") } : { type: "task", rest: text };
 }
 
 /**

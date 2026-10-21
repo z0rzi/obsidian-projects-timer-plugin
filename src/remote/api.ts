@@ -30,12 +30,13 @@ export interface ProjectFields {
 
 /**
  * Task type codes; the app shows them as Tâche, Bug, Tâche rapide, En attente,
- * Étape de projet, Amélioration, Idée. The last two only come from the Client.
+ * Amélioration, Idée. The last two only come from the Client. A Project step
+ * is not a type but the `step` flag: a step has a type like any Task.
  */
-export const TASK_TYPES = ["task", "bug", "quick", "wait", "step", "amelioration", "idea"] as const;
+export const TASK_TYPES = ["task", "bug", "quick", "wait", "amelioration", "idea"] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
-/** Types a Push may set: the vault's tags (`#task`, `#bug`, `#quick`, `#wait`) and Project steps. */
-export const PUSHED_TASK_TYPES = ["task", "bug", "quick", "wait", "step"] as const;
+/** Types a Push may set: the vault's tags (`#task`, `#bug`, `#quick`, `#wait`); no tag = `task`. */
+export const PUSHED_TASK_TYPES = ["task", "bug", "quick", "wait"] as const;
 export type PushedTaskType = (typeof PUSHED_TASK_TYPES)[number];
 
 /** Task status codes; the app shows them as À trier, À faire, En cours, À valider, Terminé. */
@@ -65,6 +66,8 @@ export interface TaskFields {
   project_id: string | null;
   /** `YYYY-MM-DD` the Task was done (`#done <date>`); null or absent = the Push date when it becomes termine. */
   done_on?: string | null;
+  /** A Project step (a line of the Project's steps list); false for a Tag task. A line moved between the two changes it. */
+  step: boolean;
 }
 
 /**
@@ -203,6 +206,12 @@ export interface Comment {
   author_role: "client" | "developer";
   /** Markdown. Uploaded images are `![](/uploads/<name>)`, relative to the app URL. */
   body: string;
+  /**
+   * Handles of the users the body mentions (`@jmj` → "jmj"), in writing
+   * order; an `@` naming nobody is not listed. The body stays raw: highlight
+   * these when rendering.
+   */
+  mentions: string[];
   /** ISO date-times. `edited_at` is set once edited (shown "modifié"). */
   created_at: string;
   edited_at: string | null;
@@ -302,10 +311,58 @@ export interface InboxResponse {
   to_triage: InboxTicket[];
 }
 
-/** `POST /api/events/read` body: events to mark read for the caller (unknown ids are ignored). */
-export interface MarkReadRequest {
-  ids: number[];
+/**
+ * One entry of the Activity feed: an event of the log enriched for display.
+ * The Developer's Push events collapse to one entry per Push (`push`); the
+ * events a Push wrote are not entries.
+ */
+export interface ActivityEntry {
+  /** Id of the event; send it to `POST /api/events/read`. */
+  id: number;
+  /** ISO date-time. */
+  at: string;
+  actor: {
+    email: string;
+    /** The `@handle` of the user, null while none is set. */
+    handle: string | null;
+    role: "client" | "developer";
+  };
+  origin: EventOrigin;
+  type: EventType;
+  /** French, e.g. "Commentaire", "Priorité : P3 → P1", "Push : 12 changements". */
+  label: string;
+  /** The Project, Task or Review concerned (for a comment, the one it's on); absent once archived. */
+  item?: { kind: "project" | "task" | "review"; id: string; title: string };
+  /** Comment events: the comment; `body` absent once deleted. `mentions`: handles of the users mentioned (see `Comment`). */
+  comment?: { id: string; body?: string; mentions: string[] };
+  /** `item.updated`: the field changed and its old and new values. */
+  field?: string;
+  from?: unknown;
+  to?: unknown;
+  /** `review.answered`: the answer given. */
+  answer?: ReviewAnsweredPayload["answer"];
+  /** `push.completed`: the Push's counts. */
+  push?: { applied: number; rejected: number };
+  /** An event by a Client the caller hasn't marked read; the caller's own events and Pushes never are. */
+  unread: boolean;
 }
+
+/**
+ * `GET /api/activity?before=<event id>&days=<n>` response: the entries older
+ * than `before` (absent = the newest), spanning `days` days (default 30) back
+ * from the newest of them, newest first. `next` is the `before` of the page
+ * after, null when there is nothing older.
+ */
+export interface ActivityResponse {
+  entries: ActivityEntry[];
+  next: number | null;
+}
+
+/**
+ * `POST /api/events/read` body: events to mark read for the caller, either
+ * listed (unknown ids are ignored) or every Client event up to `upto` included.
+ */
+export type MarkReadRequest = { ids: number[] } | { upto: number };
 
 /** `POST /api/events/read` response. */
 export interface MarkReadResponse {
@@ -320,17 +377,20 @@ export type TriageTaskType = (typeof TRIAGE_TASK_TYPES)[number];
  * `POST /api/items/:id/triage` body: what an item À trier becomes.
  * `as: "task"` (Bug and Amélioration Tickets): a Task of `type` with
  * `priority` (0 = En cours, 1–5 = À faire) in Project `project_id` (null =
- * standalone). `as: "project"` (launched Ideas, "Nouveau projet"): a Project
- * with `priority` (0 = En cours, 1–5 = À faire), title and description taken
- * from the Idea, which then shows lancée. Either way the item keeps its id,
- * description and comments. 404 for an unknown item, 409 for one not À trier
- * or not of that kind, 400 for a bad body.
+ * standalone), a Project step when `step` (then `priority` may be null =
+ * inherit the Project's, no token on the line). `as: "project"` (launched
+ * Ideas, "Nouveau projet"): a Project with `priority` (0 = En cours, 1–5 = À
+ * faire), title and description taken from the Idea, which then shows lancée.
+ * Either way the item keeps its id, description and comments. 404 for an
+ * unknown item, 409 for one not À trier or not of that kind, 400 for a bad
+ * body.
  */
 export type TriageRequest =
   | {
       as: "task";
       type: TriageTaskType;
-      priority: number;
+      step: boolean;
+      priority: number | null;
       project_id: string | null;
     }
   | {

@@ -33,6 +33,8 @@ export type ProjectCardItem = {
 	text: string;
 	line: number;
 	checked: boolean;
+	/** Type tag right after the checkbox (`- [ ] #bug p2 …`); "task" without one. */
+	type: TaskTagLabel;
 	blockId?: string;
 	/** Status token carried by the step itself, replacing the Project's priority. */
 	override?: { priority: number; status: TaskStatus };
