@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, setIcon, type WorkspaceLeaf } from "obsidian";
+import { Component, ItemView, MarkdownRenderer, setIcon, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
 import type { ThreadSession, ThreadState } from "../comments/threadSession";
@@ -22,6 +22,8 @@ export class CommentPanelView extends ItemView {
 	private replyEl!: HTMLElement;
 	private replyInput!: HTMLTextAreaElement;
 	private unsubscribe: (() => void) | null = null;
+	/** Owner of the rendered Markdown of the current list, unloaded on the next render and on close. */
+	private renderScope: Component | null = null;
 	/** Id of the item the reply draft was typed for. */
 	private draftFor: string | null = null;
 	/** Uploaded images shown in the thread, fetched with the token while the panel is open. */
@@ -80,7 +82,13 @@ export class CommentPanelView extends ItemView {
 	async onClose() {
 		this.unsubscribe?.();
 		this.unsubscribe = null;
+		this.releaseRenderScope();
 		this.images.clear();
+	}
+
+	private releaseRenderScope() {
+		if (this.renderScope) this.removeChild(this.renderScope);
+		this.renderScope = null;
 	}
 
 	private render(state: ThreadState) {
@@ -107,6 +115,8 @@ export class CommentPanelView extends ItemView {
 		this.errorEl.toggle(!!state.error);
 
 		this.listEl.empty();
+		this.releaseRenderScope();
+		this.renderScope = this.addChild(new Component());
 		if (state.status === "loading") this.listEl.createEl("p", { text: "Loading…" });
 		if (state.status === "ready" && state.comments.length === 0) this.listEl.createEl("p", { text: "No comments yet." });
 		for (const comment of state.comments) this.renderComment(comment);
@@ -120,9 +130,10 @@ export class CommentPanelView extends ItemView {
 		meta.createEl("strong", { text: c.mine ? "You" : c.author_email });
 		meta.createSpan({ text: ` · ${DATE.format(new Date(c.created_at))}${c.edited_at ? " · modifié" : ""}` });
 		const body = el.createDiv({ cls: "suivi-comment-body" });
+		const scope = this.renderScope ?? this;
 		const show = (images?: Map<string, string>) => {
 			body.empty();
-			void MarkdownRenderer.render(this.app, withAppUrls(highlightMentions(c.body, c.mentions), this.appUrl(), images), body, "", this);
+			void MarkdownRenderer.render(this.app, withAppUrls(highlightMentions(c.body, c.mentions), this.appUrl(), images), body, "", scope);
 		};
 		show();
 		const paths = uploadedImages(c.body);
