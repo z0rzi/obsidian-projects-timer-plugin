@@ -181,12 +181,12 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 
 	const statusItem = plugin.addStatusBarItem();
 	statusItem.addClass("mod-clickable");
-	statusItem.onclick = openInbox;
+	plugin.registerDomEvent(statusItem, "click", openInbox);
 	const showUnread = (state: InboxState) => {
 		statusItem.setText(`Suivi : ${state.unread}`);
 		statusItem.toggle(state.unread > 0);
 	};
-	subscribe(showUnread);
+	plugin.register(subscribe(showUnread));
 	showUnread(store.current);
 
 	let noticed = false;
