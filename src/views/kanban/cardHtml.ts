@@ -15,9 +15,9 @@ function typeLabelHtml(type: TaskTagLabel): string {
 	return label ? `<span class="kanban-type-label" data-type="${type}">${label}</span>` : "";
 }
 
-/** Dot before a step's text in its type's colour (styles.css), empty for a task. */
+/** Dot before a step's text in its type's colour (styles.css), neutral grey for a task. */
 function typeDotHtml(type: TaskTagLabel): string {
-	return TYPE_LABELS[type] ? `<span class="kanban-step-dot" data-type="${type}"></span>` : "";
+	return `<span class="kanban-step-dot" data-type="${type}"></span>`;
 }
 
 function escapeHtml(text: string): string {

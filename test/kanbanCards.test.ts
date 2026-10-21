@@ -68,11 +68,12 @@ describe("kanban type labels", () => {
 		expect(overrideCardHtml(widget, task!, new Map())).not.toContain("kanban-type-label");
 	});
 
-	it("put a dot of the step's type before each step text, none for a task step", () => {
+	it("put a dot of the step's type before each step text, grey for a task step", () => {
 		const html = projectCardHtml(card(["- [ ] #bug Axe faux", "- [ ] #wait Réponse JMJ", "- [ ] Écrire"]), new Map());
 		expect(html).toMatch(/<span class="kanban-step-dot" data-type="bug"><\/span><span class="kanban-project-item-text">[^<]*Axe faux/);
 		expect(html).toMatch(/<span class="kanban-step-dot" data-type="wait"><\/span><span class="kanban-project-item-text">[^<]*Réponse JMJ/);
-		expect(html.match(/kanban-step-dot/g)).toHaveLength(2);
+		expect(html).toMatch(/<span class="kanban-step-dot" data-type="task"><\/span><span class="kanban-project-item-text">[^<]*Écrire/);
+		expect(cardTypesCss()).toMatch(/\.kanban-step-dot\[data-type="task"\][^{]*\{\s*--type-color: #8c959f;/);
 		const widget = card(["- [ ] #quick p1 Relancer"]);
 		expect(overrideCardHtml(widget, widget.overrides[0]!, new Map())).toContain('<span class="kanban-step-dot" data-type="quick"></span>');
 	});
