@@ -142,6 +142,12 @@ export const EVENT_TYPES = [
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
+/**
+ * Where an event was written from: `push` by `POST /api/push`, `api` by the
+ * other plugin calls (comments, triage, read marks), `site` by the browser.
+ */
+export type EventOrigin = "push" | "api" | "site";
+
 /** One entry of the event log, as the Pull returns it. */
 export interface ApiEvent {
   /** Monotonic; the Pull cursor. */
@@ -150,6 +156,7 @@ export interface ApiEvent {
   at: string;
   /** Id of the user who made the change (Developer for Push events, else usually the Client). */
   actor: string;
+  origin: EventOrigin;
   type: EventType;
   /** Id of the Project, Task, Review or Comment concerned; null for batch events. */
   item: string | null;
