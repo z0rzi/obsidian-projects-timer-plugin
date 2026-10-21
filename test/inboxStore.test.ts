@@ -76,7 +76,8 @@ function fakeApp(feed: ActivityEntry[], pageSize = 10) {
 			asked.push(before);
 			const older = feed.filter((e) => before === undefined || e.id < before);
 			const entries = older.slice(0, pageSize).map((e) => ({ ...e, unread: e.unread && !read.has(e.id) }));
-			return { entries, next: older.length > pageSize ? entries.at(-1)!.id : null };
+			const unread = feed.filter((e) => e.unread && !read.has(e.id)).length;
+			return { entries, next: older.length > pageSize ? entries.at(-1)!.id : null, unread };
 		},
 		async markRead(ids: number[]) {
 			fail();
@@ -210,6 +211,34 @@ describe("Inbox feed: unread", () => {
 		expect([...byItem.keys()].sort()).toEqual(["p1abc", "t7f3a"]);
 		expect(byItem.get("t7f3a")!.map((e) => e.id)).toEqual([6, 4]);
 		expect(byItem.get("p1abc")!.map((e) => e.id)).toEqual([5]);
+	});
+});
+
+describe("Inbox feed: unread total", () => {
+	it("counts the app's unread total beyond the loaded page, down on Lu, to zero on Tout marquer comme lu", async () => {
+		const app = fakeApp([comment(6), priority(5), comment(4), comment(2)], 2);
+		const { store } = storeOn(app);
+		await store.refresh();
+		expect(store.current.feed).toHaveLength(2);
+		expect(store.current.unread).toBe(4);
+
+		await store.markRead(store.current.feed[0]!);
+		expect(store.current.unread).toBe(3);
+		await store.markAllRead();
+		expect(store.current.unread).toBe(0);
+	});
+
+	it("puts the total back when the app can't be reached, and reads it again on reload", async () => {
+		const app = fakeApp([comment(6), comment(4), comment(2)], 2);
+		const { store } = storeOn(app);
+		await store.refresh();
+		app.failMarkRead();
+		await store.markAllRead();
+		expect(store.current.unread).toBe(3);
+
+		await store.markRead(store.current.feed[0]!);
+		await store.refresh();
+		expect(store.current.unread).toBe(2);
 	});
 });
 

@@ -38,7 +38,7 @@ export interface InboxState {
 	filter: InboxFilter;
 	/** The item the feed is narrowed to (a kanban badge was clicked), null for all. */
 	item: InboxItemFilter | null;
-	/** Unread entries among those loaded, whatever the filter. */
+	/** The viewer's unread entries in the app, loaded or not, whatever the filter. */
 	unread: number;
 	/** Older entries are left to load ("Charger plus"). */
 	more: boolean;
@@ -97,6 +97,8 @@ export class InboxStore {
 	private entries: ActivityEntry[] = [];
 	/** `before` of the next page, null when nothing is older. */
 	private next: number | null = null;
+	/** The app's unread total, as last read and adjusted by the marks since. */
+	private unreadTotal = 0;
 	private filter: InboxFilter = "tous";
 	private item: InboxItemFilter | null = null;
 
@@ -119,6 +121,7 @@ export class InboxStore {
 			this.tickets = inbox.to_triage ?? [];
 			this.entries = page.entries;
 			this.next = page.next;
+			this.unreadTotal = page.unread;
 			this.set(this.build());
 		} catch (e) {
 			this.set({ ...this.state, status: ready ? "ready" : "error", error: message(e) });
@@ -132,6 +135,7 @@ export class InboxStore {
 			const page = await this.remote.activity(this.next);
 			this.entries = [...this.entries, ...page.entries];
 			this.next = page.next;
+			this.unreadTotal = page.unread;
 			this.set(this.build());
 		} catch (e) {
 			this.set({ ...this.state, error: message(e) });
@@ -152,14 +156,14 @@ export class InboxStore {
 
 	/** Marks one unread entry read ("Lu"). */
 	async markRead(entry: ActivityEntry): Promise<void> {
-		if (entry.unread) await this.mark([entry.id], () => this.remote.markRead([entry.id]));
+		if (entry.unread) await this.mark([entry.id], this.unreadTotal - 1, () => this.remote.markRead([entry.id]));
 	}
 
-	/** "Tout marquer comme lu": every Client event up to the newest entry loaded. */
+	/** "Tout marquer comme lu": every Client event up to the newest entry loaded, older pages included. */
 	async markAllRead(): Promise<void> {
 		const newest = this.entries[0];
 		const unread = this.entries.filter((e) => e.unread).map((e) => e.id);
-		if (newest && unread.length) await this.mark(unread, () => this.remote.markReadUpTo(newest.id));
+		if (newest && this.unreadTotal > 0) await this.mark(unread, 0, () => this.remote.markReadUpTo(newest.id));
 	}
 
 	/** The loaded unread entries by id of the item they concern, newest first. */
@@ -186,17 +190,23 @@ export class InboxStore {
 			feed: this.shown(),
 			filter: this.filter,
 			item: this.item,
-			unread: this.entries.filter((e) => e.unread).length,
+			unread: this.unreadTotal,
 			more: this.next !== null,
 		};
 	}
 
-	/** Shows `ids` read at once, then tells the app; on failure they are unread again and the error shown. */
-	private async mark(ids: number[], send: () => Promise<void>) {
+	/**
+	 * Shows `ids` read and the total at `unreadAfter` at once, then tells the
+	 * app; on failure they are unread again, the total back and the error shown.
+	 */
+	private async mark(ids: number[], unreadAfter: number, send: () => Promise<void>) {
+		const unreadBefore = this.unreadTotal;
+		this.unreadTotal = unreadAfter;
 		this.setUnread(ids, false);
 		try {
 			await send();
 		} catch (e) {
+			this.unreadTotal = unreadBefore;
 			this.setUnread(ids, true);
 			this.set({ ...this.state, error: message(e) });
 		}

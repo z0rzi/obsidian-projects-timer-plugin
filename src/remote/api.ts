@@ -348,14 +348,17 @@ export interface ActivityEntry {
 }
 
 /**
- * `GET /api/activity?before=<event id>&days=<n>` response: the entries older
- * than `before` (absent = the newest), spanning `days` days (default 30) back
- * from the newest of them, newest first. `next` is the `before` of the page
- * after, null when there is nothing older.
+ * `GET /api/activity?before=<event id>&days=<n>` response, newest first.
+ * Without `before`: the entries of the last `days` days (default 30) from now.
+ * With it: the entries older than `before`, spanning `days` days back from the
+ * newest of them. `next` is the `before` of the page after, null when there is
+ * nothing older (an empty first page still points at older entries).
  */
 export interface ActivityResponse {
   entries: ActivityEntry[];
   next: number | null;
+  /** The caller's total number of unread entries, loaded or not. */
+  unread: number;
 }
 
 /**
