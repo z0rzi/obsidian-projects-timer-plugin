@@ -5,7 +5,7 @@ Status: agreed, not started
 
 ## Goal
 
-Move client communication with JMJ from meetings to async. JMJ follows Projects and Tasks in the Client app ("Suivi de projets", repo `edf-suivi`): he comments, reprioritises, creates Tickets and answers Reviews. I handle almost everything from Obsidian.
+Move client communication with JMJ from meetings to async. JMJ follows Projects and Tasks in the Client app ("Suivi de projets", repo `edf-suivi`): he comments, reprioritises, creates Tickets and gives his Answer on Tasks and Projects À valider. I handle almost everything from Obsidian.
 
 This spec covers the vault side. The Client app, its API contract and the milestones are in `edf-suivi/docs/spec.md`; terms are defined in `edf-suivi/GLOSSARY.md`.
 
@@ -28,7 +28,7 @@ Never shared: time logs (`project` blocks), billing, quotes, commands, knowledge
 
 ### Tasks
 
-The line and its indented body are shared: the body (lines after the Task line with an indent above zero, blank lines included while the next non-blank line is indented) becomes the Task's Description, de-indented and shared like a Review body (images uploaded, wikilinks to text). `#private` on the line hides the Task and its body.
+The line and its indented body are shared: the body (lines after the Task line with an indent above zero, blank lines included while the next non-blank line is indented) becomes the Task's Description, de-indented and shared through `shareBody` (`src/sync/sharedBody.ts`): `![[image]]` embeds uploaded and rewritten, other embeds and `[[wikilinks]]` to plain text, code kept as written. A Loom or Cap URL alone on a body line plays as a Video in the app. `#private` on the line hides the Task and its body.
 
 **Tag tasks** — any line starting with a type tag, in any file, unless it carries `#private`. Project comes from the file (project file, or `project:` frontmatter of a meeting note); none = standalone Task.
 
@@ -64,17 +64,12 @@ The line and its indented body are shared: the body (lines after the Task line w
 
 **Stable IDs** — `^<id>` block ID at the end of the line, assigned by the app at first Push (or at Triage) and stripped from the title by the parser. All write-backs locate the line by ID, not line number. Moving a line between files is a move, not a delete.
 
-### Reviews
-
-- One note per Review in `2.projects/reviews/`, frontmatter `project:`, optional `task:` (an `^id`), and `suivi_id:` once pushed.
-- Body is fully shared. On Push: `![[image]]` embeds are uploaded and rewritten, `[[wikilinks]]` become plain text, a Loom URL alone on a line is embedded by the app.
-- Publishing sets the linked Task to `pr`. JMJ answers with a comment plus `Validé` (Task → `#done`) or `À reprendre` (Task → `p0`); the Pull writes that back.
-
 ## Permissions (enforced by the app)
 
-- **JMJ:** Project and Task priority within P1–P5, comments, Tickets (bug / amélioration / idée), Review answers, "Je veux lancer" on an Idea.
-- **Me only:** moving anything to or from P0 (JMJ sees P0 but can't set it; for urgency he uses P1 + a comment), status (except Review answers), titles, moves, deletions.
+- **JMJ:** Project and Task priority within P1–P5, comments, Tickets (bug / amélioration / idée), the Answer (Validé / À reprendre) on a Task or Project À valider, "Je veux lancer" on an Idea.
+- **Me only:** moving anything to or from P0 (JMJ sees P0 but can't set it; for urgency he uses P1 + a comment), status (except through the Answer), titles, moves, deletions.
 - JMJ changing the priority of an inheriting Project step makes the Pull write an Override token on the line.
+- The Pull writes the Answer back: Validé makes a Tag task `#done <date>`, ticks a Project step and sets `archived: true` on a Project; À reprendre gives a Task the `p0` token and a Project `status: en cours`. When I changed that status locally since the last Push, it becomes a `status` conflict.
 - Every Client change lands in my Inbox.
 
 ## Push and Pull
