@@ -12,9 +12,9 @@ const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle:
 const EXCERPT = 160;
 
 const FILTERS: { filter: InboxFilter; label: string }[] = [
-	{ filter: "tous", label: "Tous" },
-	{ filter: "jmj", label: "JMJ" },
-	{ filter: "moi", label: "Moi" },
+	{ filter: "all", label: "Tous" },
+	{ filter: "client", label: "JMJ" },
+	{ filter: "developer", label: "Moi" },
 ];
 
 /** Lucide icon of each event type. */

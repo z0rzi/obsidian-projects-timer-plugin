@@ -18,14 +18,8 @@ export interface InboxEntry {
 	ticketType?: TaskType;
 }
 
-/** Whose entries the feed shows: everyone's, the Client's, the Developer's. */
-export type InboxFilter = "tous" | "jmj" | "moi";
-
-const FILTER_ROLES: Record<InboxFilter, ActivityEntry["actor"]["role"] | null> = {
-	tous: null,
-	jmj: "client",
-	moi: "developer",
-};
+/** Whose entries the feed shows: everyone's, or those of the actors of one role. */
+export type InboxFilter = "all" | ActivityEntry["actor"]["role"];
 
 export interface InboxState {
 	status: "idle" | "loading" | "ready" | "error";
@@ -92,14 +86,14 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * putting the entry back on failure.
  */
 export class InboxStore {
-	private state: InboxState = { status: "idle", toTriage: [], conflicts: [], feed: [], filter: "tous", item: null, unread: 0, more: false };
+	private state: InboxState = { status: "idle", toTriage: [], conflicts: [], feed: [], filter: "all", item: null, unread: 0, more: false };
 	private tickets: InboxTicket[] = [];
 	private entries: ActivityEntry[] = [];
 	/** `before` of the next page, null when nothing is older. */
 	private next: number | null = null;
 	/** The app's unread total, as last read and adjusted by the marks since. */
 	private unreadTotal = 0;
-	private filter: InboxFilter = "tous";
+	private filter: InboxFilter = "all";
 	private item: InboxItemFilter | null = null;
 
 	constructor(
@@ -220,9 +214,10 @@ export class InboxStore {
 
 	/** The loaded entries the filter and the item filter keep. */
 	private shown(): ActivityEntry[] {
-		const role = FILTER_ROLES[this.filter];
 		const itemId = this.item?.id;
-		return this.entries.filter((e) => (!role || e.actor.role === role) && (!itemId || e.item?.id === itemId));
+		return this.entries.filter(
+			(e) => (this.filter === "all" || e.actor.role === this.filter) && (!itemId || e.item?.id === itemId),
+		);
 	}
 
 	private set(state: InboxState) {

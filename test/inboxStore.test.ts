@@ -167,21 +167,21 @@ describe("Inbox feed: filter", () => {
 		const mine: ActivityEntry = { ...comment(6), actor: ME, origin: "api", unread: false };
 		const { store, ids } = storeOn(fakeApp([mine, priority(5), comment(4), push(3)]));
 		await store.refresh();
-		expect(store.current.filter).toBe("tous");
+		expect(store.current.filter).toBe("all");
 		expect(ids()).toEqual([6, 5, 4, 3]);
 
-		store.setFilter("jmj");
+		store.setFilter("client");
 		expect(ids()).toEqual([5, 4]);
-		store.setFilter("moi");
+		store.setFilter("developer");
 		expect(ids()).toEqual([6, 3]);
 	});
 
 	it("keeps the filter across a reload", async () => {
 		const { store, ids } = storeOn(fakeApp([priority(5), push(3)]));
 		await store.refresh();
-		store.setFilter("moi");
+		store.setFilter("developer");
 		await store.refresh();
-		expect(store.current.filter).toBe("moi");
+		expect(store.current.filter).toBe("developer");
 		expect(ids()).toEqual([3]);
 	});
 
@@ -204,7 +204,7 @@ describe("Inbox feed: unread", () => {
 		const read: ActivityEntry = { ...comment(2, "s2xyz"), unread: false };
 		const { store } = storeOn(fakeApp([comment(6), priority(5), comment(4), push(3), read]));
 		await store.refresh();
-		store.setFilter("moi");
+		store.setFilter("developer");
 
 		expect(store.current.unread).toBe(3);
 		const byItem = store.unreadByItem();
