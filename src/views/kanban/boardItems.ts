@@ -43,7 +43,7 @@ export function fillBoards(
 		if (task.priority === -1) continue;
 		boardOf(statusBoardId(task))?.items.push({
 			id: `task-${task.id}`,
-			title: cardHtml(String(task.id), task.title, task.description.trim(), !!task.blockId && unread.has(task.blockId)),
+			title: cardHtml(String(task.id), task.title, task.description.trim(), task.type, !!task.blockId && unread.has(task.blockId)),
 			type: task.type,
 		});
 	}
