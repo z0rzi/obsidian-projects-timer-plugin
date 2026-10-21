@@ -41,13 +41,14 @@ The line and its indented body are shared: the body (lines after the Task line w
 
 `#ask` and `#project` are removed.
 
-**Project steps** — top-level `- [ ]` lines under the `Tasks` heading (existing `findTasksHeadingSection` logic, unchanged; rename the one `# Tâches` heading). Client label: `Étape de projet`. They inherit the Project's priority unless they carry a token (an Override).
+**Project steps** — top-level `- [ ]` lines under the `Tasks` heading (existing `findTasksHeadingSection` logic, unchanged; rename the one `# Tâches` heading). A step is a flag on the Task, not a type: it carries a type tag first, then the status token, like a Tag task (`- [ ] #bug p2 Title ^id`); no tag = `task`. The Client recognises a step by its Project badge and the "x/y étapes" count. Steps inherit the Project's priority unless they carry a token (an Override). A `#wait` step shows in En attente like a `#wait` Tag task.
 
 **Status token** — first word after the marker, lowercase only, whole word:
 
 ```
 #task p2 Nouveau widget saison ^t7f3a
 - [ ] p1 fix the x axis of the heatmap ^t91c2
+- [ ] #bug p2 Legend overlaps the curve ^t5d10
 - [ ] pr Export CSV ^t04be
 ```
 
@@ -86,31 +87,43 @@ The line and its indented body are shared: the body (lines after the Task line w
 
 ## Inbox (Obsidian view)
 
-| Section | Contents | Action |
-|---|---|---|
-| À trier | new bug / amélioration Tickets, Ideas JMJ launched | **Insérer ici** writes `#<type> p<n> <title> ^<id>` at the cursor (type and priority picked in a dialog); **Nouveau projet** creates a Project file from the template with its `suivi_id:`. The app item stays the same, so JMJ's description and comments stay attached. |
-| Notifications | comments, Client priority changes, Review answers, conflicts | open / mark read |
+One panel, reload icon at the top:
 
-New Ideas do not reach the Inbox: they stay in the app's Idées list until JMJ launches one.
+- **À trier**, pinned on top: new bug / amélioration Tickets and Ideas JMJ launched. **Insérer ici** writes the Task at the cursor (type and priority picked in a dialog): a Tag task `#<type> p<n> <title> ^<id>`, or, when the cursor is on a Project note's Tasks heading or in its section, a Project step `- [ ] #<type> p<n> <title> ^<id>` whose priority defaults to "hériter du projet" (no token). The Ticket's Description goes under the line as its body, indented with one tab, blank lines kept; images JMJ pasted stay as app URLs. The line and body are recorded as last pushed, so the next Push shows no change. **Nouveau projet** creates a Project file from the template with its `suivi_id:`. The app item stays the same, so JMJ's description and comments stay attached.
+- **Conflits**, pinned while there are Pull conflicts; they are settled in Push.
+- **The feed** (`GET /api/activity`): every event of the log, newest first, grouped by day, the events of my own Pushes collapsed to one line per Push ("Push : 12 changements"). Filter Tous / JMJ / Moi. Comment entries show the full body rendered as markdown. Clicking an entry opens the file at the line and, for comments, the thread panel. The last 30 days are loaded; "Charger plus" pages further back.
+- **Read rule**: an entry is unread when JMJ wrote it and I haven't marked it read; my own site actions and Push lines never are. Reading is deliberate: "Lu" per entry, "Tout marquer comme lu" for every Client event up to the newest loaded. Opening an entry or a thread marks nothing.
+
+Signals, from the loaded entries:
+
+- after a Pull that brought Client events, one toast per event ("JMJ a commenté Algo détection", "P1 → P2 sur Prix SPOTS");
+- a status bar item with the unread count, opening the Inbox;
+- on kanban cards with unread entries, a badge at the top right ("💬 2 · P1→P2") and a tinted background; clicking the badge opens the Inbox filtered to that item ("<titre> ✕" clears the filter).
+
+New Ideas do not reach À trier: they stay in the app's Idées list until JMJ launches one.
 
 ## Other plugin changes
 
-- **Comment side panel:** thread of the Task/Project under the cursor, reply, edit or delete own comments from there. Comments are never written into markdown (the task parser ends a Task at the first blank line).
-- **Kanban:** `À valider` column (`pr`), unread-comment dot on cards, distinct style for `#wait`, Overridden Project steps greyed on their Project card and shown as their own card in the right priority column.
+- **Comment side panel:** thread of the Task/Project under the cursor (on its line or in its body), reply, edit or delete own comments from there. Comments are never written into markdown.
+- **Kanban:** `À valider` column (`pr`), the unread badge above, one colour per type (bug red `#b82626`, quick yellow `#f7d522`, task grey, wait faded and dashed) as the card border, a small label in that colour before the title ("BUG", "RAPIDE", "ATTENTE"; none for task) and a dot of that colour in front of each step line on a Project card, Overridden Project steps greyed on their Project card and shown as their own card in the right priority column.
 - **Parser:** `quick` stays, `project` type removed, token matched as lowercase whole first word (today `/p\d/i` matches anywhere, e.g. `Étape2`), block ID stripped from title, writes by ID instead of line number (today `updateTaskTag` overwrites `lines[task.line]` blindly).
 
 ## Remote interface
 
 ```ts
 interface Remote {
-	pull(cursor: string | null): Promise<{ events: RemoteEvent[]; cursor: string }>;
-	push(changes: LocalChange[]): Promise<PushResult[]>;
+	push(changes: PushChange[]): Promise<PushResult[]>;
+	pull(cursor: number | null): Promise<EventsResponse>;
 	comments(itemId: string): Promise<Comment[]>;
 	comment(itemId: string, body: string): Promise<Comment>;
 	editComment(commentId: string, body: string | null): Promise<void>; // null = delete
-	upload(file: ArrayBuffer, name: string): Promise<string>; // returns URL
-	triage(itemId: string, as: TriageTarget): Promise<void>;
-	markRead(eventIds: string[]): Promise<void>;
+	inbox(): Promise<InboxResponse>; // items À trier
+	activity(before?: number, days?: number): Promise<ActivityResponse>; // a page of the feed
+	markRead(eventIds: number[]): Promise<void>;
+	markReadUpTo(id: number): Promise<void>; // every Client event up to id
+	upload(data: ArrayBuffer, name: string): Promise<string>; // returns URL
+	image(path: string): Promise<{ data: ArrayBuffer; type: string }>;
+	triage(itemId: string, as: TriageRequest): Promise<TriageResponse>;
 }
 ```
 
