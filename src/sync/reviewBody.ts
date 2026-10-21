@@ -30,6 +30,14 @@ export async function shareReviewBody(body: string, upload: (link: string) => Pr
 		return url;
 	};
 
+	return rewriteOutsideCode(body, (text) => rewrite(text, uploadOnce));
+}
+
+/**
+ * `body` with `rewriteText` applied to the text outside fenced code blocks
+ * and inline code, which are kept as written.
+ */
+export async function rewriteOutsideCode(body: string, rewriteText: (text: string) => Promise<string>): Promise<string> {
 	const out: string[] = [];
 	let fenced = false;
 	for (const line of body.split("\n")) {
@@ -40,7 +48,7 @@ export async function shareReviewBody(body: string, upload: (link: string) => Pr
 		}
 		// Odd pieces are inline code.
 		const pieces = line.split(/(`[^`]*`)/);
-		for (let i = 0; i < pieces.length; i += 2) pieces[i] = await rewrite(pieces[i]!, uploadOnce);
+		for (let i = 0; i < pieces.length; i += 2) pieces[i] = await rewriteText(pieces[i]!);
 		out.push(pieces.join(""));
 	}
 	return out.join("\n");

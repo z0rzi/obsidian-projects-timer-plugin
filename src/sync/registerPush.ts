@@ -133,7 +133,7 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 					writePriority: (kind, id, path, priority) =>
 						writeRemotePriority(files, kind, id, path, priority),
 					writeValidated: (id, path, doneOn) => writeValidated(files, id, path, doneOn),
-					shareBody: reviewBodySharer(app, remote),
+					shareBody: reviewBodySharer(app, remote, data.sync),
 					writeTaskToken: (path, id, token) => writeTaskTokenIn(app, path, id, token),
 				}));
 				for (const f of outcome.failed) new Notice(`Push: ${f.title}: ${f.error}`, 10_000);

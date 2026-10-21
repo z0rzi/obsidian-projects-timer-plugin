@@ -23,6 +23,11 @@ export interface SyncState {
 	pullRetry?: ApiEvent[];
 	/** Client changes not applied because the vault changed the same field, by `<id>:<field>`. */
 	conflicts?: Record<string, PullConflict>;
+	/**
+	 * Vault images already in the app, by vault path: brought in by Triage or
+	 * uploaded by a Push. A Push reuses the URL while the file keeps its size.
+	 */
+	appImages?: Record<string, { url: string; bytes: number }>;
 }
 
 const emptySync = (): SyncState => ({ pushedProjects: {}, pushedTasks: {} });

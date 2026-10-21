@@ -1,6 +1,8 @@
+import { UPLOADED_IMAGE } from "../comments/commentMarkdown";
 import type { TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { SyncState } from "../sync/pluginData";
+import { rewriteOutsideCode } from "../sync/reviewBody";
 import { deindent } from "../sync/sharedTask";
 import { readIndentedBody } from "../taskParser";
 
@@ -34,9 +36,15 @@ export interface TriageDeps {
 	target(): { path: string; projectId: string | null; step: boolean } | { error: string };
 	/** Writes the line (and its body lines) at the cursor of that note. */
 	insert(text: string): void;
+	/**
+	 * Copies an image the Client uploaded (`/uploads/…`) into the vault; returns
+	 * its link text for `![[…]]`, its vault path and size, or null if it failed.
+	 */
+	localImage?(url: string): Promise<{ link: string; path: string; bytes: number } | null>;
 }
 
-export type TriageResult = { ok: true; line: string } | { ok: false; error: string };
+/** `missingImages`: app images left as app links because they couldn't be copied into the vault. */
+export type TriageResult = { ok: true; line: string; missingImages: number } | { ok: false; error: string };
 
 /**
  * "Insérer ici": the app turns the item into a Task first (the call most
@@ -70,13 +78,46 @@ export async function runTriage(
 	const title = item.title.replace(/\s+/g, " ").trim();
 	const tagAndToken = choice.priority === null ? `#${choice.type}` : `#${choice.type} p${choice.priority}`;
 	const line = `${target.step ? "- [ ] " : ""}${tagAndToken} ${title} ^${item.id}`;
-	const written = [line, ...taskBody(fields.description)];
+	const { text: body, missing } = await withVaultImages(fields.description, deps);
+	const written = [line, ...taskBody(body)];
 	deps.insert(written.join("\n"));
 	// Recorded as the next Push reads it back from the vault, so it compares equal.
 	const description = deindent(readIndentedBody(written, 0).join("\n"));
 	deps.sync.pushedTasks[item.id] = { path: target.path, fields: { ...fields, description } };
 	await deps.save();
-	return { ok: true, line };
+	return { ok: true, line, missingImages: missing };
+}
+
+/**
+ * The Description with each app image (`![alt](/uploads/…)`, outside code)
+ * copied into the vault and embedded as `![[…]]`, so Obsidian shows it; its
+ * app URL is recorded so a later Push reuses it. An image that couldn't be
+ * copied keeps its app link and is counted in `missing`.
+ */
+async function withVaultImages(description: string, deps: TriageDeps): Promise<{ text: string; missing: number }> {
+	let missing = 0;
+	const copies = new Map<string, Promise<{ link: string; path: string; bytes: number } | null>>();
+	const text = await rewriteOutsideCode(description, async (piece) => {
+		const parts: string[] = [];
+		let last = 0;
+		for (const m of piece.matchAll(UPLOADED_IMAGE)) {
+			parts.push(piece.slice(last, m.index));
+			last = m.index! + m[0].length;
+			const url = m[2]!;
+			if (!copies.has(url)) copies.set(url, deps.localImage ? deps.localImage(url).catch(() => null) : Promise.resolve(null));
+			const copy = await copies.get(url)!;
+			if (copy) {
+				(deps.sync.appImages ??= {})[copy.path] = { url, bytes: copy.bytes };
+				parts.push(`![[${copy.link}]]`);
+			} else {
+				missing++;
+				parts.push(m[0]);
+			}
+		}
+		parts.push(piece.slice(last));
+		return parts.join("");
+	});
+	return { text, missing };
 }
 
 /** The Description as Task body lines: one tab in, blank lines empty, none at the edges. */

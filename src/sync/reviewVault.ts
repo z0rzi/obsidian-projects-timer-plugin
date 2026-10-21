@@ -2,8 +2,10 @@ import { parseLinktext, type App } from "obsidian";
 import { processLineById, setTaskToken, type StatusToken } from "../lineWriter";
 import { UPLOAD_MAX_BYTES } from "../remote/api";
 import type { Remote } from "../remote/remote";
+import type { SyncState } from "./pluginData";
 import type { PlannedReview } from "./reviewPlan";
 import { IMAGE_TYPES, shareReviewBody } from "./reviewBody";
+import { uploadImage } from "./sharedImages";
 import { readReview } from "./sharedReview";
 import { vaultFiles } from "./vaultFiles";
 
@@ -20,8 +22,8 @@ export async function readReviews(app: App, folder: string): Promise<PlannedRevi
 	return out;
 }
 
-/** `shareBody` of a Push: vault images found from the note, uploaded to Suivi. */
-export function reviewBodySharer(app: App, remote: Remote) {
+/** `shareBody` of a Push: vault images found from the note, uploaded to Suivi (once: see `uploadImage`). */
+export function reviewBodySharer(app: App, remote: Remote, sync: SyncState) {
 	return (path: string, body: string) =>
 		shareReviewBody(body, async (link) => {
 			const target = app.metadataCache.getFirstLinkpathDest(parseLinktext(link).path, path);
@@ -29,7 +31,7 @@ export function reviewBodySharer(app: App, remote: Remote) {
 			if (!IMAGE_TYPES[target.extension.toLowerCase()]) throw new Error(`${link} is not a PNG, JPEG, GIF or WebP image`);
 			const data = await app.vault.readBinary(target);
 			if (data.byteLength > UPLOAD_MAX_BYTES) throw new Error(`image ${link} is over 10 MB`);
-			return remote.upload(data, target.name);
+			return uploadImage(sync, { path: target.path, name: target.name, data }, (d, name) => remote.upload(d, name));
 		});
 }
 

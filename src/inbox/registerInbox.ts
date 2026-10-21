@@ -89,6 +89,15 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		return { path: file.path, projectId: typeof fm?.suivi_id === "string" ? fm.suivi_id : null, step };
 	}
 
+	/** An app image (`/uploads/…`) fetched with the token into the attachment folder of `notePath`. */
+	async function copyAppImage(url: string, notePath: string) {
+		const { data } = await remote.image(url);
+		const name = url.slice(url.lastIndexOf("/") + 1);
+		const path = await app.fileManager.getAvailablePathForAttachment(name, notePath);
+		const file = await app.vault.createBinary(path, data);
+		return { link: app.metadataCache.fileToLinktext(file, notePath, false), path: file.path, bytes: data.byteLength };
+	}
+
 	function triage(entry: InboxEntry) {
 		const view = noteView();
 		if (!view) {
@@ -115,10 +124,16 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 							const at = placeLine(lines, editor.getCursor().line, line);
 							editor.replaceRange(at.text, at.from, at.to);
 						},
+						localImage: (url) => copyAppImage(url, target.path),
 					}),
 				);
-				if (result.ok) new Notice(`Insérée : ${result.line}`);
-				else new Notice(`Échec du tri : ${result.error}`, 10_000);
+				if (!result.ok) new Notice(`Échec du tri : ${result.error}`, 10_000);
+				else {
+					new Notice(`Insérée : ${result.line}`);
+					if (result.missingImages > 0) {
+						new Notice(`${result.missingImages} image(s) du ticket non copiée(s) dans le coffre : le lien vers l'app est gardé.`, 10_000);
+					}
+				}
 				await store.refresh();
 			})();
 		}).open();

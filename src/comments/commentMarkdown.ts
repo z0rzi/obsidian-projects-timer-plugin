@@ -1,5 +1,5 @@
 /** `![alt](/uploads/…)`: an image uploaded to the app. */
-const UPLOADED_IMAGE = /!\[([^\]]*)\]\((\/uploads\/[^)\s]+)\)/g;
+export const UPLOADED_IMAGE = /!\[([^\]]*)\]\((\/uploads\/[^)\s]+)\)/g;
 
 /** The uploaded images a comment body shows, once each, in order. */
 export function uploadedImages(body: string): string[] {
