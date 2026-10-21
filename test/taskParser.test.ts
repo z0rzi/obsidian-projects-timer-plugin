@@ -66,10 +66,28 @@ describe("parseTasks types", () => {
 		expect(parseTasks([`#${tag} p2 Titre`], file, null)).toEqual([]);
 	});
 
-	it("reads a removed tag line as body text of the previous Task", () => {
-		const tasks = parseTasks(["#task p1 A", "#project p2 B"], file, null);
-		expect(tasks).toHaveLength(1);
-		expect(tasks[0]!.description).toBe("#project p2 B\n");
+	it("ends a Task's body at the first line of indent zero, tag or not", () => {
+		const tasks = parseTasks(["#task p1 A", "  corps", "#project p2 B", "suite", "#bug p2 C"], file, null);
+		expect(tasks.map((t) => [t.title, t.description])).toEqual([
+			["A", "  corps"],
+			["C", ""],
+		]);
+	});
+});
+
+describe("parseTasks body", () => {
+	it("keeps blank lines inside the body while the next non-blank line is indented, drops trailing ones", () => {
+		const tasks = parseTasks(["#task p1 A", "  un", "", "  deux", "", "", "#task p1 B", "", "  corps de B", ""], file, null);
+		expect(tasks.map((t) => t.description)).toEqual(["  un\n\n  deux", "  corps de B"]);
+	});
+
+	it("keeps nested indentation, tabs or spaces, as written", () => {
+		const tasks = parseTasks(["#task p1 A", "\tligne", "\t\t- sous", "#task p1 B", "    - a", "      - b"], file, null);
+		expect(tasks.map((t) => t.description)).toEqual(["\tligne\n\t\t- sous", "    - a\n      - b"]);
+	});
+
+	it("gives an empty body to a Task followed by a non-indented line", () => {
+		expect(parseTasks(["#task p1 A", "pas le corps"], file, null)[0]!.description).toBe("");
 	});
 });
 

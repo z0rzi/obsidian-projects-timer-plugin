@@ -24,8 +24,32 @@ export function readStatusToken(text: string): { token: StatusToken | null; rest
 }
 
 /**
- * Tag tasks: a line starting with `#<type> ` opens a Task, the following
- * non-blank lines are its description, a blank line or another tag ends it.
+ * Body of the Task (or Project step) on line `at`: the lines after it with an
+ * indent above zero, blank lines included while the next non-blank line is
+ * still indented. The first line at indent zero (or `end`) ends it; blank
+ * lines before the first or after the last body line are left out. Lines are
+ * returned as written.
+ */
+export function readIndentedBody(lines: string[], at: number, end = lines.length): string[] {
+	const body: string[] = [];
+	let blanks = 0;
+	for (let i = at + 1; i < end; i++) {
+		const line = lines[i] ?? "";
+		if (!line.trim()) {
+			blanks++;
+			continue;
+		}
+		if (!/^\s/.test(line)) break;
+		if (body.length > 0) body.push(...Array<string>(blanks).fill(""));
+		body.push(line);
+		blanks = 0;
+	}
+	return body;
+}
+
+/**
+ * Tag tasks: a line starting with `#<type> ` is a Task, its indented body
+ * (`readIndentedBody`) is its description.
  */
 export function parseTasks(
 	lines: string[],
@@ -33,41 +57,26 @@ export function parseTasks(
 	projectFile: TFile | null,
 ): Task[] {
 	const tasks: Task[] = [];
-	let currentTask: Task | null = null;
-
 	for (let lineNr = 0; lineNr < lines.length; lineNr++) {
-		const line = lines[lineNr];
-		if (!line?.trim()) {
-			if (currentTask) tasks.push(currentTask);
-			currentTask = null;
-			continue;
-		}
-
+		const line = lines[lineNr] ?? "";
 		const taskType = TASKS_TYPES.find((t) => line.startsWith(`#${t.tag} `));
-		if (taskType) {
-			if (currentTask) tasks.push(currentTask);
-			const rest = line.slice(taskType.tag.length + 2).trimStart();
-			const { token, rest: afterToken } = readStatusToken(rest);
-			const { text: title, blockId } = splitBlockId(afterToken);
-			currentTask = {
-				id: `${file.path}:${lineNr}`,
-				title,
-				...(blockId ? { blockId } : {}),
-				raw: line,
-				priority: token?.priority ?? DEFAULT_PRIORITY,
-				status: token?.status ?? "priority",
-				file,
-				projectFile: projectFile ?? undefined,
-				description: "",
-				line: lineNr,
-				type: taskType.tag,
-			};
-			continue;
-		}
-
-		if (currentTask) currentTask.description += line + "\n";
+		if (!taskType) continue;
+		const rest = line.slice(taskType.tag.length + 2).trimStart();
+		const { token, rest: afterToken } = readStatusToken(rest);
+		const { text: title, blockId } = splitBlockId(afterToken);
+		tasks.push({
+			id: `${file.path}:${lineNr}`,
+			title,
+			...(blockId ? { blockId } : {}),
+			raw: line,
+			priority: token?.priority ?? DEFAULT_PRIORITY,
+			status: token?.status ?? "priority",
+			file,
+			projectFile: projectFile ?? undefined,
+			description: readIndentedBody(lines, lineNr).join("\n"),
+			line: lineNr,
+			type: taskType.tag,
+		});
 	}
-	if (currentTask) tasks.push(currentTask);
-
 	return tasks;
 }

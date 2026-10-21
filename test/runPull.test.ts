@@ -56,6 +56,7 @@ const task = (over: Partial<TaskFields> = {}): TaskFields => ({
 	status: "a_faire",
 	priority: 3,
 	project_id: null,
+	description: "",
 	...over,
 });
 

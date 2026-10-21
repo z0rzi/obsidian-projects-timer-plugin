@@ -15,9 +15,9 @@ const project = [
 	"- [ ] Pas encore poussée",
 	"",
 	"#task p1 Fix heatmap ^t7f3a",
-	"Notes privées sur la heatmap",
-	"suite des notes",
+	"  Notes sur la heatmap",
 	"",
+	"  suite des notes",
 	"Texte libre",
 ].join("\n");
 
@@ -28,14 +28,18 @@ describe("comment target under the cursor", () => {
 		expect(at(12)).toEqual({ kind: "task", id: "t7f3a", title: "Fix heatmap" });
 	});
 
-	it("stays on the Tag task while the cursor is in its body, up to the blank line", () => {
+	it("stays on the Tag task while the cursor is in its indented body, blank lines included", () => {
 		expect(at(13)).toEqual({ kind: "task", id: "t7f3a", title: "Fix heatmap" });
 		expect(at(14)).toEqual({ kind: "task", id: "t7f3a", title: "Fix heatmap" });
+		expect(at(15)).toEqual({ kind: "task", id: "t7f3a", title: "Fix heatmap" });
 		expect(at(16)).toEqual({ kind: "project", id: "p1abc", title: "Widget" });
 	});
 
-	it("is the pushed Project step on the cursor line", () => {
+	it("is the pushed Project step on the cursor line or in its indented body", () => {
 		expect(at(9)).toEqual({ kind: "task", id: "s9xyz", title: "Export CSV" });
+		const withBody = project.replace("- [ ] Export CSV ^s9xyz", "- [ ] Export CSV ^s9xyz\n  détail de l'export");
+		expect(at(10, withBody)).toEqual({ kind: "task", id: "s9xyz", title: "Export CSV" });
+		expect(at(11, withBody)).toEqual({ kind: "project", id: "p1abc", title: "Widget" });
 	});
 
 	it("falls back to the Project of the note elsewhere, including on unpushed lines", () => {

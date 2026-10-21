@@ -15,7 +15,7 @@ export type ProjectLinks = Record<string, { id?: string; title: string; hidden?:
 
 /** A field change as shown in the Push modal. */
 export interface TaskDiff {
-	field: "title" | "type" | "status" | "priority" | "project" | "done";
+	field: "title" | "type" | "status" | "priority" | "project" | "done" | "description";
 	from: string;
 	to: string;
 }
@@ -50,7 +50,7 @@ export type PendingTaskChange =
 	| { group: "deleted"; key: string; id: string; title: string; change: Extract<PushChange, { kind: "task"; op: "archive" }> };
 
 const DONE_OFFERED_MS = 30 * 24 * 60 * 60_000;
-const FIELDS = ["title", "type", "status", "priority", "project_id", "done_on"] as const;
+const FIELDS = ["title", "type", "status", "priority", "project_id", "done_on", "description"] as const;
 
 const TYPE_LABELS: Record<string, string> = {
 	task: "Tâche",
@@ -98,7 +98,9 @@ export function planTaskPush(
 			if (seen.has(t.blockId)) continue; // a copied line keeps the id: the first one wins
 			seen.add(t.blockId);
 		}
-		const before = t.blockId ? pushed[t.blockId]?.fields : undefined;
+		// Snapshots recorded before bodies were shared have no description: read it as empty.
+		const stored = t.blockId ? pushed[t.blockId]?.fields : undefined;
+		const before = stored ? { ...stored, description: stored.description ?? "" } : undefined;
 		const fields: TaskFields = {
 			title: t.title,
 			type: t.type ?? before?.type ?? "task",
@@ -106,6 +108,7 @@ export function planTaskPush(
 			priority: t.priority,
 			project_id: link?.id ?? null,
 			...(t.status === "termine" ? { done_on: t.doneOn ?? null } : {}),
+			description: t.description,
 		};
 
 		if (!t.blockId) {
@@ -190,6 +193,7 @@ const LABEL = {
 	priority: "priority",
 	project_id: "project",
 	done_on: "done",
+	description: "description",
 } as const satisfies Record<(typeof FIELDS)[number], TaskDiff["field"]>;
 
 function show(field: (typeof FIELDS)[number], f: TaskFields): string {
@@ -202,6 +206,8 @@ function show(field: (typeof FIELDS)[number], f: TaskFields): string {
 			return f.priority === null ? "(none)" : `P${f.priority}`;
 		case "done_on":
 			return f.done_on ?? "(Push date)";
+		case "description":
+			return f.description.split("\n")[0]?.trim() || "(vide)";
 		default:
 			return String(f[field] ?? "");
 	}

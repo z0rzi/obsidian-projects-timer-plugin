@@ -2,11 +2,11 @@ import type { TFile } from "obsidian";
 import { splitBlockId } from "../blockId";
 import { extractCheckboxItems, findTasksHeadingSection } from "../projectCards";
 import type { PushedTaskStatus, PushedTaskType } from "../remote/api";
-import { parseTasks, type StatusToken } from "../taskParser";
+import { parseTasks, readIndentedBody, type StatusToken } from "../taskParser";
 
 /**
- * What the Client app sees of one Task line. Only the line: the indented or
- * following body never leaves the vault.
+ * What the Client app sees of one Task line and its indented body (shared as
+ * the Task's Description).
  */
 export interface LocalTask {
 	path: string;
@@ -25,6 +25,8 @@ export interface LocalTask {
 	priority: number | null;
 	/** Date of `#done <date>`. */
 	doneOn?: string;
+	/** The body with the first body line's indentation removed from every line; "" without body. */
+	description: string;
 }
 
 const PRIVATE = /(^|\s)#private(\s|$)/;
@@ -35,6 +37,15 @@ function fromToken(token: StatusToken | null): Pick<LocalTask, "status" | "prior
 	if (token.status === "review") return { status: "a_valider", priority: null };
 	if (token.priority === 0) return { status: "en_cours", priority: 0 };
 	return { status: "a_faire", priority: token.priority };
+}
+
+/** The body as shared: the first line's indentation (tab or spaces) removed from every line. */
+function deindent(body: string): string {
+	const indent = /^\s*/.exec(body)![0];
+	return body
+		.split("\n")
+		.map((line) => (line.startsWith(indent) ? line.slice(indent.length) : line.trimStart()))
+		.join("\n");
 }
 
 /** Tag tasks of a file (`#task`, `#bug`, `#quick`, `#wait`, and `#done` lines), minus `#private` ones. */
@@ -53,6 +64,7 @@ export function readTagTasks(path: string, content: string, projectPath: string 
 			title: t.title.trim(),
 			type: t.type,
 			...mapped,
+			description: deindent(t.description),
 		});
 	}
 	lines.forEach((raw, line) => {
@@ -71,6 +83,7 @@ export function readTagTasks(path: string, content: string, projectPath: string 
 			status: "termine",
 			priority: null,
 			...(m[1] ? { doneOn: m[1] } : {}),
+			description: deindent(readIndentedBody(lines, line).join("\n")),
 		});
 	});
 	return out.sort((a, b) => a.line - b.line);
@@ -94,5 +107,6 @@ export function readProjectSteps(path: string, content: string): LocalTask[] {
 			...(item.checked
 				? { status: "termine" as const, priority: null }
 				: (fromToken(item.override ?? null) ?? { status: "a_faire" as const, priority: null })),
+			description: deindent(item.body),
 		}));
 }

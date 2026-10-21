@@ -11,7 +11,7 @@ import { readTagTasks } from "../src/sync/sharedTask";
 import { planTaskPush } from "../src/sync/taskPlan";
 
 const now = new Date("2026-10-20T10:00:00Z");
-const fields: TaskFields = { title: "Fix heatmap", type: "task", status: "a_faire", priority: 3, project_id: null };
+const fields: TaskFields = { title: "Fix heatmap", type: "task", status: "a_faire", priority: 3, project_id: null, description: "" };
 
 /** A vault where the Developer moved a Task P3 → P4 (and renamed it) while JMJ moved it to P1. */
 function world() {

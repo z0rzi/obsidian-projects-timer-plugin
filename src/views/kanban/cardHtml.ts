@@ -37,10 +37,11 @@ function stepItemHtml(card: ProjectCard, item: ProjectCardItem, extraClass: stri
 	`;
 }
 
-/** Card of an Override: the step itself, with its Project's name. */
+/** Card of an Override: the step itself, its body, with its Project's name. */
 export function overrideCardHtml(card: ProjectCard, item: ProjectCardItem, unread: Set<string>): string {
 	return `
 		${stepItemHtml(card, item, "", unread)}
+		<small>${escapeHtml(item.body.trim()).replace(/\n/g, "<br/>")}</small>
 		<small style="color: var(--text-faint)">${escapeHtml(card.file.basename)}</small>
 		`;
 }

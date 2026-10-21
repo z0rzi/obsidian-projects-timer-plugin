@@ -20,9 +20,10 @@ const task = (over: Partial<LocalTask> = {}): LocalTask => ({
 	type: "task",
 	status: "a_faire",
 	priority: 2,
+	description: "",
 	...over,
 });
-const fields: TaskFields = { title: "Widget saison", type: "task", status: "a_faire", priority: 2, project_id: null };
+const fields: TaskFields = { title: "Widget saison", type: "task", status: "a_faire", priority: 2, project_id: null, description: "" };
 const plan = (local: LocalTask[], pushed: PushedTasks = {}, doneHistory?: string[]) =>
 	planTaskPush(local, projects, pushed, { now, doneHistory });
 
@@ -59,6 +60,24 @@ describe("planTaskPush", () => {
 				diffs: [{ field: "project", from: "Tetris", to: "Widget" }],
 				change: { op: "update", kind: "task", id: "t7f3a", fields: { project_id: "p0002" } },
 			},
+		]);
+	});
+
+	it("shows a changed body as a Description diff, first line of the text as preview, (vide) when emptied", () => {
+		const pushed = { t7f3a: { path: "1.meetings/m.md", fields: { ...fields, description: "Ancien corps\nsuite" } } };
+		const edited = task({ blockId: "t7f3a", description: "Nouveau corps\n\n![[capture.png]]" });
+		expect(plan([edited], pushed).changes).toMatchObject([
+			{
+				group: "changed",
+				diffs: [{ field: "description", from: "Ancien corps", to: "Nouveau corps" }],
+				change: { op: "update", kind: "task", id: "t7f3a", fields: { description: "Nouveau corps\n\n![[capture.png]]" } },
+			},
+		]);
+		expect(plan([task({ blockId: "t7f3a" })], pushed).changes).toMatchObject([
+			{ diffs: [{ field: "description", from: "Ancien corps", to: "(vide)" }], change: { fields: { description: "" } } },
+		]);
+		expect(plan([task({ description: "Corps" })]).changes).toMatchObject([
+			{ group: "new", change: { op: "create", fields: { ...fields, description: "Corps" } } },
 		]);
 	});
 

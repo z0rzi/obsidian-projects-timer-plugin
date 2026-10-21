@@ -17,7 +17,7 @@ This spec covers the vault side. The Client app, its API contract and the milest
 
 ## What is shared
 
-Never shared: time logs (`project` blocks), billing, quotes, commands, knowledge, people, Task bodies.
+Never shared: time logs (`project` blocks), billing, quotes, commands, knowledge, people.
 
 ### Projects
 
@@ -28,7 +28,7 @@ Never shared: time logs (`project` blocks), billing, quotes, commands, knowledge
 
 ### Tasks
 
-Only the line itself is shared; the indented body stays private.
+The line and its indented body are shared: the body (lines after the Task line with an indent above zero, blank lines included while the next non-blank line is indented) becomes the Task's Description, de-indented and shared like a Review body (images uploaded, wikilinks to text). `#private` on the line hides the Task and its body.
 
 **Tag tasks** — any line starting with a type tag, in any file, unless it carries `#private`. Project comes from the file (project file, or `project:` frontmatter of a meeting note); none = standalone Task.
 
