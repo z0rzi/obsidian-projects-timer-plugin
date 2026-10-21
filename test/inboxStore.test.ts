@@ -183,6 +183,19 @@ describe("Inbox feed: filter", () => {
 		expect(store.current.filter).toBe("moi");
 		expect(ids()).toEqual([3]);
 	});
+
+	it("shows one item's entries from a kanban badge, until cleared", async () => {
+		const { store, ids } = storeOn(fakeApp([comment(6), priority(5), comment(4, "s2xyz"), push(3)]));
+		await store.refresh();
+		store.setItemFilter({ id: "t7f3a", title: "Fix heatmap" });
+		expect(store.current.item).toEqual({ id: "t7f3a", title: "Fix heatmap" });
+		expect(ids()).toEqual([6]);
+		await store.refresh();
+		expect(ids()).toEqual([6]);
+		store.setItemFilter(null);
+		expect(store.current.item).toBeNull();
+		expect(ids()).toEqual([6, 5, 4, 3]);
+	});
 });
 
 describe("Inbox feed: unread", () => {

@@ -36,6 +36,8 @@ export interface InboxState {
 	/** The loaded Activity entries the filter shows, newest first. */
 	feed: ActivityEntry[];
 	filter: InboxFilter;
+	/** The item the feed is narrowed to (a kanban badge was clicked), null for all. */
+	item: InboxItemFilter | null;
 	/** Unread entries among those loaded, whatever the filter. */
 	unread: number;
 	/** Older entries are left to load ("Charger plus"). */
@@ -43,6 +45,9 @@ export interface InboxState {
 	/** Last failure, ready for display (loading or marking read). */
 	error?: string;
 }
+
+/** An item of the feed, by app id, with its title for the view. */
+export type InboxItemFilter = { id: string; title: string };
 
 type Conflicts = () => Record<string, PullConflict> | undefined;
 
@@ -87,12 +92,13 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * putting the entry back on failure.
  */
 export class InboxStore {
-	private state: InboxState = { status: "idle", toTriage: [], conflicts: [], feed: [], filter: "tous", unread: 0, more: false };
+	private state: InboxState = { status: "idle", toTriage: [], conflicts: [], feed: [], filter: "tous", item: null, unread: 0, more: false };
 	private tickets: InboxTicket[] = [];
 	private entries: ActivityEntry[] = [];
 	/** `before` of the next page, null when nothing is older. */
 	private next: number | null = null;
 	private filter: InboxFilter = "tous";
+	private item: InboxItemFilter | null = null;
 
 	constructor(
 		private readonly remote: Remote,
@@ -138,6 +144,12 @@ export class InboxStore {
 		this.set({ ...this.state, filter, feed: this.shown() });
 	}
 
+	/** Shows only the entries of `item` (null: all of them); kept across reloads, combined with the filter. */
+	setItemFilter(item: InboxItemFilter | null): void {
+		this.item = item;
+		this.set({ ...this.state, item, feed: this.shown() });
+	}
+
 	/** Marks one unread entry read ("Lu"). */
 	async markRead(entry: ActivityEntry): Promise<void> {
 		if (entry.unread) await this.mark([entry.id], () => this.remote.markRead([entry.id]));
@@ -173,6 +185,7 @@ export class InboxStore {
 			conflicts: Object.values(this.conflicts() ?? {}).map(conflictEntry),
 			feed: this.shown(),
 			filter: this.filter,
+			item: this.item,
 			unread: this.entries.filter((e) => e.unread).length,
 			more: this.next !== null,
 		};
@@ -195,10 +208,11 @@ export class InboxStore {
 		this.set(this.build());
 	}
 
-	/** The loaded entries the filter keeps. */
+	/** The loaded entries the filter and the item filter keep. */
 	private shown(): ActivityEntry[] {
 		const role = FILTER_ROLES[this.filter];
-		return role ? this.entries.filter((e) => e.actor.role === role) : this.entries;
+		const itemId = this.item?.id;
+		return this.entries.filter((e) => (!role || e.actor.role === role) && (!itemId || e.item?.id === itemId));
 	}
 
 	private set(state: InboxState) {
