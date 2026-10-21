@@ -7,9 +7,14 @@ describe("extractCheckboxItems", () => {
 		const lines = ["- [ ] Étape ^s1", "- [x] Sans id"];
 
 		expect(extractCheckboxItems(lines, 0, 2)).toEqual([
-			{ text: "Étape", line: 0, checked: false, blockId: "s1", raw: "- [ ] Étape ^s1" },
-			{ text: "Sans id", line: 1, checked: true, raw: "- [x] Sans id" },
+			{ text: "Étape", line: 0, checked: false, blockId: "s1", raw: "- [ ] Étape ^s1", body: "" },
+			{ text: "Sans id", line: 1, checked: true, raw: "- [x] Sans id", body: "" },
 		]);
+	});
+
+	it("reads the indented lines under a step as its body, ending at indent zero", () => {
+		const lines = ["- [ ] Étape", "  détail", "", "  - [ ] sous-étape", "- [ ] Autre", "# Time usage"];
+		expect(extractCheckboxItems(lines, 0, 6).map((i) => i.body)).toEqual(["  détail\n\n  - [ ] sous-étape", ""]);
 	});
 
 	it("reads a token on a Project step as an Override", () => {
@@ -22,6 +27,7 @@ describe("extractCheckboxItems", () => {
 			blockId: "t91c2",
 			override: { priority: 1, status: "priority" },
 			raw: "- [ ] p1 fix the x axis ^t91c2",
+			body: "",
 		});
 	});
 

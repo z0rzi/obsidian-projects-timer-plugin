@@ -38,6 +38,8 @@ export type ProjectCardItem = {
 	override?: { priority: number; status: TaskStatus };
 	/** Line content when parsed, to check it is unchanged before writing. */
 	raw: string;
+	/** Indented lines under the step, as written (same rule as a Tag task's description). */
+	body: string;
 };
 
 export type ProjectCard = {

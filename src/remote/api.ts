@@ -46,7 +46,7 @@ export const PUSHED_TASK_STATUSES = ["a_faire", "en_cours", "a_valider", "termin
 export type PushedTaskStatus = (typeof PUSHED_TASK_STATUSES)[number];
 
 /**
- * Fields of a Task the Developer sets by Push: the line only, never its body.
+ * Fields of a Task the Developer sets by Push: the line and its body.
  * Vault mapping: `p0` = en_cours + priority 0, `p1`–`p5` = a_faire + that
  * priority, `pr` = a_valider, `#done <date>` / `[x]` = termine.
  */
@@ -54,6 +54,11 @@ export interface TaskFields {
   title: string;
   type: PushedTaskType;
   status: PushedTaskStatus;
+  /**
+   * The Task's Description: its vault body, de-indented, shared like a Review
+   * body (images uploaded, wikilinks to text). A Push may omit it on create (`""`).
+   */
+  description: string;
   /** 0–5, or null = inherit the Project's Priority (a Project step without token). */
   priority: number | null;
   /** App id of the Project, null for a standalone Task. */
