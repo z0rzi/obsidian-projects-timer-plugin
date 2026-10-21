@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, setIcon, type WorkspaceLeaf } from "obsidian";
+import { Component, ItemView, MarkdownRenderer, setIcon, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
 import type { InboxEntry, InboxFilter, InboxState, InboxStore } from "../inbox/inboxStore";
@@ -45,6 +45,8 @@ export type OpenInboxItem = (item: InboxEntry["item"] | undefined, title: string
  */
 export class InboxView extends ItemView {
 	private unsubscribe: (() => void) | null = null;
+	/** Owner of the rendered Markdown of the current draw, unloaded on the next one and on close. */
+	private renderScope: Component | null = null;
 	/** Uploaded images of comment bodies, fetched with the token while the pane is open. */
 	private readonly images: AppImages;
 
@@ -89,6 +91,7 @@ export class InboxView extends ItemView {
 	async onClose() {
 		this.unsubscribe?.();
 		this.unsubscribe = null;
+		this.releaseRenderScope();
 		this.images.clear();
 	}
 
@@ -96,12 +99,19 @@ export class InboxView extends ItemView {
 	private render(state: InboxState) {
 		const root = this.contentEl;
 		root.empty();
+		this.releaseRenderScope();
+		this.renderScope = this.addChild(new Component());
 		try {
 			this.draw(root, state);
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
 			root.createEl("p", { text: `Suivi inbox failed to render: ${message}`, cls: "mod-warning" });
 		}
+	}
+
+	private releaseRenderScope() {
+		if (this.renderScope) this.removeChild(this.renderScope);
+		this.renderScope = null;
 	}
 
 	private draw(root: HTMLElement, state: InboxState) {
@@ -233,9 +243,10 @@ export class InboxView extends ItemView {
 
 	/** `markdown` rendered into `el`, uploaded images swapped for local copies once fetched (as in the comment panel). */
 	private renderMarkdown(el: HTMLElement, markdown: string) {
+		const scope = this.renderScope ?? this;
 		const show = (images?: Map<string, string>) => {
 			el.empty();
-			void MarkdownRenderer.render(this.app, withAppUrls(markdown, this.appUrl(), images), el, "", this);
+			void MarkdownRenderer.render(this.app, withAppUrls(markdown, this.appUrl(), images), el, "", scope);
 		};
 		show();
 		const paths = uploadedImages(markdown);
