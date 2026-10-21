@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AppImages } from "../src/comments/appImages";
-import { uploadedImages, withAppUrls } from "../src/comments/commentMarkdown";
+import { highlightMentions, uploadedImages, withAppUrls } from "../src/comments/commentMarkdown";
 
 describe("comment markdown for Obsidian", () => {
 	it("points app links at the app, and uploaded images at the fetched copies", () => {
@@ -70,5 +70,14 @@ describe("AppImages (uploaded images fetched with the token)", () => {
 		await cache.urls(["/uploads/a.png"]);
 		cache.clear();
 		expect(revoked).toEqual(["blob:app/1"]);
+	});
+});
+
+describe("mentions in comment bodies", () => {
+	it("wraps the known mentions, not unknown handles, emails or code", () => {
+		const body = "@baptiste regarde @jmj, pas `@baptiste` ni jmj@edf.fr ni @inconnu ni @baptistex\n```\n@jmj\n```";
+		expect(highlightMentions(body, ["baptiste", "jmj"])).toBe(
+			'<span class="suivi-mention">@baptiste</span> regarde <span class="suivi-mention">@jmj</span>, pas `@baptiste` ni jmj@edf.fr ni @inconnu ni @baptistex\n```\n@jmj\n```',
+		);
 	});
 });

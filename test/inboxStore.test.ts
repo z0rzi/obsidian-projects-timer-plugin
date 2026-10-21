@@ -15,7 +15,7 @@ const comment = (id: number, itemId = "t7f3a", body = "Ça bloque"): ActivityEnt
 	type: "comment.created",
 	label: "Commentaire",
 	item: { kind: "task", id: itemId, title: "Fix heatmap" },
-	comment: { id: `c${id}`, body, mentions: [] },
+	comment: { id: `c${id}`, body, mentions: [], mentioned: false },
 	unread: true,
 });
 

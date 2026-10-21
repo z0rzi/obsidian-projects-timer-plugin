@@ -333,8 +333,12 @@ export interface ActivityEntry {
   label: string;
   /** The Project, Task or Review concerned (for a comment, the one it's on); absent once archived. */
   item?: { kind: "project" | "task" | "review"; id: string; title: string };
-  /** Comment events: the comment; `body` absent once deleted. `mentions`: handles of the users mentioned (see `Comment`). */
-  comment?: { id: string; body?: string; mentions: string[] };
+  /**
+   * Comment events: the comment; `body` absent once deleted. `mentions`:
+   * handles of the users mentioned (see `Comment`); `mentioned`: the caller is
+   * one of them.
+   */
+  comment?: { id: string; body?: string; mentions: string[]; mentioned: boolean };
   /** `item.updated`: the field changed and its old and new values. */
   field?: string;
   from?: unknown;

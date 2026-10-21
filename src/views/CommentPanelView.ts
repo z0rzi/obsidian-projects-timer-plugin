@@ -1,6 +1,6 @@
 import { ItemView, MarkdownRenderer, setIcon, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
-import { uploadedImages, withAppUrls } from "../comments/commentMarkdown";
+import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
 import type { ThreadSession, ThreadState } from "../comments/threadSession";
 import type { Comment } from "../remote/api";
 
@@ -122,7 +122,7 @@ export class CommentPanelView extends ItemView {
 		const body = el.createDiv({ cls: "suivi-comment-body" });
 		const show = (images?: Map<string, string>) => {
 			body.empty();
-			void MarkdownRenderer.render(this.app, withAppUrls(c.body, this.appUrl(), images), body, "", this);
+			void MarkdownRenderer.render(this.app, withAppUrls(highlightMentions(c.body, c.mentions), this.appUrl(), images), body, "", this);
 		};
 		show();
 		const paths = uploadedImages(c.body);

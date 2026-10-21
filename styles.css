@@ -266,3 +266,14 @@
 	border-radius: 50%;
 	background: var(--type-color);
 }
+
+/* Mentions: a known @handle in a comment body, and an Inbox entry that mentions the Developer */
+.suivi-mention {
+	color: var(--text-accent);
+	font-weight: 600;
+}
+
+.suivi-inbox-entry.is-mention {
+	box-shadow: inset 3px 0 0 var(--color-orange);
+	padding-left: 6px;
+}

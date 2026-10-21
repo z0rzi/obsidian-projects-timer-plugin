@@ -23,3 +23,27 @@ export function withAppUrls(body: string, appUrl: string, images: ReadonlyMap<st
 		})
 		.replace(/(\]\()(\/(?!\/)[^)\s]*)/g, (_m, open: string, path: string) => `${open}${base}${path}`);
 }
+
+/** Code spans and fenced blocks: a Mention is never inside them. */
+const CODE = /(`+[^`]*`+)/;
+
+/**
+ * `body` with each `@handle` of `handles` (the comment's known mentions)
+ * wrapped in `<span class="suivi-mention">`, as the site highlights them;
+ * code, emails (`jmj@edf.fr`) and longer handles are left alone.
+ */
+export function highlightMentions(body: string, handles: readonly string[]): string {
+	if (handles.length === 0) return body;
+	const known = new Set(handles);
+	return body
+		.split(CODE)
+		.map((part, i) =>
+			// Odd parts are the code the split kept.
+			i % 2 === 1
+				? part
+				: part.replace(/(?<![\w-])@([a-z0-9_-]+)(?![\w-])/g, (m, handle: string) =>
+						known.has(handle) ? `<span class="suivi-mention">${m}</span>` : m,
+					),
+		)
+		.join("");
+}

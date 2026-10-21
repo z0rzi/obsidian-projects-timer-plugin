@@ -1,6 +1,6 @@
 import { ItemView, MarkdownRenderer, setIcon, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
-import { uploadedImages, withAppUrls } from "../comments/commentMarkdown";
+import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
 import type { InboxEntry, InboxFilter, InboxState, InboxStore } from "../inbox/inboxStore";
 import type { ActivityEntry, EventType } from "../remote/api";
 
@@ -196,7 +196,10 @@ export class InboxView extends ItemView {
 		}
 	}
 
-	/** An entry of the feed: type icon, actor, time, label, item title, comment body; "Lu" while unread. */
+	/**
+	 * An entry of the feed: type icon, actor, time, label, item title, comment
+	 * body; "Lu" while unread. A comment that mentions the Developer stands out.
+	 */
 	private renderActivity(parent: HTMLElement, entry: ActivityEntry) {
 		const el = this.entryBox(parent, entry.type);
 		if (entry.unread) {
@@ -205,6 +208,7 @@ export class InboxView extends ItemView {
 			el.style.borderLeft = "3px solid var(--interactive-accent)";
 			el.style.paddingLeft = "6px";
 		}
+		if (entry.comment?.mentioned) el.addClass("is-mention");
 		const line = el.createDiv({ cls: "suivi-inbox-line" });
 		line.style.display = "flex";
 		line.style.gap = "6px";
@@ -221,8 +225,10 @@ export class InboxView extends ItemView {
 		}
 		const thread = entry.type.startsWith("comment.");
 		if (entry.item) this.link(el, entry.item.title, () => this.open(entry.item, entry.label, thread));
-		const body = entry.comment?.body;
-		if (body) this.renderMarkdown(el.createDiv({ cls: "suivi-inbox-body" }), body);
+		const { comment } = entry;
+		if (comment?.body) {
+			this.renderMarkdown(el.createDiv({ cls: "suivi-inbox-body" }), highlightMentions(comment.body, comment.mentions));
+		}
 	}
 
 	/** `markdown` rendered into `el`, uploaded images swapped for local copies once fetched (as in the comment panel). */
