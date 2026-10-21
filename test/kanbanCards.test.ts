@@ -61,6 +61,13 @@ describe("kanban type labels", () => {
 		expect(cardHtml("t1", "Écrire", "", "task")).not.toContain("kanban-type-label");
 	});
 
+	it("label an Override card with its step's type, and leave a task step's card bare", () => {
+		const widget = card(["- [ ] #bug p1 Axe faux", "- [ ] p2 Écrire"]);
+		const [bug, task] = widget.overrides;
+		expect(overrideCardHtml(widget, bug!, new Map())).toContain('<span class="kanban-type-label" data-type="bug">BUG</span>');
+		expect(overrideCardHtml(widget, task!, new Map())).not.toContain("kanban-type-label");
+	});
+
 	it("put a dot of the step's type before each step text, none for a task step", () => {
 		const html = projectCardHtml(card(["- [ ] #bug Axe faux", "- [ ] #wait Réponse JMJ", "- [ ] Écrire"]), new Map());
 		expect(html).toMatch(/<span class="kanban-step-dot" data-type="bug"><\/span><span class="kanban-project-item-text">[^<]*Axe faux/);

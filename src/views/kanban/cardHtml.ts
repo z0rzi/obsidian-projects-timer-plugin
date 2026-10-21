@@ -68,10 +68,11 @@ function stepItemHtml(card: ProjectCard, item: ProjectCardItem, extraClass: stri
 	`;
 }
 
-/** Card of an Override: unread badge, the step itself, its body, with its Project's name. */
+/** Card of an Override: unread badge, type label, the step itself, its body, with its Project's name. */
 export function overrideCardHtml(card: ProjectCard, item: ProjectCardItem, badges: Map<string, string>): string {
 	return `
 		${badgeHtml(badgeOf(badges, item.blockId))}
+		${typeLabelHtml(item.type)}
 		${stepItemHtml(card, item, "", false)}
 		<small>${escapeHtml(item.body.trim()).replace(/\n/g, "<br/>")}</small>
 		<small style="color: var(--text-faint)">${escapeHtml(card.file.basename)}</small>
