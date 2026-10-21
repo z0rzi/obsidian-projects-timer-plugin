@@ -347,14 +347,14 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 			remote,
 			sync,
 			save: async () => {},
-			target: () => ({ path: "1.meetings/r.md", projectId: null }),
+			target: () => ({ path: "1.meetings/r.md", projectId: null, step: false }),
 			insert: (line) => {
 				const at = placeLine(note, 1, line);
 				note.splice(1, 1, ...at.text.split("\n"));
 			},
 		});
 		expect(result).toEqual({ ok: true, line: `#bug p2 ${title} ^${id}` });
-		expect(note).toEqual(["# Réunion", `#bug p2 ${title} ^${id}`, "", "suite"]);
+		expect(note).toEqual(["# Réunion", `#bug p2 ${title} ^${id}`, "\tRien ne s'affiche ![](/uploads/x.png)", "", "suite"]);
 
 		await store.refresh();
 		expect(store.current.toTriage.some((e) => e.item.id === id)).toBe(false);
@@ -526,7 +526,7 @@ function noopDeps(remote: ReturnType<typeof createHttpRemote>, sync: SyncState) 
 		remote,
 		sync,
 		save: async () => {},
-		target: () => ({ path: "x.md", projectId: null }),
+		target: () => ({ path: "x.md", projectId: null, step: false }),
 		insert: () => {
 			throw new Error("must not write");
 		},
