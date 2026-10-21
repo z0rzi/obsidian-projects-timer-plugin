@@ -227,4 +227,19 @@ describe("Pull: Inbox notice", () => {
 		expect(noticed).toEqual(["comment.created", "item.updated"]);
 		expect(w.files.get("m.md")).toBe("#task p1 Fix heatmap ^t7f3a\n");
 	});
+
+	it("tells the Inbox about any event, even one no Pull handler applies", async () => {
+		const w = world({}, {});
+		w.app.log.push({
+			id: 1,
+			at: "2026-10-20T10:00:00.000Z",
+			actor: JMJ,
+			type: "comment.deleted",
+			item: "cabc",
+			payload: {},
+		});
+		const noticed: string[] = [];
+		await w.pull(withInboxNotice(PULL_HANDLERS, (e) => noticed.push(e.type)));
+		expect(noticed).toEqual(["comment.deleted"]);
+	});
 });
