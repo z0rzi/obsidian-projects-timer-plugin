@@ -13,8 +13,8 @@ import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
 
 const meeting = "1.meetings/m.md";
 const project = "2.projects/Widget.md";
-const review: TaskFields = { title: "Widget", type: "task", status: "a_valider", priority: null, project_id: "p0002" };
-const step: TaskFields = { title: "Export", type: "step", status: "a_valider", priority: null, project_id: "p0002" };
+const review: TaskFields = { title: "Widget", type: "task", status: "a_valider", priority: null, project_id: "p0002", description: "" };
+const step: TaskFields = { title: "Export", type: "step", status: "a_valider", priority: null, project_id: "p0002", description: "" };
 
 function world(events: Omit<ApiEvent, "id">[]) {
 	const log: ApiEvent[] = events.map((e, i) => ({ ...e, id: i + 1 }));

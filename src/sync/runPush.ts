@@ -22,7 +22,7 @@ export interface PushDeps {
 	writeValidated?: (id: string, path: string, doneOn: string | null) => Promise<void>;
 	/** Keys of the undated done lines this plan left out; remembered after the first Push. */
 	doneHistory?: string[];
-	/** A Review body as Suivi gets it (images uploaded, wikilinks as text); throws if an image can't be sent. */
+	/** A Review or Task body as Suivi gets it (images uploaded, wikilinks as text); throws if an image can't be sent. */
 	shareBody?: (path: string, body: string) => Promise<string>;
 	/** Sets the status token of the Task line `^id` in `path` (a published Review puts its Task to `pr`). */
 	writeTaskToken?: (path: string, id: string, token: "pr") => Promise<void>;
@@ -166,12 +166,24 @@ async function pushProjects(selected: PendingProjectChange[], deps: PushDeps, ou
 	return created;
 }
 
+/**
+ * Pushes Task changes: bodies (the Description) are shared just before
+ * sending, like a Review's; the last-pushed snapshot keeps the vault's text.
+ */
 async function pushTasks(selected: PendingTaskChange[], deps: PushDeps, outcome: PushOutcome) {
-	const results = await send(deps.remote, selected.map((c) => c.change));
+	const ready: { change: PendingTaskChange; sent: PushChange }[] = [];
+	for (const t of selected) {
+		try {
+			ready.push({ change: t, sent: await withSharedBody(t, deps) });
+		} catch (e) {
+			outcome.failed.push({ title: t.title, error: (e as Error).message });
+		}
+	}
+	const results = await send(deps.remote, ready.map((r) => r.sent));
 	if (results.length === 0) return;
 	const created: { change: PendingTaskChange & { group: "new" }; id: string }[] = [];
 	let applied = 0;
-	selected.forEach((change, i) => {
+	ready.forEach(({ change }, i) => {
 		const result = results[i]!;
 		if (!result.ok) {
 			outcome.failed.push({ title: change.title, error: result.error });
@@ -196,6 +208,13 @@ async function pushTasks(selected: PendingTaskChange[], deps: PushDeps, outcome:
 			});
 		}
 	}
+}
+
+/** The change to send: its `description`, when not empty, shared through `deps.shareBody`. */
+async function withSharedBody(t: PendingTaskChange, deps: PushDeps): Promise<PushChange> {
+	if (t.group === "deleted" || !t.change.fields.description || !deps.shareBody) return t.change;
+	const description = await deps.shareBody(t.path, t.change.fields.description);
+	return { ...t.change, fields: { ...t.change.fields, description } } as PushChange;
 }
 
 /**

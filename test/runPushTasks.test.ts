@@ -35,6 +35,7 @@ const line = (over: Partial<LocalTask>): LocalTask => ({
 	type: "task",
 	status: "a_faire",
 	priority: 2,
+	description: "",
 	...over,
 });
 
@@ -60,6 +61,7 @@ function vault(tasks: LocalTask[], projects: SharedProject[] = []) {
 			sync,
 			save: async () => {},
 			doneHistory,
+			shareBody: async (_path: string, body: string) => body.replace("![[capture.png]]", "![](/uploads/capture.png)"),
 			writeSuiviId: async (path: string, id: string) => {
 				suiviIds[path] = id;
 			},
@@ -85,6 +87,31 @@ describe("runPush with Tasks", () => {
 
 		expect(v.blockIds).toEqual({ "#task p2 Widget": "id0" });
 		expect(v.plan().changes).toEqual([]);
+	});
+
+	it("shares the body like a Review's (image uploaded) and remembers the vault text as last pushed", async () => {
+		const app = fakeApp();
+		const v = vault([line({ description: "Voir ![[capture.png]]\n`![[pas une image]]`" })]);
+
+		expect(await runPush(v.plan().changes, v.deps(app.remote))).toEqual({ applied: 1, failed: [] });
+
+		expect(app.received).toEqual([
+			[{ op: "create", kind: "task", fields: expect.objectContaining({ description: "Voir ![](/uploads/capture.png)\n`![[pas une image]]`" }) }],
+		]);
+		expect(v.sync.pushedTasks.id0!.fields.description).toBe("Voir ![[capture.png]]\n`![[pas une image]]`");
+		expect(v.plan().changes).toEqual([]);
+	});
+
+	it("keeps a Task pending when an image of its body cannot be sent", async () => {
+		const app = fakeApp();
+		const v = vault([line({ description: "![[capture.png]]" }), line({ title: "Autre", raw: "#task p2 Autre" })]);
+		const deps = { ...v.deps(app.remote), shareBody: async () => Promise.reject(new Error("image capture.png not found")) };
+
+		const outcome = await runPush(v.plan().changes, deps);
+
+		expect(outcome).toEqual({ applied: 1, failed: [{ title: "Widget", error: "image capture.png not found" }] });
+		expect(app.received).toEqual([[expect.objectContaining({ fields: expect.objectContaining({ title: "Autre" }) })]]);
+		expect(v.plan().changes).toMatchObject([{ group: "new", title: "Widget" }]);
 	});
 
 	it("pushes a new Project before its Tasks and links them to its new id", async () => {
