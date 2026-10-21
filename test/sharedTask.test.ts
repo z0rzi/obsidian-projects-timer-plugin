@@ -43,6 +43,13 @@ describe("readTagTasks", () => {
 		expect(spaces[0]!.description).toBe("ligne\nmoins");
 	});
 
+	it("keeps the relative indent when tabs and spaces mix, a tab counting 4 columns", () => {
+		const tabFirst = readTagTasks("a.md", "#task p1 T\n\tligne\n      - sous\n  moins", null);
+		expect(tabFirst[0]!.description).toBe("ligne\n  - sous\nmoins");
+		const spacesFirst = readTagTasks("a.md", "#task p1 T\n    ligne\n\t\t- sous\n  \t- mi", null);
+		expect(spacesFirst[0]!.description).toBe("ligne\n\t- sous\n- mi");
+	});
+
 	it("leaves out #private lines with their body, and nothing else", () => {
 		const tasks = readTagTasks("a.md", "#task p1 Salaire #private\n  montant secret\n#done 2026-10-01 #private Prime\n#task p1 Visible\n  #private dans le corps", null);
 		expect(tasks.map((t) => [t.title, t.description])).toEqual([["Visible", "#private dans le corps"]]);

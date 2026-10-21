@@ -41,12 +41,37 @@ function fromToken(token: StatusToken | null): Pick<LocalTask, "status" | "prior
 	return { status: "a_faire", priority: token.priority };
 }
 
-/** The body as shared: the first line's indentation (tab or spaces) removed from every line. */
+const TAB_WIDTH = 4;
+
+/**
+ * The leading tabs and spaces of `line`, read up to `maxColumns` columns (a
+ * tab reaching the next multiple of `TAB_WIDTH`): their width in columns and
+ * their length in characters.
+ */
+function leadingIndent(line: string, maxColumns = Infinity): { width: number; length: number } {
+	let width = 0;
+	let length = 0;
+	while (width < maxColumns && (line[length] === " " || line[length] === "\t")) {
+		width += line[length] === "\t" ? TAB_WIDTH - (width % TAB_WIDTH) : 1;
+		length++;
+	}
+	return { width, length };
+}
+
+/**
+ * The body as shared: the first line's indentation (tabs or spaces) removed
+ * from every line, relative indent kept. Indents compare by width, so tabs
+ * and spaces may mix; a tab cut through leaves its extra columns as spaces,
+ * a line indented less than the first loses only what it has.
+ */
 export function deindent(body: string): string {
-	const indent = /^\s*/.exec(body)![0];
+	const columns = leadingIndent(body).width;
 	return body
 		.split("\n")
-		.map((line) => (line.startsWith(indent) ? line.slice(indent.length) : line.trimStart()))
+		.map((line) => {
+			const { width, length } = leadingIndent(line, columns);
+			return " ".repeat(Math.max(0, width - columns)) + line.slice(length);
+		})
 		.join("\n");
 }
 
