@@ -81,6 +81,7 @@ function deps(overrides: Partial<TriageDeps> = {}) {
 				const fields: TaskFields = {
 					title: "Heatmap vide",
 					type: as.type,
+					step: false,
 					status: as.priority === 0 ? "en_cours" : "a_faire",
 					priority: as.priority,
 					project_id: as.project_id,
@@ -106,11 +107,11 @@ describe("runTriage (Insérer ici)", () => {
 		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
 
 		expect(result).toEqual({ ok: true, line: "#bug p2 Heatmap vide ^t7f3a" });
-		expect(sent).toEqual([["t7f3a", { as: "task", type: "bug", priority: 2, project_id: "p1abc" }]]);
+		expect(sent).toEqual([["t7f3a", { as: "task", type: "bug", step: false, priority: 2, project_id: "p1abc" }]]);
 		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a"]);
 		expect(sync.pushedTasks.t7f3a).toEqual({
 			path: "2.projects/Widget.md",
-			fields: { title: "Heatmap vide", type: "bug", status: "a_faire", priority: 2, project_id: "p1abc", description: "Rien ne s'affiche" },
+			fields: { title: "Heatmap vide", type: "bug", step: false, status: "a_faire", priority: 2, project_id: "p1abc", description: "Rien ne s'affiche" },
 		});
 		expect(saved()).toBe(1);
 	});

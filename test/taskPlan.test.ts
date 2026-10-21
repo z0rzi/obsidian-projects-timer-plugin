@@ -18,12 +18,13 @@ const task = (over: Partial<LocalTask> = {}): LocalTask => ({
 	projectPath: null,
 	title: "Widget saison",
 	type: "task",
+	step: false,
 	status: "a_faire",
 	priority: 2,
 	description: "",
 	...over,
 });
-const fields: TaskFields = { title: "Widget saison", type: "task", status: "a_faire", priority: 2, project_id: null, description: "" };
+const fields: TaskFields = { title: "Widget saison", type: "task", step: false, status: "a_faire", priority: 2, project_id: null, description: "" };
 const plan = (local: LocalTask[], pushed: PushedTasks = {}, doneHistory?: string[]) =>
 	planTaskPush(local, projects, pushed, { now, doneHistory });
 
@@ -81,6 +82,32 @@ describe("planTaskPush", () => {
 		]);
 	});
 
+	it("pushes a Project step with its type tag and the step flag; a changed tag is a type diff", () => {
+		const step = task({ type: "bug", step: true, priority: null, raw: "- [ ] #bug Axe", path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
+		expect(plan([step]).changes).toMatchObject([
+			{ group: "new", detail: "Bug · À faire · Tetris", change: { fields: { type: "bug", step: true, priority: null, project_id: "p0001" } } },
+		]);
+		const pushed = { s1xyz: { path: "2.projects/Tetris.md", fields: { ...fields, type: "task" as const, step: true, priority: null, project_id: "p0001" } } };
+		expect(plan([{ ...step, blockId: "s1xyz" }], pushed).changes).toMatchObject([
+			{ group: "changed", diffs: [{ field: "type", from: "Tâche", to: "Bug" }], change: { fields: { type: "bug" } } },
+		]);
+	});
+
+	it("shows a line moved between a Project's steps and a Tag task as a step diff", () => {
+		const pushed = { t7f3a: { path: "1.meetings/m.md", fields } };
+		const moved = task({ blockId: "t7f3a", step: true });
+		expect(plan([moved], pushed).changes).toMatchObject([
+			{ group: "changed", diffs: [{ field: "step", from: "non", to: "oui" }], change: { fields: { step: true } } },
+		]);
+	});
+
+	it("reads a snapshot pushed with the old step type as a task step, without diff", () => {
+		const { step: _none, ...beforeFlag } = fields;
+		const old = { ...beforeFlag, type: "step", priority: null } as unknown as TaskFields;
+		const step = task({ blockId: "s1xyz", step: true, priority: null });
+		expect(plan([step], { s1xyz: { path: "1.meetings/m.md", fields: old } }).changes).toEqual([]);
+	});
+
 	it("offers nothing for an unchanged pushed Task, and an archive when its line is gone", () => {
 		const pushed = { t7f3a: { path: "1.meetings/m.md", fields } };
 		expect(plan([task({ blockId: "t7f3a" })], pushed).changes).toEqual([]);
@@ -109,7 +136,7 @@ describe("planTaskPush", () => {
 
 	it("leaves out undated done items at the first Push, and offers those checked later", () => {
 		const step = (title: string, line: number) =>
-			task({ type: "step", status: "termine", priority: null, title, line, raw: `- [x] ${title}`, path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
+			task({ type: "task", step: true, status: "termine", priority: null, title, line, raw: `- [x] ${title}`, path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
 		const first = plan([step("Ancienne", 1)]);
 		expect(first.changes).toEqual([]);
 		expect(first.history).toEqual(["2.projects/Tetris.md\n- [x] Ancienne"]);

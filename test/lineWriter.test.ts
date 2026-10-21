@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { splitBlockId } from "../src/blockId";
-import { appendBlockId, rewriteStepToken, rewriteTaskTag, toggleCheckbox } from "../src/lineWriter";
+import { appendBlockId, rewriteStepToken, rewriteTaskTag, setTaskToken, toggleCheckbox } from "../src/lineWriter";
 
 describe("splitBlockId", () => {
 	it("strips a trailing block ID from the text", () => {
@@ -139,6 +139,26 @@ describe("toggleCheckbox on an Override", () => {
 	it("keeps the token and block ID", () => {
 		const raw = "- [ ] p1 Titre ^s1";
 		expect(toggleCheckbox(raw, { line: 0, raw, blockId: "s1" })).toEqual({ ok: true, content: "- [x] p1 Titre ^s1" });
+	});
+});
+
+describe("a typed Project step", () => {
+	const raw = "- [ ] #bug p2 Axe faux ^s1";
+	const ref = { line: 0, raw, blockId: "s1" };
+
+	it("keeps the tag in front when its token is set, added or removed", () => {
+		expect(setTaskToken(raw, ref, "p0")).toEqual({ ok: true, content: "- [ ] #bug p0 Axe faux ^s1" });
+		expect(setTaskToken(raw, ref, null)).toEqual({ ok: true, content: "- [ ] #bug Axe faux ^s1" });
+		const inheriting = "- [ ] #wait Retour JMJ";
+		expect(rewriteStepToken(inheriting, { line: 0, raw: inheriting }, "pr")).toEqual({ ok: true, content: "- [ ] #wait pr Retour JMJ" });
+	});
+
+	it("keeps the tag and token when ticked", () => {
+		expect(toggleCheckbox(raw, ref)).toEqual({ ok: true, content: "- [x] #bug p2 Axe faux ^s1" });
+	});
+
+	it("is not rewritten as a Tag task", () => {
+		expect(rewriteTaskTag(raw, ref, "#done 2026-10-20")).toEqual({ ok: false, reason: "changed" });
 	});
 });
 

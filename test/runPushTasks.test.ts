@@ -33,6 +33,7 @@ const line = (over: Partial<LocalTask>): LocalTask => ({
 	projectPath: null,
 	title: "Widget",
 	type: "task",
+	step: false,
 	status: "a_faire",
 	priority: 2,
 	description: "",
@@ -152,7 +153,7 @@ describe("runPush with Tasks", () => {
 
 	it("remembers the undated done items left out of the first Push", async () => {
 		const app = fakeApp();
-		const old = line({ raw: "- [x] Ancienne", title: "Ancienne", type: "step", status: "termine", priority: null });
+		const old = line({ raw: "- [x] Ancienne", title: "Ancienne", type: "task", step: true, status: "termine", priority: null });
 		const v = vault([line({}), old]);
 		const first = v.plan();
 

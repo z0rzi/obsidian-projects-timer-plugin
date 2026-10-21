@@ -51,6 +51,7 @@ export async function runTriage(
 		response = await deps.remote.triage(item.id, {
 			as: "task",
 			type: choice.type,
+			step: false,
 			priority: choice.priority,
 			project_id: target.projectId,
 		});

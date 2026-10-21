@@ -53,6 +53,7 @@ function memoryVault(initial: Record<string, string>) {
 const task = (over: Partial<TaskFields> = {}): TaskFields => ({
 	title: "Fix heatmap",
 	type: "task",
+	step: false,
 	status: "a_faire",
 	priority: 3,
 	project_id: null,
@@ -99,7 +100,7 @@ describe("Pull: Client priority changes", () => {
 		const path = "2.projects/Tetris.md";
 		const w = world(
 			{ [path]: "---\nsuivi_id: p1abc\npriority: 3\n---\n# Tasks\n- [ ] Export CSV ^s1xyz\n" },
-			{ pushedTasks: { s1xyz: { path, fields: task({ title: "Export CSV", type: "step", priority: null, project_id: "p1abc" }) } } },
+			{ pushedTasks: { s1xyz: { path, fields: task({ title: "Export CSV", step: true, priority: null, project_id: "p1abc" }) } } },
 		);
 		w.app.priority("s1xyz", null, 2);
 

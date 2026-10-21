@@ -13,8 +13,8 @@ import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
 
 const meeting = "1.meetings/m.md";
 const project = "2.projects/Widget.md";
-const review: TaskFields = { title: "Widget", type: "task", status: "a_valider", priority: null, project_id: "p0002", description: "" };
-const step: TaskFields = { title: "Export", type: "step", status: "a_valider", priority: null, project_id: "p0002", description: "" };
+const review: TaskFields = { title: "Widget", type: "task", step: false, status: "a_valider", priority: null, project_id: "p0002", description: "" };
+const step: TaskFields = { title: "Export", type: "bug", step: true, status: "a_valider", priority: null, project_id: "p0002", description: "" };
 
 function world(events: Omit<ApiEvent, "id">[]) {
 	const log: ApiEvent[] = events.map((e, i) => ({ ...e, id: i + 1 }));
@@ -26,7 +26,7 @@ function world(events: Omit<ApiEvent, "id">[]) {
 	} as unknown as Remote;
 	const files = new Map([
 		[meeting, "#task pr Widget ^t7f3a\nnotes"],
-		[project, "---\nsuivi_id: p0002\n---\n# Tasks\n- [ ] pr Export ^s9xyz\n"],
+		[project, "---\nsuivi_id: p0002\n---\n# Tasks\n- [ ] #bug pr Export ^s9xyz\n"],
 	]);
 	const vault: VaultFiles = {
 		async read(path) {
@@ -159,14 +159,14 @@ describe("Pull: Review answers", () => {
 		});
 	});
 
-	it("works on a Project step too", async () => {
+	it("works on a typed Project step too, keeping its tag", async () => {
 		const ok = world([answered("valide", "s9xyz")]);
 		await ok.pull();
-		expect(ok.files.get(project)).toContain("- [x] Export ^s9xyz");
+		expect(ok.files.get(project)).toContain("- [x] #bug Export ^s9xyz");
 		expect(ok.pending()).toEqual([]);
 		const again = world([answered("a_reprendre", "s9xyz")]);
 		await again.pull();
-		expect(again.files.get(project)).toContain("- [ ] p0 Export ^s9xyz");
+		expect(again.files.get(project)).toContain("- [ ] #bug p0 Export ^s9xyz");
 		expect(again.pending()).toEqual([]);
 	});
 

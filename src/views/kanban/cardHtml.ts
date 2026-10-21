@@ -30,7 +30,7 @@ export function cardHtml(id: string, title: string, description: string, unread 
 function stepItemHtml(card: ProjectCard, item: ProjectCardItem, extraClass: string, unread: Set<string>): string {
 	const classes = ["kanban-project-item", item.checked ? "is-checked" : "", extraClass].filter(Boolean).join(" ");
 	return `
-		<div class="${classes}" data-project-id="${card.id}" data-line="${item.line}">
+		<div class="${classes}" data-project-id="${card.id}" data-line="${item.line}" data-type="${item.type}">
 			<input type="checkbox" class="kanban-project-item-checkbox" data-project-id="${card.id}" data-line="${item.line}" ${item.checked ? "checked" : ""} />
 			<span class="kanban-project-item-text">${item.blockId && unread.has(item.blockId) ? UNREAD_DOT : ""}${escapeHtml(item.text)}</span>
 		</div>

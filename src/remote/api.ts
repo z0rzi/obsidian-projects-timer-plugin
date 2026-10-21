@@ -30,12 +30,13 @@ export interface ProjectFields {
 
 /**
  * Task type codes; the app shows them as Tâche, Bug, Tâche rapide, En attente,
- * Étape de projet, Amélioration, Idée. The last two only come from the Client.
+ * Amélioration, Idée. The last two only come from the Client. A Project step
+ * is not a type but the `step` flag: a step has a type like any Task.
  */
-export const TASK_TYPES = ["task", "bug", "quick", "wait", "step", "amelioration", "idea"] as const;
+export const TASK_TYPES = ["task", "bug", "quick", "wait", "amelioration", "idea"] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
-/** Types a Push may set: the vault's tags (`#task`, `#bug`, `#quick`, `#wait`) and Project steps. */
-export const PUSHED_TASK_TYPES = ["task", "bug", "quick", "wait", "step"] as const;
+/** Types a Push may set: the vault's tags (`#task`, `#bug`, `#quick`, `#wait`); no tag = `task`. */
+export const PUSHED_TASK_TYPES = ["task", "bug", "quick", "wait"] as const;
 export type PushedTaskType = (typeof PUSHED_TASK_TYPES)[number];
 
 /** Task status codes; the app shows them as À trier, À faire, En cours, À valider, Terminé. */
@@ -65,6 +66,8 @@ export interface TaskFields {
   project_id: string | null;
   /** `YYYY-MM-DD` the Task was done (`#done <date>`); null or absent = the Push date when it becomes termine. */
   done_on?: string | null;
+  /** A Project step (a line of the Project's steps list); false for a Tag task. A line moved between the two changes it. */
+  step: boolean;
 }
 
 /**
@@ -203,6 +206,12 @@ export interface Comment {
   author_role: "client" | "developer";
   /** Markdown. Uploaded images are `![](/uploads/<name>)`, relative to the app URL. */
   body: string;
+  /**
+   * Handles of the users the body mentions (`@jmj` → "jmj"), in writing
+   * order; an `@` naming nobody is not listed. The body stays raw: highlight
+   * these when rendering.
+   */
+  mentions: string[];
   /** ISO date-times. `edited_at` is set once edited (shown "modifié"). */
   created_at: string;
   edited_at: string | null;
@@ -368,17 +377,20 @@ export type TriageTaskType = (typeof TRIAGE_TASK_TYPES)[number];
  * `POST /api/items/:id/triage` body: what an item À trier becomes.
  * `as: "task"` (Bug and Amélioration Tickets): a Task of `type` with
  * `priority` (0 = En cours, 1–5 = À faire) in Project `project_id` (null =
- * standalone). `as: "project"` (launched Ideas, "Nouveau projet"): a Project
- * with `priority` (0 = En cours, 1–5 = À faire), title and description taken
- * from the Idea, which then shows lancée. Either way the item keeps its id,
- * description and comments. 404 for an unknown item, 409 for one not À trier
- * or not of that kind, 400 for a bad body.
+ * standalone), a Project step when `step` (then `priority` may be null =
+ * inherit the Project's, no token on the line). `as: "project"` (launched
+ * Ideas, "Nouveau projet"): a Project with `priority` (0 = En cours, 1–5 = À
+ * faire), title and description taken from the Idea, which then shows lancée.
+ * Either way the item keeps its id, description and comments. 404 for an
+ * unknown item, 409 for one not À trier or not of that kind, 400 for a bad
+ * body.
  */
 export type TriageRequest =
   | {
       as: "task";
       type: TriageTaskType;
-      priority: number;
+      step: boolean;
+      priority: number | null;
       project_id: string | null;
     }
   | {
