@@ -264,7 +264,8 @@
 	width: 7px;
 	height: 7px;
 	border-radius: 50%;
-	background: var(--type-color);
+	/* A task has no type colour: its dot falls back to neutral grey. */
+	background: var(--type-color, #8c959f);
 }
 
 /* Mentions: a known @handle in a comment body, and an Inbox entry that mentions the Developer */

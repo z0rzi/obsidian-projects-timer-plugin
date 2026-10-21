@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { TFile } from "obsidian";
 import { parseProjectCard } from "../src/projectCards";
@@ -73,7 +74,11 @@ describe("kanban type labels", () => {
 		expect(html).toMatch(/<span class="kanban-step-dot" data-type="bug"><\/span><span class="kanban-project-item-text">[^<]*Axe faux/);
 		expect(html).toMatch(/<span class="kanban-step-dot" data-type="wait"><\/span><span class="kanban-project-item-text">[^<]*Réponse JMJ/);
 		expect(html).toMatch(/<span class="kanban-step-dot" data-type="task"><\/span><span class="kanban-project-item-text">[^<]*Écrire/);
-		expect(cardTypesCss()).toMatch(/\.kanban-step-dot\[data-type="task"\][^{]*\{\s*--type-color: #8c959f;/);
+		// Grey for the dot only: a task card keeps no card colour, so its title is not tinted.
+		expect(readFileSync(new URL("../styles.css", import.meta.url), "utf8")).toMatch(
+			/\.kanban-step-dot \{[^}]*background: var\(--type-color, #8c959f\);/,
+		);
+		expect(cardTypesCss()).not.toMatch(/data-type="task"\][^{]*\{[^}]*--(card|type)-color/);
 		const widget = card(["- [ ] #quick p1 Relancer"]);
 		expect(overrideCardHtml(widget, widget.overrides[0]!, new Map())).toContain('<span class="kanban-step-dot" data-type="quick"></span>');
 	});

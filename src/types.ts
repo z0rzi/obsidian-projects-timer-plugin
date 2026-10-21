@@ -5,7 +5,7 @@ const borderLeft = 'border-left: 4px solid var(--card-color);'
 export const TASKS_TYPES = [
 	{ tag: "quick", color: "#f7d522", css: borderLeft },
 	{ tag: "bug", color: "#b82626", css: borderLeft },
-	{ tag: "task", color: "#8c959f", css: "" },
+	{ tag: "task", color: "", css: "" },
 	{ tag: "wait", color: "var(--text-faint)", css: 'opacity: 0.6; border: 2px dashed var(--card-color); font-style: italic;' },
 ] as const;
 
