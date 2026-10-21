@@ -16,7 +16,7 @@ import { findTasksHeadingSection } from "../projectCards";
 import { TriageModal } from "../ui/TriageModal";
 import { NewProjectModal } from "../ui/NewProjectModal";
 import { runNewProject } from "./newProject";
-import { toastText } from "./signals";
+import { badgeText, toastText } from "./signals";
 
 export interface InboxDeps {
 	/** Opens the comment panel on an item's thread. */
@@ -26,8 +26,8 @@ export interface InboxDeps {
 /**
  * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici"), launched Ideas ("Nouveau projet"),
  * Pull conflicts and the Activity feed. Reloads from the app after a Pull that brought any event and toasts the
- * Client's new ones; a status bar item shows the unread count. Returns the store (for the kanban), the Pull hooks
- * and `openOnItem` (kanban badges).
+ * Client's new ones; a status bar item shows the unread count. Returns the store, `subscribe`, `badges` and
+ * `openOnItem` (for the kanban) and the Pull hooks.
  */
 export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, deps: InboxDeps) {
 	const { app } = plugin;
@@ -213,5 +213,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 			});
 		},
 	};
-	return { store, subscribe, pullHooks, openOnItem, afterPush: () => store.rebuild() };
+	/** Kanban badge text by app id of the items with unread Inbox entries. */
+	const badges = () => new Map([...store.unreadByItem()].map(([id, entries]) => [id, badgeText(entries)]));
+	return { store, subscribe, badges, pullHooks, openOnItem, afterPush: () => store.rebuild() };
 }

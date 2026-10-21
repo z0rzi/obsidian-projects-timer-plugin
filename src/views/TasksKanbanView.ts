@@ -121,7 +121,12 @@ export class TasksKanbanView extends ItemView {
 
 		this.taskSub = this.plugin.allTasks.subscribe((tasks) => this.updateBoards(tasks));
 		this.projectCardSub = this.plugin.allProjectCards.subscribe(() => this.redraw());
-		this.inboxUnsub = this.plugin.onInboxChange(() => this.redraw());
+		this.inboxUnsub = this.plugin.inbox?.subscribe(() => this.redraw()) ?? null;
+	}
+
+	/** Badge text by app id of the items with unread Inbox entries; none before the Inbox is set up. */
+	private inboxBadges(): Map<string, string> {
+		return this.plugin.inbox?.badges() ?? new Map<string, string>();
 	}
 
 	private redraw() {
@@ -143,7 +148,7 @@ export class TasksKanbanView extends ItemView {
 		const projectCards = this.plugin.allProjectCards.getValue();
 
 		// Only re-render if the board content actually changed
-		const snapshot = boardSnapshot(tasks, projectCards, this.plugin.inboxBadges());
+		const snapshot = boardSnapshot(tasks, projectCards, this.inboxBadges());
 		if (snapshot === this.lastSnapshot) return;
 		this.lastSnapshot = snapshot;
 
@@ -166,7 +171,7 @@ export class TasksKanbanView extends ItemView {
 		}
 		rootEl.innerHTML = "";
 
-		const filled = fillBoards(tasks, projectCards, this.plugin.inboxBadges(), (path) => this.plugin.suiviIdOf(path));
+		const filled = fillBoards(tasks, projectCards, this.inboxBadges(), (path) => this.plugin.suiviIdOf(path));
 		const boards = filled.boards;
 		this.currentSteps = filled.steps;
 
@@ -247,7 +252,7 @@ export class TasksKanbanView extends ItemView {
 		const badge = hit(".suivi-badge");
 		if (badge) {
 			evt.stopPropagation();
-			this.plugin.openInboxOn(badge.getAttribute("data-item-id") ?? "");
+			this.plugin.inbox?.openOnItem(badge.getAttribute("data-item-id") ?? "");
 			return;
 		}
 		const projectPlay = hit("span.kanban-play-btn[data-project-id]");
