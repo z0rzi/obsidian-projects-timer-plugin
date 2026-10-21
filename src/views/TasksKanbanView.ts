@@ -134,6 +134,11 @@ export class TasksKanbanView extends ItemView {
 		this.redraw();
 	}
 
+	/** App ids of the items with an unread Inbox entry (card dots). */
+	private unreadItems(): Set<string> {
+		return new Set(this.plugin.unreadByItem().keys());
+	}
+
 	private updateBoards(tasks: Task[]) {
 		if (this.isRendering) {
 			requestAnimationFrame(() => this.updateBoards(tasks));
@@ -143,7 +148,7 @@ export class TasksKanbanView extends ItemView {
 		const projectCards = this.plugin.allProjectCards.getValue();
 
 		// Only re-render if the board content actually changed
-		const snapshot = boardSnapshot(tasks, projectCards, this.plugin.unreadComments());
+		const snapshot = boardSnapshot(tasks, projectCards, this.unreadItems());
 		if (snapshot === this.lastSnapshot) return;
 		this.lastSnapshot = snapshot;
 
@@ -166,7 +171,7 @@ export class TasksKanbanView extends ItemView {
 		}
 		rootEl.innerHTML = "";
 
-		const filled = fillBoards(tasks, projectCards, this.plugin.unreadComments(), (path) => this.plugin.suiviIdOf(path));
+		const filled = fillBoards(tasks, projectCards, this.unreadItems(), (path) => this.plugin.suiviIdOf(path));
 		const boards = filled.boards;
 		this.currentSteps = filled.steps;
 

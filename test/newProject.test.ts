@@ -133,10 +133,13 @@ describe("runNewProject (Nouveau projet)", () => {
 describe("Inbox À trier with a launched Idea", () => {
 	it("lists it as an Idée to triage", async () => {
 		const to_triage = [{ ...IDEA, type: "idea", created_at: "2026-10-20T10:00:00.000Z", author_email: "jmj@edf.fr" }];
-		const remote = { inbox: async () => ({ notifications: [], to_triage }) } as unknown as Remote;
+		const remote = {
+			inbox: async () => ({ notifications: [], to_triage }),
+			activity: async () => ({ entries: [], next: null }),
+		} as unknown as Remote;
 		const store = new InboxStore(remote, () => ({}), () => {});
 		await store.refresh();
-		expect(store.current.sections[0]!.entries).toEqual([
+		expect(store.current.toTriage).toEqual([
 			expect.objectContaining({ kind: "ticket", ticketType: "idea", title: "Idée: Carte des flux" }),
 		]);
 	});
