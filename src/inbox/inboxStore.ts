@@ -66,13 +66,20 @@ function ticketEntry(t: InboxTicket): InboxEntry {
 	};
 }
 
+/** Suivi's value in a conflict: a priority, or where an Answer put the item. */
+function remoteValue(c: PullConflict): string {
+	if (c.field !== "status") return p(c.remote);
+	if (c.answer === "a_reprendre") return "En cours (À reprendre)";
+	return c.answer ? "Terminé (Validé)" : "Terminé (Review validée)";
+}
+
 function conflictEntry(c: PullConflict): InboxEntry {
 	return {
 		key: `c${c.id}:${c.field}`,
 		kind: "conflict",
 		item: { kind: c.kind, id: c.id, title: c.title },
 		title: `Conflit sur ${c.title}`,
-		detail: `Suivi a ${c.field === "status" ? "Terminé (Review validée)" : p(c.remote)}, vous l'avez changé aussi : choisissez dans Push to Suivi`,
+		detail: `Suivi a ${remoteValue(c)}, vous l'avez changé aussi : choisissez dans Push to Suivi`,
 	};
 }
 

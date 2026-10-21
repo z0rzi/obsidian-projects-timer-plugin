@@ -1,5 +1,6 @@
 import type { LineRef } from "../lineWriter";
-import type { PushChange, PushResult } from "../remote/api";
+import type { ProjectStatus, PushChange, PushedTaskStatus, PushResult } from "../remote/api";
+import { recordAnswer, type AnswerWrite } from "./pullAnswer";
 import { RemoteError, type Remote } from "../remote/remote";
 import type { SyncState } from "./pluginData";
 import type { PendingConflict } from "./conflicts";
@@ -20,6 +21,8 @@ export interface PushDeps {
 	writePriority?: (kind: "project" | "task", id: string, path: string, priority: number | null) => Promise<void>;
 	/** Marks the Task line done in the vault ("take theirs" on a Validé Review answer conflict). */
 	writeValidated?: (id: string, path: string, doneOn: string | null) => Promise<void>;
+	/** Writes the Client's Answer into the vault ("take theirs" on a conflict from `item.answered`). */
+	writeAnswer?: (write: AnswerWrite) => Promise<void>;
 	/** Keys of the undated done lines this plan left out; remembered after the first Push. */
 	doneHistory?: string[];
 	/** A Review or Task body as Suivi gets it (images uploaded, wikilinks as text); throws if an image can't be sent. */
@@ -78,13 +81,15 @@ async function settleConflicts(selected: PendingConflict[], deps: PushDeps, outc
 	if (selected.length === 0) return;
 	const settled = (c: PendingConflict, choice: "mine" | "theirs") => {
 		const pushed = c.kind === "project" ? deps.sync.pushedProjects[c.id] : deps.sync.pushedTasks[c.id];
-		const task = deps.sync.pushedTasks[c.id];
-		if (c.field === "status" && task) {
+		const task = c.kind === "task" ? deps.sync.pushedTasks[c.id] : undefined;
+		const project = c.kind === "project" ? deps.sync.pushedProjects[c.id] : undefined;
+		if (c.field === "status" && choice === "theirs") {
+			recordAnswer(deps.sync, { kind: c.kind, id: c.id, answer: c.answer ?? "valide", doneOn: c.doneOn ?? null });
+		} else if (c.field === "status" && task) {
 			const { done_on: _old, ...rest } = task.fields;
-			task.fields =
-				choice === "theirs"
-					? { ...rest, status: "termine", priority: null, done_on: c.doneOn ?? null }
-					: { ...rest, status: c.localStatus as typeof rest.status, priority: c.localValue };
+			task.fields = { ...rest, status: c.localStatus as PushedTaskStatus, priority: c.localValue };
+		} else if (c.field === "status" && project) {
+			project.fields = { ...project.fields, status: c.localStatus as ProjectStatus };
 		} else {
 			const value = choice === "mine" ? c.localValue : c.remoteValue;
 			// Only a Task's priority may be null (inherit); a Project's conflict values are numbers.
@@ -104,7 +109,10 @@ async function settleConflicts(selected: PendingConflict[], deps: PushDeps, outc
 
 	for (const c of selected.filter((c) => c.choice === "theirs")) {
 		try {
-			if (c.field === "status") {
+			if (c.field === "status" && c.answer) {
+				if (!deps.writeAnswer) throw new Error("no vault writer");
+				await deps.writeAnswer({ kind: c.kind, id: c.id, path: c.path, answer: c.answer, doneOn: c.doneOn ?? null });
+			} else if (c.field === "status") {
 				if (!deps.writeValidated) throw new Error("no vault writer");
 				await deps.writeValidated(c.id, c.path, c.doneOn ?? null);
 			} else {

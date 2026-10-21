@@ -28,6 +28,7 @@ const TYPE_ICONS: Record<EventType, string> = {
 	"item.triaged": "inbox",
 	"review.published": "eye",
 	"review.answered": "circle-check",
+	"item.answered": "circle-check",
 	"comment.created": "message-square",
 	"comment.edited": "message-square",
 	"comment.deleted": "message-square-x",
@@ -223,7 +224,9 @@ export class InboxView extends ItemView {
 		line.style.display = "flex";
 		line.style.gap = "6px";
 		line.style.alignItems = "center";
-		setIcon(line.createSpan({ cls: "suivi-inbox-icon" }), TYPE_ICONS[entry.type] ?? "circle");
+		// An Answer À reprendre sends the work back: not the Validé tick.
+		const icon = entry.answer === "a_reprendre" ? "rotate-ccw" : (TYPE_ICONS[entry.type] ?? "circle");
+		setIcon(line.createSpan({ cls: "suivi-inbox-icon" }), icon);
 		line.createEl("strong", { text: entry.actor.handle ? `@${entry.actor.handle}` : entry.actor.email });
 		line.createSpan({ text: TIME.format(new Date(entry.at)), cls: "suivi-inbox-meta" }).style.color = "var(--text-faint)";
 		line.createSpan({ text: entry.label }).style.flexGrow = "1";

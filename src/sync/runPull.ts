@@ -5,6 +5,7 @@ import type { SyncState } from "./pluginData";
 import { NotInVault } from "./locateItem";
 import { pullItemUpdated } from "./pullPriority";
 import { pullReviewAnswered } from "./pullReview";
+import { pullItemAnswered } from "./pullAnswer";
 
 /** The few vault operations a Pull needs (an in-memory map in tests). */
 export interface VaultFiles {
@@ -12,6 +13,8 @@ export interface VaultFiles {
 	read(path: string): Promise<string | null>;
 	/** Rewrites the file atomically with `edit` (Obsidian's `vault.process`). */
 	process: ProcessFile;
+	/** Edits the frontmatter of the file as an object (Obsidian's `fileManager.processFrontMatter`). */
+	processFrontMatter(path: string, edit: (frontmatter: Record<string, unknown>) => void): Promise<void>;
 	/** Every Markdown note, to find an item that left the note it was pushed from. */
 	paths(): string[];
 }
@@ -51,6 +54,7 @@ export type PullHandler = (event: ApiEvent, ctx: PullContext) => Promise<void>;
 export const PULL_HANDLERS: Partial<Record<EventType, PullHandler>> = {
 	"item.updated": pullItemUpdated,
 	"review.answered": pullReviewAnswered,
+	"item.answered": pullItemAnswered,
 };
 
 /**

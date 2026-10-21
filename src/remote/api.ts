@@ -104,6 +104,25 @@ export interface ReviewAnsweredPayload {
   task_id: string | null;
 }
 
+/** Answer codes of the Client on a Task or Project À valider; the app shows them as Validé, À reprendre. */
+export const ITEM_ANSWERS = ["valide", "a_reprendre"] as const;
+export type ItemAnswer = (typeof ITEM_ANSWERS)[number];
+
+/**
+ * Payload of `item.answered` (the item is the Task or Project, which was
+ * a_valider): the Client's Answer and the comment given with it (required for
+ * `a_reprendre`, else null when none). On a Task, `valide` makes it termine
+ * (vault: `#done <date>`, `[x]` for a step) and `a_reprendre` makes it
+ * en_cours priority 0 (vault: `p0`). On a Project, `valide` makes it termine
+ * (vault: `archived: true`) and `a_reprendre` en_cours (vault: `status: en
+ * cours`). The app emits those changes as `item.updated` events carrying
+ * `answer: <id of the item.answered event>`, right after it.
+ */
+export interface ItemAnsweredPayload {
+  answer: ItemAnswer;
+  comment_id: string | null;
+}
+
 /** One vault change in a Push. Items are addressed by the id the app gave them at creation. */
 export type PushChange =
   | { op: "create"; kind: "project"; fields: ProjectFields }
@@ -143,6 +162,7 @@ export const EVENT_TYPES = [
   "item.triaged",
   "review.published",
   "review.answered",
+  "item.answered",
   "comment.created",
   "comment.edited",
   "comment.deleted",
@@ -264,10 +284,11 @@ export interface InboxNotification {
   actor_email: string;
   /**
    * `comment.created`: a new comment; `item.updated`: a Client priority change (`from` → `to`);
-   * `review.answered`: the Client answered a Review (`answer`). The Task changes an answer causes
-   * are not Notifications of their own.
+   * `review.answered`: the Client answered a Review (`answer`); `item.answered`: the Client
+   * answered a Task or Project À valider (`answer`). The changes an answer causes are not
+   * Notifications of their own.
    */
-  type: "comment.created" | "item.updated" | "review.answered";
+  type: "comment.created" | "item.updated" | "review.answered" | "item.answered";
   /** The Project, Task or Review concerned (for a comment, the one it's on). */
   item_id: string;
   item_kind: "project" | "task" | "review";
@@ -279,8 +300,8 @@ export interface InboxNotification {
   field?: string;
   from?: unknown;
   to?: unknown;
-  /** `review.answered`: the answer given. */
-  answer?: ReviewAnsweredPayload["answer"];
+  /** `review.answered` and `item.answered`: the answer given. */
+  answer?: ItemAnswer;
 }
 
 /**
@@ -343,8 +364,8 @@ export interface ActivityEntry {
   field?: string;
   from?: unknown;
   to?: unknown;
-  /** `review.answered`: the answer given. */
-  answer?: ReviewAnsweredPayload["answer"];
+  /** `review.answered` and `item.answered`: the answer given. */
+  answer?: ItemAnswer;
   /** `push.completed`: the Push's counts. */
   push?: { applied: number; rejected: number };
   /** An event by a Client the caller hasn't marked read; the caller's own events and Pushes never are. */

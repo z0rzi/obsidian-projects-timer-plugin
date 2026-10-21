@@ -14,6 +14,11 @@ export function vaultFiles(app: App): VaultFiles {
 			if (!file) throw new Error(`${path} not found`);
 			await vault.process(file, edit);
 		},
+		async processFrontMatter(path, edit) {
+			const file = vault.getFileByPath(path);
+			if (!file) throw new Error(`${path} not found`);
+			await app.fileManager.processFrontMatter(file, edit);
+		},
 		paths: () => vault.getMarkdownFiles().map((f) => f.path),
 	};
 }

@@ -7,7 +7,7 @@ import { planTaskPush } from "../src/sync/taskPlan";
 import { settleConflicts, withConflicts } from "../src/sync/conflicts";
 import { runPush } from "../src/sync/runPush";
 import { writeRemotePriority } from "../src/sync/pullPriority";
-import { writeValidated } from "../src/sync/pullReview";
+import { writeValidated } from "../src/sync/pullAnswer";
 import type { PushChange, PushResult } from "../src/remote/api";
 import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
 

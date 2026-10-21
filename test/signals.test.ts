@@ -42,6 +42,14 @@ describe("toastText", () => {
 		);
 	});
 
+	it("announces the Client's Answer on a Task or a Project", () => {
+		expect(toastText(entry({ type: "item.answered", answer: "valide" }))).toBe("JMJ : Validé sur Algo détection");
+		const item = { kind: "project" as const, id: "p1abc", title: "Prix SPOTS" };
+		expect(toastText(entry({ type: "item.answered", item, answer: "a_reprendre" }))).toBe(
+			"JMJ : À reprendre sur Prix SPOTS",
+		);
+	});
+
 	it("falls back to the app's label for other events", () => {
 		expect(toastText(entry({ type: "idea.launched", label: "Idée lancée" }))).toBe("Idée lancée : Algo détection");
 	});
@@ -65,5 +73,11 @@ describe("badgeText", () => {
 		const answer = entry({ id: 3, type: "review.answered", answer: "valide" });
 		const ticket = entry({ id: 2, type: "ticket.created" });
 		expect(badgeText([answer, ticket])).toBe("Validé · 🔔 1");
+	});
+
+	it("shows the latest Answer on a Task or Project, next to the comment it came with", () => {
+		const answered = entry({ id: 3, type: "item.answered", answer: "a_reprendre" });
+		const older = entry({ id: 1, type: "item.answered", answer: "valide" });
+		expect(badgeText([answered, comment(2), older])).toBe("💬 1 · À reprendre");
 	});
 });

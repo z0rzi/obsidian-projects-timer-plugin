@@ -132,6 +132,19 @@ describe("Inbox feed", () => {
 			}),
 		]);
 	});
+
+	it("names the Client's Answer in a conflict it caused", async () => {
+		const base = { field: "status" as const, path: "2.projects/Widget.md", title: "Widget", remote: null };
+		const { store } = storeOn(fakeApp([]), {
+			"p0002:status": { ...base, kind: "project", id: "p0002", answer: "a_reprendre" },
+			"t7f3a:status": { ...base, kind: "task", id: "t7f3a", answer: "valide", doneOn: "2026-10-21" },
+		});
+		await store.refresh();
+		expect(store.current.conflicts.map((c) => c.detail)).toEqual([
+			"Suivi a En cours (À reprendre), vous l'avez changé aussi : choisissez dans Push to Suivi",
+			"Suivi a Terminé (Validé), vous l'avez changé aussi : choisissez dans Push to Suivi",
+		]);
+	});
 });
 
 describe("Inbox feed: paging", () => {

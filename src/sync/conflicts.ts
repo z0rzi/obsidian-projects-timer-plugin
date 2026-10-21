@@ -1,4 +1,5 @@
-import type { PushChange, PushedTaskStatus } from "../remote/api";
+import type { ItemAnswer, ProjectStatus, PushChange, PushedTaskStatus } from "../remote/api";
+import { holdsAnswer, recordAnswer } from "./pullAnswer";
 import type { SyncState } from "./pluginData";
 import type { PendingChange } from "./pushPlan";
 import { conflictKey, type PullConflict } from "./pullPriority";
@@ -24,9 +25,11 @@ export interface PendingConflict {
 	remote: string;
 	localValue: number | null;
 	remoteValue: number | null;
-	/** `status` conflict: the vault line's status, and the done date "theirs" writes. */
+	/** `status` conflict: the vault item's status, and the done date "theirs" writes. */
 	localStatus?: string;
 	doneOn?: string | null;
+	/** `status` conflict from `item.answered`: the Answer "theirs" writes (unset: a Validé Review answer). */
+	answer?: ItemAnswer;
 	choice: "mine" | "theirs";
 	change: Extract<PushChange, { op: "update" }>;
 }
@@ -36,7 +39,9 @@ type Local = { path: string; title: string; priority: number | null; status?: st
 function localItems(projects: SharedProject[], tasks: LocalTask[]): Map<string, Local> {
 	const out = new Map<string, Local>();
 	for (const p of projects) {
-		if (p.suiviId) out.set(p.suiviId, { path: p.path, title: p.fields.title, priority: p.fields.priority });
+		if (p.suiviId) {
+			out.set(p.suiviId, { path: p.path, title: p.fields.title, priority: p.fields.priority, status: p.fields.status });
+		}
 	}
 	for (const t of tasks) {
 		if (t.blockId && !out.has(t.blockId)) {
@@ -57,9 +62,9 @@ export function settleConflicts(sync: SyncState, projects: SharedProject[], task
 		const now = local.get(c.id);
 		if (!now) continue;
 		if (c.field === "status") {
-			if (now.status !== "termine") continue;
-			const task = sync.pushedTasks[c.id];
-			if (task) task.fields = { ...task.fields, status: "termine", priority: null, done_on: c.doneOn ?? null };
+			const answer = c.answer ?? "valide";
+			if (!holdsAnswer(c.kind, answer, now)) continue;
+			recordAnswer(sync, { kind: c.kind, id: c.id, answer, doneOn: c.doneOn ?? null });
 		} else {
 			if (now.priority !== c.remote) continue;
 			const pushed = c.kind === "project" ? sync.pushedProjects[c.id] : sync.pushedTasks[c.id];
@@ -93,9 +98,10 @@ export function withConflicts(
 		const pushed = c.kind === "project" ? sync.pushedProjects[c.id] : sync.pushedTasks[c.id];
 		if (!now || !pushed) continue;
 		const fields = held.get(c.id) ?? new Set<string>();
-		for (const f of HELD[c.field]) fields.add(f);
+		for (const f of c.kind === "project" ? [c.field] : HELD[c.field]) fields.add(f);
 		held.set(c.id, fields);
 		const status = c.field === "status";
+		const projectStatus = status && c.kind === "project";
 		entries.push({
 			group: "conflict",
 			key: `conflict:${conflictKey(c.id, c.field)}`,
@@ -104,23 +110,14 @@ export function withConflicts(
 			field: c.field,
 			path: now.path,
 			title: now.title,
-			local: label(now.priority, now.status),
-			remote: status ? "Terminé" : label(c.remote),
+			local: projectStatus ? PROJECT_STATUS_LABELS[now.status as ProjectStatus] : label(now.priority, now.status),
+			remote: status ? answerLabel(c.kind, c.answer ?? "valide") : label(c.remote),
 			localValue: now.priority,
 			remoteValue: c.remote,
 			...(status ? { localStatus: now.status, doneOn: c.doneOn ?? null } : {}),
+			...(c.answer ? { answer: c.answer } : {}),
 			choice: "mine",
-			change:
-				c.kind === "project"
-					? { op: "update", kind: "project", id: c.id, fields: { priority: now.priority ?? 5 } }
-					: status
-						? {
-								op: "update",
-								kind: "task",
-								id: c.id,
-								fields: { status: now.status as PushedTaskStatus, priority: now.priority },
-							}
-						: { op: "update", kind: "task", id: c.id, fields: { priority: now.priority } },
+			change: mineChange(c, now),
 		});
 	}
 
@@ -145,7 +142,33 @@ export function withConflicts(
 	return [...kept, ...entries.sort((a, b) => a.title.localeCompare(b.title))];
 }
 
-/** Fields a conflict holds out of the plain changes until the Developer picks. */
+/** What "mine" sends: the vault value of the conflicting field (a Task's status goes with its priority). */
+function mineChange(c: PullConflict, now: Local): PendingConflict["change"] {
+	if (c.kind === "project") {
+		const fields = c.field === "status" ? { status: now.status as ProjectStatus } : { priority: now.priority ?? 5 };
+		return { op: "update", kind: "project", id: c.id, fields };
+	}
+	if (c.field === "status") {
+		return { op: "update", kind: "task", id: c.id, fields: { status: now.status as PushedTaskStatus, priority: now.priority } };
+	}
+	return { op: "update", kind: "task", id: c.id, fields: { priority: now.priority } };
+}
+
+const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+	a_faire: "À faire",
+	en_cours: "En cours",
+	en_pause: "En pause",
+	a_valider: "À valider",
+	termine: "Terminé",
+};
+
+/** Suivi's side of a `status` conflict: where the Answer puts the item. */
+function answerLabel(kind: PullConflict["kind"], answer: ItemAnswer): string {
+	if (answer === "valide") return "Terminé";
+	return kind === "project" ? "En cours" : "P0 (En cours)";
+}
+
+/** Fields a Task conflict holds out of the plain changes until the Developer picks (a Project's: the field only). */
 const HELD: Record<PullConflict["field"], string[]> = {
 	priority: ["priority"],
 	status: ["status", "priority", "done_on"],

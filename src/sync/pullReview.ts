@@ -1,10 +1,9 @@
 import { localDay } from "../localDate";
-import { processLineById, rewriteStepToken, rewriteTaskTag, setTaskToken, toggleCheckbox } from "../lineWriter";
 import type { ApiEvent, ReviewAnsweredPayload } from "../remote/api";
-import type { PullContext, VaultFiles } from "./runPull";
+import type { PullContext } from "./runPull";
 import { locateItem, taskLine } from "./locateItem";
 import { addConflict, conflictKey } from "./pullPriority";
-import type { LocalTask } from "./sharedTask";
+import { answeredTask, writeDone, writeP0 } from "./pullAnswer";
 
 /**
  * `review.answered`: the Client answered a Review. Validé makes its Task line
@@ -39,32 +38,9 @@ export async function pullReviewAnswered(event: ApiEvent, ctx: PullContext): Pro
 		return;
 	}
 
-	if (answer === "a_reprendre") {
-		await processLineById(ctx.files.process, path, taskId, (now, ref) => setTaskToken(now, ref, "p0"));
-	} else await writeDone(ctx.files, path, taskId, line, date);
+	if (answer === "a_reprendre") await writeP0(ctx.files, path, taskId);
+	else await writeDone(ctx.files, path, taskId, line, date);
 
-	const { done_on: _old, ...fields } = task.fields;
-	task.fields =
-		answer === "valide"
-			? { ...fields, status: "termine", priority: null, done_on: isStep ? null : date }
-			: { ...fields, status: "en_cours", priority: 0 };
+	task.fields = answeredTask(task.fields, answer, isStep ? null : date);
 	ctx.outcome.applied++;
-}
-
-/**
- * Marks the Task line `^id` done as a Validé answer does: `#done <doneOn>`
- * for a Tag task, ticked (token removed) for a Project step. "Take Suivi's"
- * on a status conflict.
- */
-export async function writeValidated(files: VaultFiles, id: string, path: string, doneOn: string | null): Promise<void> {
-	const { path: at, found } = await locateItem(files, id, path, taskLine(id));
-	await writeDone(files, at, id, found, doneOn ?? localDay());
-}
-
-async function writeDone(files: VaultFiles, path: string, id: string, line: LocalTask, date: string) {
-	await processLineById(files.process, path, id, (now, ref) => {
-		if (!line.step) return rewriteTaskTag(now, ref, `#done ${date}`);
-		const result = rewriteStepToken(now, ref, null);
-		return result.ok && line.status !== "termine" ? toggleCheckbox(result.content, ref) : result;
-	});
 }
