@@ -216,7 +216,27 @@
 	color: var(--text-faint);
 }
 
-/* Unread Client comments (Suivi Inbox) */
+/* Unread Inbox entries: badge at a card's top right (over the faint type word), tinted card */
+.tasks-kanban-view-container .kanban-item:has(.suivi-badge) {
+	position: relative;
+	background-color: color-mix(in srgb, var(--color-accent) 12%, var(--background-primary));
+}
+
+.tasks-kanban-view-container .kanban-item .suivi-badge {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	z-index: 1;
+	padding: 0 6px;
+	border-radius: 8px;
+	font-family: var(--font-interface);
+	font-size: 0.75em;
+	background: var(--color-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+}
+
+/* Step line whose item has unread Inbox entries */
 .suivi-unread-dot {
 	display: inline-block;
 	width: 8px;

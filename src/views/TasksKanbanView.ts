@@ -134,11 +134,6 @@ export class TasksKanbanView extends ItemView {
 		this.redraw();
 	}
 
-	/** App ids of the items with an unread Inbox entry (card dots). */
-	private unreadItems(): Set<string> {
-		return new Set(this.plugin.unreadByItem().keys());
-	}
-
 	private updateBoards(tasks: Task[]) {
 		if (this.isRendering) {
 			requestAnimationFrame(() => this.updateBoards(tasks));
@@ -148,7 +143,7 @@ export class TasksKanbanView extends ItemView {
 		const projectCards = this.plugin.allProjectCards.getValue();
 
 		// Only re-render if the board content actually changed
-		const snapshot = boardSnapshot(tasks, projectCards, this.unreadItems());
+		const snapshot = boardSnapshot(tasks, projectCards, this.plugin.inboxBadges());
 		if (snapshot === this.lastSnapshot) return;
 		this.lastSnapshot = snapshot;
 
@@ -171,7 +166,7 @@ export class TasksKanbanView extends ItemView {
 		}
 		rootEl.innerHTML = "";
 
-		const filled = fillBoards(tasks, projectCards, this.unreadItems(), (path) => this.plugin.suiviIdOf(path));
+		const filled = fillBoards(tasks, projectCards, this.plugin.inboxBadges(), (path) => this.plugin.suiviIdOf(path));
 		const boards = filled.boards;
 		this.currentSteps = filled.steps;
 
@@ -242,13 +237,19 @@ export class TasksKanbanView extends ItemView {
 		if (task) await this.writes.taskTag(task, `${task.type ? `#${task.type}` : "#task"} ${token}`);
 	}
 
-	/** Play, done, step checkbox and step clicks inside cards (before jKanban's own click). */
+	/** Unread badge, play, done, step checkbox and step clicks inside cards (before jKanban's own click). */
 	private onCardButton(evt: MouseEvent) {
 		const target = evt.target as HTMLElement;
 		const hit = (selector: string) => target.closest<HTMLElement>(selector);
 		const cardOf = (el: HTMLElement) => this.currentProjectCards.get(el.getAttribute("data-project-id") ?? "");
 		const taskOf = (el: HTMLElement) => this.currentTasks.get(el.getAttribute("data-task-id") ?? "");
 
+		const badge = hit(".suivi-badge");
+		if (badge) {
+			evt.stopPropagation();
+			this.plugin.openInboxOn(badge.getAttribute("data-item-id") ?? "");
+			return;
+		}
 		const projectPlay = hit("span.kanban-play-btn[data-project-id]");
 		const checkbox = hit(".kanban-project-item-checkbox");
 		const stepItem = hit(".kanban-project-item");

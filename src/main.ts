@@ -29,6 +29,7 @@ import { registerPush } from "./sync/registerPush";
 import { registerPull } from "./sync/registerPull";
 import { registerInbox } from "./inbox/registerInbox";
 import type { ActivityEntry } from "./remote/api";
+import { badgeText } from "./inbox/signals";
 import {
 	TASKS_KANBAN_VIEW_TYPE,
 	TasksKanbanView,
@@ -57,9 +58,15 @@ export default class ProjectsTimerPlugin extends Plugin {
 	/** Suivi Inbox store (unread entries feed the kanban); set in onload. */
 	private inbox: ReturnType<typeof registerInbox> | null = null;
 
-	/** Unread Inbox entries by app id of their item (kanban). */
-	unreadByItem(): Map<string, ActivityEntry[]> {
-		return this.inbox?.store.unreadByItem() ?? new Map();
+	/** Kanban badge text by app id of the items with unread Inbox entries. */
+	inboxBadges(): Map<string, string> {
+		const byItem = this.inbox?.store.unreadByItem() ?? new Map<string, ActivityEntry[]>();
+		return new Map([...byItem].map(([id, entries]) => [id, badgeText(entries)]));
+	}
+
+	/** Opens the Inbox with the feed narrowed to the item of app id `itemId` (kanban badge click). */
+	openInboxOn(itemId: string): void {
+		this.inbox?.openOnItem(itemId);
 	}
 
 	/** Calls `listener` when the Inbox changes; returns the unsubscribe. */

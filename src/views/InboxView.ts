@@ -131,7 +131,7 @@ export class InboxView extends ItemView {
 		if (state.more) feed.createEl("button", { text: "Charger plus" }).onclick = () => void this.store.loadMore();
 	}
 
-	/** Title, filter, "Tout marquer comme lu" and the reload icon. */
+	/** Title, filter, item filter (its button clears it), "Tout marquer comme lu" and the reload icon. */
 	private drawHeader(root: HTMLElement, state: InboxState) {
 		const header = root.createDiv({ cls: "suivi-inbox-header" });
 		header.style.display = "flex";
@@ -150,6 +150,14 @@ export class InboxView extends ItemView {
 			const button = tools.createEl("button", { text: label });
 			if (filter === state.filter) button.addClass("mod-cta");
 			button.onclick = () => this.store.setFilter(filter);
+		}
+		if (state.item) {
+			const clear = tools.createEl("button", {
+				text: `${state.item.title} ✕`,
+				cls: "mod-cta",
+				attr: { "aria-label": "Show every item" },
+			});
+			clear.onclick = () => this.store.setItemFilter(null);
 		}
 		if (state.unread > 0) {
 			const all = tools.createEl("button", { text: `Tout marquer comme lu (${state.unread})` });

@@ -1,11 +1,11 @@
 import { TASKS_TYPES, type ProjectCard, type ProjectCardItem, type Task } from "../../types";
 import { emptyBoards, OVERRIDE_CARD_STYLE, priorityToBoardId, statusBoardId, type BoardDef } from "./boards";
-import { cardHtml, overrideCardHtml, projectCardHtml } from "./cardHtml";
+import { badgeOf, cardHtml, overrideCardHtml, projectCardHtml } from "./cardHtml";
 
 export type StepRef = { card: ProjectCard; item: ProjectCardItem };
 
 /** What the board shows, as one string: the kanban redraws only when it changes. */
-export function boardSnapshot(tasks: Task[], projectCards: ProjectCard[], unread: Set<string>): string {
+export function boardSnapshot(tasks: Task[], projectCards: ProjectCard[], badges: Map<string, string>): string {
 	const taskPart = tasks
 		.map((task) => `${task.id}:${task.priority}:${task.status}:${task.title}:${task.description}:${task.line}`)
 		.join("|");
@@ -20,18 +20,20 @@ export function boardSnapshot(tasks: Task[], projectCards: ProjectCard[], unread
 					.join(",")}`,
 		)
 		.join("|");
-	return `${taskPart}##${cardPart}##${[...unread].sort().join(",")}`;
+	const badgePart = [...badges].map(([id, text]) => `${id}=${text}`).sort();
+	return `${taskPart}##${cardPart}##${badgePart.join(",")}`;
 }
 
 /**
  * The boards with their jKanban items: Tag tasks (`task-<id>`, by type
  * order), Project cards (`project-<id>`) and Overrides (`step-<n>`, returned
- * in `steps`). `suiviIdOf` gives a Project note's app id for its unread dot.
+ * in `steps`). `badges`: badge text by app id of the items with unread
+ * entries; `suiviIdOf` gives a Project note's app id for its badge.
  */
 export function fillBoards(
 	tasks: Task[],
 	projectCards: ProjectCard[],
-	unread: Set<string>,
+	badges: Map<string, string>,
 	suiviIdOf: (path: string) => string | undefined,
 ): { boards: BoardDef[]; steps: Map<string, StepRef> } {
 	const boards = emptyBoards();
@@ -43,7 +45,7 @@ export function fillBoards(
 		if (task.priority === -1) continue;
 		boardOf(statusBoardId(task))?.items.push({
 			id: `task-${task.id}`,
-			title: cardHtml(String(task.id), task.title, task.description.trim(), !!task.blockId && unread.has(task.blockId)),
+			title: cardHtml(String(task.id), task.title, task.description.trim(), badgeOf(badges, task.blockId)),
 			type: task.type,
 		});
 	}
@@ -51,7 +53,7 @@ export function fillBoards(
 	for (const card of projectCards) {
 		boardOf(priorityToBoardId(card.priority))?.items.push({
 			id: `project-${card.id}`,
-			title: projectCardHtml(card, unread, suiviIdOf(card.file.path)),
+			title: projectCardHtml(card, badges, suiviIdOf(card.file.path)),
 			type: "project",
 		});
 	}
@@ -63,7 +65,7 @@ export function fillBoards(
 			if (!board) continue;
 			const id = `step-${steps.size}`;
 			steps.set(id, { card, item });
-			board.items.push({ id, title: overrideCardHtml(card, item, unread), type: OVERRIDE_CARD_STYLE.label });
+			board.items.push({ id, title: overrideCardHtml(card, item, badges), type: OVERRIDE_CARD_STYLE.label });
 		}
 	}
 	return { boards, steps };

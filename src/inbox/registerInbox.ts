@@ -15,6 +15,7 @@ import { tagTaskProject } from "../sync/taskProject";
 import { TriageModal } from "../ui/TriageModal";
 import { NewProjectModal } from "../ui/NewProjectModal";
 import { runNewProject } from "./newProject";
+import { toastText } from "./signals";
 
 export interface InboxDeps {
 	/** Opens the comment panel on an item's thread. */
@@ -23,8 +24,9 @@ export interface InboxDeps {
 
 /**
  * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici"), launched Ideas ("Nouveau projet"),
- * Pull conflicts and the Activity feed. Reloads from the app after a Pull that brought any event; returns the
- * store (for the kanban) and the Pull hooks.
+ * Pull conflicts and the Activity feed. Reloads from the app after a Pull that brought any event and toasts the
+ * Client's new ones; a status bar item shows the unread count. Returns the store (for the kanban), the Pull hooks
+ * and `openOnItem` (kanban badges).
  */
 export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, deps: InboxDeps) {
 	const { app } = plugin;
@@ -156,14 +158,46 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	plugin.addCommand({ id: "open-suivi-inbox", name: "Open Suivi inbox", callback: openInbox });
 	plugin.addRibbonIcon("inbox", "Open Suivi inbox", openInbox);
 
+	/** Opens the Inbox with the feed narrowed to one item (its title taken from its unread entries). */
+	function openOnItem(itemId: string) {
+		const title = store.unreadByItem().get(itemId)?.[0]?.item?.title ?? itemId;
+		store.setItemFilter({ id: itemId, title });
+		openInbox();
+	}
+
+	const statusItem = plugin.addStatusBarItem();
+	statusItem.addClass("mod-clickable");
+	statusItem.onclick = openInbox;
+	const showUnread = (state: InboxState) => {
+		statusItem.setText(`Suivi : ${state.unread}`);
+		statusItem.toggle(state.unread > 0);
+	};
+	subscribe(showUnread);
+	showUnread(store.current);
+
 	let noticed = false;
+	/** Ids of the events the running Pull brought, to toast once the feed has them. */
+	const pulled = new Set<number>();
 	const pullHooks: PullHooks = {
-		handlers: (base) => withInboxNotice(base, () => (noticed = true)),
+		handlers: (base) =>
+			withInboxNotice(base, (event) => {
+				noticed = true;
+				// No cursor yet: the first Pull after install brings the whole history, not news.
+				// Events at or below the cursor are retries, toasted when they first came.
+				const cursor = data.sync.cursor;
+				if (cursor !== undefined && event.id > cursor) pulled.add(event.id);
+			}),
 		afterPull: () => {
-			if (noticed || store.current.status !== "ready") void store.refresh();
-			else store.rebuild();
+			if (!noticed && store.current.status === "ready") return store.rebuild();
 			noticed = false;
+			const toToast = new Set(pulled);
+			pulled.clear();
+			void store.refresh().then(() => {
+				// New Client events are unread; the Developer's own never are, so they get no toast.
+				const entries = [...store.unreadByItem().values()].flat().filter((e) => toToast.has(e.id));
+				for (const entry of entries.sort((a, b) => a.id - b.id)) new Notice(toastText(entry));
+			});
 		},
 	};
-	return { store, subscribe, pullHooks, afterPush: () => store.rebuild() };
+	return { store, subscribe, pullHooks, openOnItem, afterPush: () => store.rebuild() };
 }
