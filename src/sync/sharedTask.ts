@@ -20,6 +20,8 @@ export interface LocalTask {
 	title: string;
 	/** null for a `#done` line: its tag is gone, the type is the one last pushed. */
 	type: PushedTaskType | null;
+	/** A Project step (a checkbox under a Project note's Tasks heading); false for a Tag task. */
+	step: boolean;
 	status: PushedTaskStatus;
 	/** null = inherit the Project's (Project step without token), or no priority (À valider, Terminé). */
 	priority: number | null;
@@ -63,6 +65,7 @@ export function readTagTasks(path: string, content: string, projectPath: string 
 			projectPath,
 			title: t.title.trim(),
 			type: t.type,
+			step: false,
 			...mapped,
 			description: deindent(t.description),
 		});
@@ -80,6 +83,7 @@ export function readTagTasks(path: string, content: string, projectPath: string 
 			projectPath,
 			title: text.trim(),
 			type: null,
+			step: false,
 			status: "termine",
 			priority: null,
 			...(m[1] ? { doneOn: m[1] } : {}),
@@ -89,7 +93,10 @@ export function readTagTasks(path: string, content: string, projectPath: string 
 	return out.sort((a, b) => a.line - b.line);
 }
 
-/** Project steps: top-level checkboxes under the Tasks heading of a Project note, minus `#private` ones. */
+/**
+ * Project steps: top-level checkboxes under the Tasks heading of a Project
+ * note, minus `#private` ones. The type comes from the step's tag (`task` without).
+ */
 export function readProjectSteps(path: string, content: string): LocalTask[] {
 	const lines = content.split("\n");
 	const section = findTasksHeadingSection(lines);
@@ -103,7 +110,8 @@ export function readProjectSteps(path: string, content: string): LocalTask[] {
 			...(item.blockId ? { blockId: item.blockId } : {}),
 			projectPath: path,
 			title: item.text.trim(),
-			type: "step" as const,
+			type: item.type,
+			step: true,
 			...(item.checked
 				? { status: "termine" as const, priority: null }
 				: (fromToken(item.override ?? null) ?? { status: "a_faire" as const, priority: null })),

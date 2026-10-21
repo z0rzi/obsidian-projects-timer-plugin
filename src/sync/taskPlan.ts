@@ -15,7 +15,7 @@ export type ProjectLinks = Record<string, { id?: string; title: string; hidden?:
 
 /** A field change as shown in the Push modal. */
 export interface TaskDiff {
-	field: "title" | "type" | "status" | "priority" | "project" | "done" | "description";
+	field: "title" | "type" | "step" | "status" | "priority" | "project" | "done" | "description";
 	from: string;
 	to: string;
 }
@@ -50,14 +50,13 @@ export type PendingTaskChange =
 	| { group: "deleted"; key: string; id: string; title: string; change: Extract<PushChange, { kind: "task"; op: "archive" }> };
 
 const DONE_OFFERED_MS = 30 * 24 * 60 * 60_000;
-const FIELDS = ["title", "type", "status", "priority", "project_id", "done_on", "description"] as const;
+const FIELDS = ["title", "type", "step", "status", "priority", "project_id", "done_on", "description"] as const;
 
 const TYPE_LABELS: Record<string, string> = {
 	task: "Tâche",
 	bug: "Bug",
 	quick: "Tâche rapide",
 	wait: "En attente",
-	step: "Étape de projet",
 };
 const STATUS_LABELS: Record<string, string> = {
 	a_faire: "À faire",
@@ -98,12 +97,12 @@ export function planTaskPush(
 			if (seen.has(t.blockId)) continue; // a copied line keeps the id: the first one wins
 			seen.add(t.blockId);
 		}
-		// Snapshots recorded before bodies were shared have no description: read it as empty.
 		const stored = t.blockId ? pushed[t.blockId]?.fields : undefined;
-		const before = stored ? { ...stored, description: stored.description ?? "" } : undefined;
+		const before = stored ? upgradeSnapshot(stored) : undefined;
 		const fields: TaskFields = {
 			title: t.title,
 			type: t.type ?? before?.type ?? "task",
+			step: t.step,
 			status: t.status,
 			priority: t.priority,
 			project_id: link?.id ?? null,
@@ -189,6 +188,7 @@ export function planTaskPush(
 const LABEL = {
 	title: "title",
 	type: "type",
+	step: "step",
 	status: "status",
 	priority: "priority",
 	project_id: "project",
@@ -196,10 +196,27 @@ const LABEL = {
 	description: "description",
 } as const satisfies Record<(typeof FIELDS)[number], TaskDiff["field"]>;
 
+/**
+ * Reads a snapshot recorded by an older version as today's fields: no
+ * description before bodies were shared (= empty), and a Project step was the
+ * `step` type before it became a flag (= a `task` with `step`).
+ */
+function upgradeSnapshot(stored: TaskFields): TaskFields {
+	const oldStep = (stored.type as string) === "step";
+	return {
+		...stored,
+		type: oldStep ? "task" : stored.type,
+		step: stored.step ?? oldStep,
+		description: stored.description ?? "",
+	};
+}
+
 function show(field: (typeof FIELDS)[number], f: TaskFields): string {
 	switch (field) {
 		case "type":
 			return TYPE_LABELS[f.type] ?? f.type;
+		case "step":
+			return f.step ? "oui" : "non";
 		case "status":
 			return STATUS_LABELS[f.status] ?? f.status;
 		case "priority":
