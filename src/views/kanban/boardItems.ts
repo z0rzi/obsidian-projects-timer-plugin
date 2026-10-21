@@ -15,7 +15,7 @@ export function boardSnapshot(tasks: Task[], projectCards: ProjectCard[], unread
 				`${card.id}:${card.priority}:${[...card.items, ...card.overrides]
 					.map(
 						(item) =>
-							`${item.line}:${item.checked ? 1 : 0}:${item.override?.status ?? ""}${item.override?.priority ?? ""}:${item.text}:${item.body}`,
+							`${item.line}:${item.checked ? 1 : 0}:${item.type}:${item.override?.status ?? ""}${item.override?.priority ?? ""}:${item.text}:${item.body}`,
 					)
 					.join(",")}`,
 		)
