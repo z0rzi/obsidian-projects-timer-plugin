@@ -7,7 +7,7 @@ export type StepRef = { card: ProjectCard; item: ProjectCardItem };
 /** What the board shows, as one string: the kanban redraws only when it changes. */
 export function boardSnapshot(tasks: Task[], projectCards: ProjectCard[], unread: Set<string>): string {
 	const taskPart = tasks
-		.map((task) => `${task.id}:${task.priority}:${task.status}:${task.title}:${task.description}:${task.line}`)
+		.map((task) => `${task.id}:${task.priority}:${task.status}:${task.type}:${task.title}:${task.description}:${task.line}`)
 		.join("|");
 	const cardPart = projectCards
 		.map(

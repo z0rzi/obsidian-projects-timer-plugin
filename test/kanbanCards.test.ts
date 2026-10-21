@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TFile } from "obsidian";
 import { parseProjectCard } from "../src/projectCards";
+import type { Task } from "../src/types";
 import { boardSnapshot } from "../src/views/kanban/boardItems";
 import { cardHtml, overrideCardHtml, projectCardHtml } from "../src/views/kanban/cardHtml";
 
@@ -38,5 +39,20 @@ describe("kanban type labels", () => {
 		expect(html.match(/kanban-step-dot/g)).toHaveLength(2);
 		const widget = card(["- [ ] #quick p1 Relancer"]);
 		expect(overrideCardHtml(widget, widget.overrides[0]!, new Set())).toContain('<span class="kanban-step-dot" data-type="quick"></span>');
+	});
+
+	it("repaint the board when a Tag task's tag changes", () => {
+		const task = (type: Task["type"]): Task => ({
+			id: "Notes.md:0",
+			title: "Axe faux",
+			description: "",
+			file,
+			line: 0,
+			priority: 2,
+			status: "priority",
+			type,
+			raw: `#${type} p2 Axe faux`,
+		});
+		expect(boardSnapshot([task("bug")], [], new Set())).not.toBe(boardSnapshot([task("task")], [], new Set()));
 	});
 });
