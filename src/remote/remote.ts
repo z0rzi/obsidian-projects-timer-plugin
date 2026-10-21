@@ -1,4 +1,5 @@
 import type {
+	ActivityResponse,
 	ApiError,
 	Comment,
 	CommentResponse,
@@ -32,6 +33,10 @@ export interface Remote {
 	inbox(): Promise<InboxResponse>;
 	/** Marks the events of Inbox entries read. */
 	markRead(eventIds: number[]): Promise<void>;
+	/** A page of the Activity feed: entries older than `before` (absent = the newest), spanning `days` (app default 30). */
+	activity(before?: number, days?: number): Promise<ActivityResponse>;
+	/** Marks every Client event up to `id` included read. */
+	markReadUpTo(id: number): Promise<void>;
 	/** Uploads an image (PNG, JPEG, GIF, WebP); returns its path in the app (`/uploads/<name>`). */
 	upload(data: ArrayBuffer, name: string): Promise<string>;
 	/**
@@ -148,6 +153,14 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		},
 		async markRead(ids) {
 			await call<MarkReadResponse>("POST", "/events/read", { ids });
+		},
+		async activity(before, days) {
+			const query = [before === undefined ? "" : `before=${before}`, days === undefined ? "" : `days=${days}`];
+			const search = query.filter(Boolean).join("&");
+			return call<ActivityResponse>("GET", `/activity${search ? `?${search}` : ""}`);
+		},
+		async markReadUpTo(id) {
+			await call<MarkReadResponse>("POST", "/events/read", { upto: id });
 		},
 		async upload(data, name) {
 			return (await call<UploadResponse>("POST", "/uploads", undefined, multipart(data, name))).url;

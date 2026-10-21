@@ -302,10 +302,58 @@ export interface InboxResponse {
   to_triage: InboxTicket[];
 }
 
-/** `POST /api/events/read` body: events to mark read for the caller (unknown ids are ignored). */
-export interface MarkReadRequest {
-  ids: number[];
+/**
+ * One entry of the Activity feed: an event of the log enriched for display.
+ * The Developer's Push events collapse to one entry per Push (`push`); the
+ * events a Push wrote are not entries.
+ */
+export interface ActivityEntry {
+  /** Id of the event; send it to `POST /api/events/read`. */
+  id: number;
+  /** ISO date-time. */
+  at: string;
+  actor: {
+    email: string;
+    /** The `@handle` of the user, null while none is set. */
+    handle: string | null;
+    role: "client" | "developer";
+  };
+  origin: EventOrigin;
+  type: EventType;
+  /** French, e.g. "Commentaire", "Priorité : P3 → P1", "Push : 12 changements". */
+  label: string;
+  /** The Project, Task or Review concerned (for a comment, the one it's on); absent once archived. */
+  item?: { kind: "project" | "task" | "review"; id: string; title: string };
+  /** Comment events: the comment; `body` absent once deleted. `mentions`: handles of the users mentioned (see `Comment`). */
+  comment?: { id: string; body?: string; mentions: string[] };
+  /** `item.updated`: the field changed and its old and new values. */
+  field?: string;
+  from?: unknown;
+  to?: unknown;
+  /** `review.answered`: the answer given. */
+  answer?: ReviewAnsweredPayload["answer"];
+  /** `push.completed`: the Push's counts. */
+  push?: { applied: number; rejected: number };
+  /** An event by a Client the caller hasn't marked read; the caller's own events and Pushes never are. */
+  unread: boolean;
 }
+
+/**
+ * `GET /api/activity?before=<event id>&days=<n>` response: the entries older
+ * than `before` (absent = the newest), spanning `days` days (default 30) back
+ * from the newest of them, newest first. `next` is the `before` of the page
+ * after, null when there is nothing older.
+ */
+export interface ActivityResponse {
+  entries: ActivityEntry[];
+  next: number | null;
+}
+
+/**
+ * `POST /api/events/read` body: events to mark read for the caller, either
+ * listed (unknown ids are ignored) or every Client event up to `upto` included.
+ */
+export type MarkReadRequest = { ids: number[] } | { upto: number };
 
 /** `POST /api/events/read` response. */
 export interface MarkReadResponse {

@@ -150,6 +150,28 @@ describe("HTTP remote, inbox", () => {
 		});
 	});
 
+	it("reads a page of the Activity feed, older than an event and over some days", async () => {
+		const body = { entries: [{ id: 9, label: "Commentaire" }], next: 9 };
+		const { sent, transport } = fakeTransport(200, body);
+		const remote = remoteWith(transport);
+		expect(await remote.activity()).toEqual(body);
+		await remote.activity(9, 7);
+		expect(sent.map((r) => [r.method, r.url])).toEqual([
+			["GET", "https://suivi.test/api/activity"],
+			["GET", "https://suivi.test/api/activity?before=9&days=7"],
+		]);
+	});
+
+	it("marks every Client event up to an id read", async () => {
+		const { sent, transport } = fakeTransport(200, { ok: true });
+		await remoteWith(transport).markReadUpTo(12);
+		expect(sent[0]).toMatchObject({
+			url: "https://suivi.test/api/events/read",
+			method: "POST",
+			body: JSON.stringify({ upto: 12 }),
+		});
+	});
+
 	it("uploads an image as multipart field `file` and returns its URL", async () => {
 		const { sent, transport } = fakeTransport(200, { url: "/uploads/abc.png" });
 		const png = new Uint8Array([137, 80, 78, 71]).buffer;
