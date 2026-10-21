@@ -1,12 +1,12 @@
-import type { InboxNotification, InboxResponse, InboxTicket, TaskType } from "../remote/api";
+import type { ActivityEntry, InboxTicket, TaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { PullConflict } from "../sync/pullPriority";
 
-/** One line of the Inbox view. */
+/** A pinned line of the Inbox view: a Ticket À trier or a Pull conflict. */
 export interface InboxEntry {
-	/** Stable across reloads: `e<event id>` or `c<conflict key>`. */
+	/** Stable across reloads: `t<ticket id>` or `c<conflict key>`. */
 	key: string;
-	kind: "comment" | "priority" | "conflict" | "ticket" | "answer";
+	kind: "conflict" | "ticket";
 	/** What opening the entry goes to. */
 	item: { kind: "project" | "task" | "review"; id: string; title: string };
 	title: string;
@@ -14,53 +14,39 @@ export interface InboxEntry {
 	/** Client who did it, ISO date. */
 	by?: string;
 	at?: string;
-	/** Events marked read with the entry; empty = it can't be (a conflict settles in Push, a ticket by Triage). */
-	eventIds: number[];
-	/** `ticket`: the app type of the item to triage (bug, amelioration). */
+	/** `ticket`: the app type of the item to triage (bug, amelioration, idea). */
 	ticketType?: TaskType;
 }
 
-export interface InboxSection {
-	id: string;
-	title: string;
-	entries: InboxEntry[];
-}
+/** Whose entries the feed shows: everyone's, the Client's, the Developer's. */
+export type InboxFilter = "tous" | "jmj" | "moi";
+
+const FILTER_ROLES: Record<InboxFilter, ActivityEntry["actor"]["role"] | null> = {
+	tous: null,
+	jmj: "client",
+	moi: "developer",
+};
 
 export interface InboxState {
 	status: "idle" | "loading" | "ready" | "error";
-	/** In display order; empty sections are kept (the view says "Nothing new"). */
-	sections: InboxSection[];
+	/** Tickets À trier, pinned on top with their buttons. */
+	toTriage: InboxEntry[];
+	/** Pull conflicts, settled in Push. */
+	conflicts: InboxEntry[];
+	/** The loaded Activity entries the filter shows, newest first. */
+	feed: ActivityEntry[];
+	filter: InboxFilter;
+	/** Unread entries among those loaded, whatever the filter. */
+	unread: number;
+	/** Older entries are left to load ("Charger plus"). */
+	more: boolean;
 	/** Last failure, ready for display (loading or marking read). */
 	error?: string;
 }
 
 type Conflicts = () => Record<string, PullConflict> | undefined;
 
-/** Builds the sections from the app's answer and the local conflicts, in display order. */
-const SECTIONS: ((inbox: InboxResponse, conflicts: PullConflict[]) => InboxSection)[] = [
-	(inbox) => ({ id: "to-triage", title: "À trier", entries: (inbox.to_triage ?? []).map(ticketEntry) }),
-	(inbox, conflicts) => ({
-		id: "notifications",
-		title: "Notifications",
-		entries: [...inbox.notifications.map(notificationEntry), ...conflicts.map(conflictEntry)],
-	}),
-];
-
 const p = (v: unknown) => (typeof v === "number" ? `P${v}` : "inherited");
-
-function notificationEntry(n: InboxNotification): InboxEntry {
-	const item = { kind: n.item_kind, id: n.item_id, title: n.item_title };
-	const base = { key: `e${n.id}`, item, by: n.actor_email, at: n.at, eventIds: [n.id] };
-	if (n.type === "comment.created") {
-		return { ...base, kind: "comment", title: `Comment on ${n.item_title}`, detail: n.body ?? "" };
-	}
-	if (n.type === "review.answered") {
-		const answer = n.answer === "valide" ? "Validé" : "À reprendre";
-		const task = n.answer === "valide" ? "its Task is done" : "its Task is back to P0";
-		return { ...base, kind: "answer", title: `Review ${n.item_title}: ${answer}`, detail: task };
-	}
-	return { ...base, kind: "priority", title: `Priority of ${n.item_title}`, detail: `${p(n.from)} → ${p(n.to)}` };
-}
 
 const TICKET_LABELS: Partial<Record<TaskType, string>> = {
 	bug: "Bug",
@@ -78,7 +64,6 @@ function ticketEntry(t: InboxTicket): InboxEntry {
 		detail: t.description,
 		by: t.author_email,
 		at: t.created_at,
-		eventIds: [],
 	};
 }
 
@@ -89,21 +74,25 @@ function conflictEntry(c: PullConflict): InboxEntry {
 		item: { kind: c.kind, id: c.id, title: c.title },
 		title: `Conflict on ${c.title}`,
 		detail: `Suivi has ${c.field === "status" ? "Terminé (Review validée)" : p(c.remote)}, you changed it too: pick in Push to Suivi`,
-		eventIds: [],
 	};
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
- * What the Inbox view and the kanban dots show. Unread state lives in the
- * app (`GET /api/inbox`), so it survives restarts; marking read updates the
- * view at once and the app right after, putting the entry back on failure.
+ * What the Inbox view and the kanban show: the Activity feed (`GET
+ * /api/activity`, paged), the Tickets À trier (`GET /api/inbox`) and the
+ * local Pull conflicts. Read state lives in the app, so it survives
+ * restarts; marking read updates the view at once and the app right after,
+ * putting the entry back on failure.
  */
 export class InboxStore {
-	private state: InboxState = { status: "idle", sections: [] };
-	private notifications: InboxNotification[] = [];
-	private inbox: InboxResponse = { notifications: [], to_triage: [] };
+	private state: InboxState = { status: "idle", toTriage: [], conflicts: [], feed: [], filter: "tous", unread: 0, more: false };
+	private tickets: InboxTicket[] = [];
+	private entries: ActivityEntry[] = [];
+	/** `before` of the next page, null when nothing is older. */
+	private next: number | null = null;
+	private filter: InboxFilter = "tous";
 
 	constructor(
 		private readonly remote: Remote,
@@ -115,55 +104,101 @@ export class InboxStore {
 		return this.state;
 	}
 
-	/** Reloads from the app. */
+	/** Reloads the first page of the feed and the Tickets À trier from the app. */
 	async refresh(): Promise<void> {
-		this.set({ ...this.state, status: this.state.status === "ready" ? "ready" : "loading" });
+		const ready = this.state.status === "ready";
+		this.set({ ...this.state, status: ready ? "ready" : "loading" });
 		try {
-			this.inbox = await this.remote.inbox();
-			this.notifications = this.inbox.notifications;
-			this.set({ status: "ready", sections: this.build() });
+			const [inbox, page] = await Promise.all([this.remote.inbox(), this.remote.activity()]);
+			this.tickets = inbox.to_triage ?? [];
+			this.entries = page.entries;
+			this.next = page.next;
+			this.set(this.build());
 		} catch (e) {
-			this.set({ ...this.state, status: this.state.status === "ready" ? "ready" : "error", error: message(e) });
+			this.set({ ...this.state, status: ready ? "ready" : "error", error: message(e) });
 		}
+	}
+
+	/** Appends the page older than the loaded entries; nothing when none is older. */
+	async loadMore(): Promise<void> {
+		if (this.next === null || this.state.status !== "ready") return;
+		try {
+			const page = await this.remote.activity(this.next);
+			this.entries = [...this.entries, ...page.entries];
+			this.next = page.next;
+			this.set(this.build());
+		} catch (e) {
+			this.set({ ...this.state, error: message(e) });
+		}
+	}
+
+	/** Shows only the entries of `filter`; kept across reloads. */
+	setFilter(filter: InboxFilter): void {
+		this.filter = filter;
+		this.set({ ...this.state, filter, feed: this.shown() });
+	}
+
+	/** Marks one unread entry read ("Lu"). */
+	async markRead(entry: ActivityEntry): Promise<void> {
+		if (entry.unread) await this.mark([entry.id], () => this.remote.markRead([entry.id]));
+	}
+
+	/** "Tout marquer comme lu": every Client event up to the newest entry loaded. */
+	async markAllRead(): Promise<void> {
+		const newest = this.entries[0];
+		const unread = this.entries.filter((e) => e.unread).map((e) => e.id);
+		if (newest && unread.length) await this.mark(unread, () => this.remote.markReadUpTo(newest.id));
+	}
+
+	/** The loaded unread entries by id of the item they concern, newest first. */
+	unreadByItem(): Map<string, ActivityEntry[]> {
+		const byItem = new Map<string, ActivityEntry[]>();
+		for (const entry of this.entries) {
+			if (!entry.unread || !entry.item) continue;
+			byItem.set(entry.item.id, [...(byItem.get(entry.item.id) ?? []), entry]);
+		}
+		return byItem;
 	}
 
 	/** Re-reads the local conflicts (after a Pull or Push) without asking the app. */
 	rebuild(): void {
-		if (this.state.status === "ready") this.set({ ...this.state, sections: this.build() });
+		if (this.state.status === "ready") this.set({ ...this.build(), error: this.state.error });
 	}
 
-	async markRead(entry: InboxEntry): Promise<void> {
-		await this.mark(entry.eventIds);
+	/** The ready state from what is loaded. */
+	private build(): InboxState {
+		return {
+			status: "ready",
+			toTriage: this.tickets.map(ticketEntry),
+			conflicts: Object.values(this.conflicts() ?? {}).map(conflictEntry),
+			feed: this.shown(),
+			filter: this.filter,
+			unread: this.entries.filter((e) => e.unread).length,
+			more: this.next !== null,
+		};
 	}
 
-	async markAllRead(): Promise<void> {
-		await this.mark(this.notifications.map((n) => n.id));
-	}
-
-	/** Ids of the items with an unread Client comment. */
-	unreadComments(): Set<string> {
-		return new Set(this.notifications.filter((n) => n.type === "comment.created").map((n) => n.item_id));
-	}
-
-	private async mark(ids: number[]) {
-		if (ids.length === 0) return;
-		const before = this.notifications;
-		const read = new Set(ids);
-		this.notifications = before.filter((n) => !read.has(n.id));
-		this.set({ status: "ready", sections: this.build() });
+	/** Shows `ids` read at once, then tells the app; on failure they are unread again and the error shown. */
+	private async mark(ids: number[], send: () => Promise<void>) {
+		this.setUnread(ids, false);
 		try {
-			await this.remote.markRead(ids);
+			await send();
 		} catch (e) {
-			const kept = new Set(this.notifications.map((n) => n.id));
-			this.notifications = before.filter((n) => kept.has(n.id) || read.has(n.id));
-			this.set({ status: "ready", sections: this.build(), error: message(e) });
+			this.setUnread(ids, true);
+			this.set({ ...this.state, error: message(e) });
 		}
 	}
 
-	private build(): InboxSection[] {
-		const inbox = { ...this.inbox, notifications: this.notifications };
-		const conflicts = Object.values(this.conflicts() ?? {});
-		return SECTIONS.map((section) => section(inbox, conflicts));
+	private setUnread(ids: number[], unread: boolean) {
+		const marked = new Set(ids);
+		this.entries = this.entries.map((e) => (marked.has(e.id) ? { ...e, unread } : e));
+		this.set(this.build());
+	}
+
+	/** The loaded entries the filter keeps. */
+	private shown(): ActivityEntry[] {
+		const role = FILTER_ROLES[this.filter];
+		return role ? this.entries.filter((e) => e.actor.role === role) : this.entries;
 	}
 
 	private set(state: InboxState) {

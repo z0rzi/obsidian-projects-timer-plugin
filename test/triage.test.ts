@@ -18,12 +18,14 @@ const ticket = (id = "t7f3a", type: InboxTicket["type"] = "bug"): InboxTicket =>
 
 describe("Inbox À trier", () => {
 	it("lists the Tickets to triage first, with their description", async () => {
-		const remote = { inbox: async () => ({ notifications: [], to_triage: [ticket()] }) } as unknown as Remote;
+		const remote = {
+			inbox: async () => ({ notifications: [], to_triage: [ticket()] }),
+			activity: async () => ({ entries: [], next: null }),
+		} as unknown as Remote;
 		const store = new InboxStore(remote, () => ({}), () => {});
 		await store.refresh();
 
-		expect(store.current.sections.map((s) => s.title)).toEqual(["À trier", "Notifications"]);
-		expect(store.current.sections[0]!.entries).toEqual([
+		expect(store.current.toTriage).toEqual([
 			expect.objectContaining({
 				kind: "ticket",
 				ticketType: "bug",
@@ -31,16 +33,18 @@ describe("Inbox À trier", () => {
 				detail: "Rien ne s'affiche",
 				by: "jmj@edf.fr",
 				item: { kind: "task", id: "t7f3a", title: "Heatmap vide" },
-				eventIds: [],
 			}),
 		]);
 	});
 
 	it("copes with an app answer without to_triage", async () => {
-		const remote = { inbox: async () => ({ notifications: [] }) } as unknown as Remote;
+		const remote = {
+			inbox: async () => ({ notifications: [] }),
+			activity: async () => ({ entries: [], next: null }),
+		} as unknown as Remote;
 		const store = new InboxStore(remote, () => ({}), () => {});
 		await store.refresh();
-		expect(store.current.sections[0]!.entries).toEqual([]);
+		expect(store.current.toTriage).toEqual([]);
 	});
 });
 

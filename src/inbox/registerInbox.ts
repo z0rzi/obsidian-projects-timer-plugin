@@ -24,8 +24,8 @@ export interface InboxDeps {
 
 /**
  * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici"), launched Ideas ("Nouveau projet"),
- * Client comments, priority changes and Pull conflicts. Reloads from the app after a Pull that brought such
- * events; returns the store (for the kanban dots) and the Pull hooks.
+ * Pull conflicts and the Activity feed. Reloads from the app after a Pull that brought any event; returns the
+ * store (for the kanban) and the Pull hooks.
  */
 export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, deps: InboxDeps) {
 	const { app } = plugin;
@@ -33,20 +33,17 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	const { emit, subscribe } = listeners<InboxState>();
 	const store = new InboxStore(remote, () => data.sync.conflicts, emit);
 
-	async function open(entry: InboxEntry) {
-		// An entry the app sent without an item (or an older stored shape) must not break the panel.
-		if (!entry.item) {
-			new Notice(`${entry.title}: nothing to open.`);
+	/** Opens the file at the item's line; `thread` also opens its comment thread. Nothing is marked read. */
+	async function open(item: InboxEntry["item"] | undefined, title: string, thread: boolean) {
+		// An entry the app sent without an item (archived, or a Push line) must not break the panel.
+		if (!item) {
+			new Notice(`${title}: nothing to open.`);
 			return;
 		}
-		const at = await itemLocation(data.sync, vaultFiles(app), entry.item);
+		const at = await itemLocation(data.sync, vaultFiles(app), item);
 		if (at) await openLine(at.path, at.line);
-		else if (entry.kind !== "comment" && entry.kind !== "ticket" && entry.kind !== "answer") {
-			new Notice(`${entry.item.title} is not in this vault.`);
-		}
-		if (entry.kind === "comment" || entry.kind === "ticket" || entry.kind === "answer") {
-			await deps.openThread({ kind: entry.item.kind, id: entry.item.id, title: entry.item.title });
-		}
+		else if (!thread) new Notice(`${item.title} is not in this vault.`);
+		if (thread) await deps.openThread({ kind: item.kind, id: item.id, title: item.title });
 	}
 
 	async function openLine(path: string, line: number) {
@@ -156,7 +153,17 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 
 	plugin.registerView(
 		INBOX_VIEW_TYPE,
-		(leaf: WorkspaceLeaf) => new InboxView(leaf, store, subscribe, (e) => void open(e), triage, newProject),
+		(leaf: WorkspaceLeaf) =>
+			new InboxView(
+				leaf,
+				store,
+				subscribe,
+				(item, title, thread) => void open(item, title, thread),
+				() => data.settings.suiviUrl,
+				(path) => remote.image(path),
+				triage,
+				newProject,
+			),
 	);
 
 	const openInbox = () => void openView(app, INBOX_VIEW_TYPE, "Suivi inbox", { active: true }, InboxView);

@@ -28,6 +28,7 @@ import { registerComments } from "./comments/registerComments";
 import { registerPush } from "./sync/registerPush";
 import { registerPull } from "./sync/registerPull";
 import { registerInbox } from "./inbox/registerInbox";
+import type { ActivityEntry } from "./remote/api";
 import {
 	TASKS_KANBAN_VIEW_TYPE,
 	TasksKanbanView,
@@ -53,12 +54,12 @@ function makeTaskHash(task: Task) {
 export default class ProjectsTimerPlugin extends Plugin {
 	settings: ProjectsTimerSettings;
 	data: PluginData<ProjectsTimerSettings>;
-	/** Suivi Inbox store (unread comments feed the kanban dots); set in onload. */
+	/** Suivi Inbox store (unread entries feed the kanban); set in onload. */
 	private inbox: ReturnType<typeof registerInbox> | null = null;
 
-	/** App ids of items with unread Client comments (kanban dots). */
-	unreadComments(): Set<string> {
-		return this.inbox?.store.unreadComments() ?? new Set();
+	/** Unread Inbox entries by app id of their item (kanban). */
+	unreadByItem(): Map<string, ActivityEntry[]> {
+		return this.inbox?.store.unreadByItem() ?? new Map();
 	}
 
 	/** Calls `listener` when the Inbox changes; returns the unsubscribe. */

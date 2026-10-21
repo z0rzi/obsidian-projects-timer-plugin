@@ -299,21 +299,19 @@ describe.skipIf(!url || !token || !clientSession)("Inbox against a running Suivi
 		expect(noticed).toEqual(["comment.created", "item.updated", "comment.created"]);
 
 		const store = new InboxStore(remote, () => ({}), () => {});
-		const ours = (s: InboxStore) => s.current.sections.flatMap((x) => x.entries).filter((e) => e.item.id === id);
+		const ours = (s: InboxStore) => s.current.feed.filter((e) => e.item?.id === id && e.unread);
 		await store.refresh();
-		expect(ours(store).map((e) => [e.kind, e.detail])).toEqual([
-			["comment", "Une question"],
-			["priority", "P3 → P1"],
-		]);
-		expect(store.unreadComments().has(id)).toBe(true);
+		expect(ours(store).map((e) => e.type)).toEqual(["item.updated", "comment.created"]);
+		expect(ours(store)[1]!.comment?.body).toBe("Une question");
+		expect(store.unreadByItem().has(id)).toBe(true);
 
-		await store.markRead(ours(store)[0]!);
+		await store.markRead(ours(store)[1]!);
 		const restarted = new InboxStore(remote, () => ({}), () => {});
 		await restarted.refresh();
-		expect(ours(restarted).map((e) => e.kind)).toEqual(["priority"]);
+		expect(ours(restarted).map((e) => e.type)).toEqual(["item.updated"]);
 		await restarted.markAllRead();
 		await store.refresh();
-		expect(store.current.sections.find((x) => x.id === "notifications")!.entries).toEqual([]);
+		expect(store.current.unread).toBe(0);
 	});
 });
 
@@ -341,8 +339,7 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 
 		const store = new InboxStore(remote, () => ({}), () => {});
 		await store.refresh();
-		const toTriage = store.current.sections.find((s) => s.id === "to-triage")!;
-		const entry = toTriage.entries.find((e) => e.item.id === id)!;
+		const entry = store.current.toTriage.find((e) => e.item.id === id)!;
 		expect(entry).toMatchObject({ kind: "ticket", ticketType: "bug", detail: "Rien ne s'affiche ![](/uploads/x.png)" });
 
 		const note = ["# Réunion", "", "suite"];
@@ -360,7 +357,7 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 		expect(note).toEqual(["# Réunion", `#bug p2 ${title} ^${id}`, "", "suite"]);
 
 		await store.refresh();
-		expect(store.current.sections.find((s) => s.id === "to-triage")!.entries.some((e) => e.item.id === id)).toBe(false);
+		expect(store.current.toTriage.some((e) => e.item.id === id)).toBe(false);
 		expect((await remote.comments(id)).map((c) => c.body)).toEqual(["Je regarde"]);
 
 		// The next Push sees the line as already pushed.
@@ -393,7 +390,7 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 		const store = new InboxStore(remote, () => ({}), () => {});
 		const inToTriage = async () => {
 			await store.refresh();
-			return store.current.sections.find((s) => s.id === "to-triage")!.entries.find((e) => e.item.id === id);
+			return store.current.toTriage.find((e) => e.item.id === id);
 		};
 		expect(await inToTriage()).toBeUndefined();
 
@@ -515,8 +512,8 @@ describe.skipIf(!url || !token || !clientSession)("Reviews against a running Sui
 
 		const store = new InboxStore(remote, () => ({}), () => {});
 		await store.refresh();
-		const entries = store.current.sections.flatMap((s) => s.entries).filter((e) => e.item.id === reviewId);
-		expect(entries.map((e) => e.kind)).toEqual(["answer", "comment"]);
+		const entries = store.current.feed.filter((e) => e.item?.id === reviewId && e.unread);
+		expect(entries.map((e) => e.type)).toEqual(["comment.created", "review.answered"]);
 		await store.markAllRead();
 	});
 });
