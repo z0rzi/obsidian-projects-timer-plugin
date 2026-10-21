@@ -20,8 +20,11 @@ function typeDotHtml(type: TaskTagLabel): string {
 	return `<span class="kanban-step-dot" data-type="${type}"></span>`;
 }
 
+const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
+/** `text` safe in element content and in a double-quoted attribute. */
 function escapeHtml(text: string): string {
-	return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	return text.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]!);
 }
 
 /** Unread badge of a card: app id of its item and the text built by `badgeText`. */
@@ -29,7 +32,7 @@ export type CardBadge = { itemId: string; text: string };
 
 /** Badge at the top right of a card (tints it, see styles.css); a click opens the Inbox on `itemId`. */
 function badgeHtml(badge: CardBadge | undefined): string {
-	return badge ? `<span class="suivi-badge" data-item-id="${badge.itemId}">${escapeHtml(badge.text)}</span>` : "";
+	return badge ? `<span class="suivi-badge" data-item-id="${escapeHtml(badge.itemId)}">${escapeHtml(badge.text)}</span>` : "";
 }
 
 /** The badge of app id `itemId`, if `badges` (badge text by item id) has one. */
@@ -51,8 +54,8 @@ export function cardHtml(id: string, title: string, description: string, type: T
 		<br>
 		<small>${escapeHtml(description).replace(/\n/g, "<br/>")}</small>
 		<span class="kanban-card-actions">
-			<span class="kanban-done-btn" data-task-id="${id}">${DONE_ICON}</span>
-			<span class="kanban-play-btn" data-task-id="${id}">${PLAY_ICON}</span>
+			<span class="kanban-done-btn" data-task-id="${escapeHtml(id)}">${DONE_ICON}</span>
+			<span class="kanban-play-btn" data-task-id="${escapeHtml(id)}">${PLAY_ICON}</span>
 		</span>
 		`;
 }
@@ -60,9 +63,10 @@ export function cardHtml(id: string, title: string, description: string, type: T
 /** A step line; `marked`: its item has unread entries. */
 function stepItemHtml(card: ProjectCard, item: ProjectCardItem, extraClass: string, marked: boolean): string {
 	const classes = ["kanban-project-item", item.checked ? "is-checked" : "", extraClass].filter(Boolean).join(" ");
+	const projectId = escapeHtml(card.id);
 	return `
-		<div class="${classes}" data-project-id="${card.id}" data-line="${item.line}" data-type="${item.type}">
-			<input type="checkbox" class="kanban-project-item-checkbox" data-project-id="${card.id}" data-line="${item.line}" ${item.checked ? "checked" : ""} />
+		<div class="${classes}" data-project-id="${projectId}" data-line="${item.line}" data-type="${item.type}">
+			<input type="checkbox" class="kanban-project-item-checkbox" data-project-id="${projectId}" data-line="${item.line}" ${item.checked ? "checked" : ""} />
 			${typeDotHtml(item.type)}<span class="kanban-project-item-text">${marked ? UNREAD_DOT : ""}${escapeHtml(item.text)}</span>
 		</div>
 	`;
@@ -91,7 +95,7 @@ export function projectCardHtml(card: ProjectCard, badges: Map<string, string>, 
 		<span style="font-weight: bold;">${escapeHtml(card.file.basename)}</span>
 		${itemsHtml}
 		<span class="kanban-card-actions">
-			<span class="kanban-play-btn" data-project-id="${card.id}">${PLAY_ICON}</span>
+			<span class="kanban-play-btn" data-project-id="${escapeHtml(card.id)}">${PLAY_ICON}</span>
 		</span>
 		`;
 }

@@ -100,3 +100,13 @@ describe("kanban type labels", () => {
 		expect(css).not.toContain("::before");
 	});
 });
+
+describe("kanban card escaping", () => {
+	it("escapes & < > \" ' in text and attributes", () => {
+		const html = cardHtml('1"x', "Tom & <Jerry>", "it's \"ok\"", "task", { itemId: 'a"b', text: "💬 1" });
+		expect(html).toContain("Tom &amp; &lt;Jerry&gt;");
+		expect(html).toContain("it&#39;s &quot;ok&quot;");
+		expect(html).toContain('data-item-id="a&quot;b"');
+		expect(html).toContain('data-task-id="1&quot;x"');
+	});
+});
