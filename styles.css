@@ -226,3 +226,23 @@
 	margin-right: 4px;
 	vertical-align: middle;
 }
+
+/* Type label on a Tag task card, dot before a step's text; --type-color set by cardTypesCss */
+.tasks-kanban-view-container .kanban-type-label {
+	display: inline-block;
+	margin-right: 6px;
+	font-size: 0.7em;
+	font-weight: bold;
+	letter-spacing: 0.05em;
+	color: var(--type-color);
+	vertical-align: middle;
+}
+
+.tasks-kanban-view-container .kanban-step-dot {
+	display: inline-block;
+	flex-shrink: 0;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--type-color);
+}

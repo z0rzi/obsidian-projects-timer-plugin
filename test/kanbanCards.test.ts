@@ -3,6 +3,7 @@ import type { TFile } from "obsidian";
 import { parseProjectCard } from "../src/projectCards";
 import type { Task } from "../src/types";
 import { boardSnapshot } from "../src/views/kanban/boardItems";
+import { cardTypesCss } from "../src/views/kanban/boards";
 import { cardHtml, overrideCardHtml, projectCardHtml } from "../src/views/kanban/cardHtml";
 
 const file = { path: "2.projects/Widget.md", basename: "Widget" } as TFile;
@@ -54,5 +55,12 @@ describe("kanban type labels", () => {
 			raw: `#${type} p2 Axe faux`,
 		});
 		expect(boardSnapshot([task("bug")], [], new Set())).not.toBe(boardSnapshot([task("task")], [], new Set()));
+	});
+
+	it("colour labels and dots from the type palette, with no faint corner word left", () => {
+		const css = cardTypesCss();
+		expect(css).toMatch(/\.kanban-type-label\[data-type="bug"\][^{]*\{\s*--type-color: #b82626;/);
+		expect(css).toMatch(/\.kanban-step-dot\[data-type="quick"\][^{]*\{\s*--type-color: #f7d522;/);
+		expect(css).not.toContain("::before");
 	});
 });
