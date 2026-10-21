@@ -35,6 +35,12 @@ describe("comment target under the cursor", () => {
 		expect(at(16)).toEqual({ kind: "project", id: "p1abc", title: "Widget" });
 	});
 
+	it("covers the whole body when it starts after a blank line", () => {
+		const note = "#task p1 Fix heatmap ^t7f3a\n\n  corps\n  fin\nTexte libre";
+		expect(at(3, note, "notes.md")).toEqual({ kind: "task", id: "t7f3a", title: "Fix heatmap" });
+		expect(at(4, note, "notes.md")).toBeNull();
+	});
+
 	it("is the pushed Project step on the cursor line or in its indented body", () => {
 		expect(at(9)).toEqual({ kind: "task", id: "s9xyz", title: "Export CSV" });
 		const withBody = project.replace("- [ ] Export CSV ^s9xyz", "- [ ] Export CSV ^s9xyz\n  détail de l'export");

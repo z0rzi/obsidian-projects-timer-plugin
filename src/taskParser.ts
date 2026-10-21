@@ -45,20 +45,21 @@ export function readTypeTag(text: string): { type: TaskTagLabel; rest: string } 
  * returned as written.
  */
 export function readIndentedBody(lines: string[], at: number, end = lines.length): string[] {
-	const body: string[] = [];
-	let blanks = 0;
+	const body = lines.slice(at + 1, indentedBodyEnd(lines, at, end) + 1).map((line) => (line.trim() ? line : ""));
+	const first = body.findIndex((line) => line !== "");
+	return first < 0 ? [] : body.slice(first);
+}
+
+/** Index of the last line of the body `readIndentedBody` reads under line `at`; `at` itself when there is none. */
+export function indentedBodyEnd(lines: string[], at: number, end = lines.length): number {
+	let last = at;
 	for (let i = at + 1; i < end; i++) {
 		const line = lines[i] ?? "";
-		if (!line.trim()) {
-			blanks++;
-			continue;
-		}
+		if (!line.trim()) continue;
 		if (!/^\s/.test(line)) break;
-		if (body.length > 0) body.push(...Array<string>(blanks).fill(""));
-		body.push(line);
-		blanks = 0;
+		last = i;
 	}
-	return body;
+	return last;
 }
 
 /**

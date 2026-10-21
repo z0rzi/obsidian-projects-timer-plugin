@@ -1,6 +1,7 @@
 import { readSharedProject } from "../sync/sharedProject";
 import { readReview } from "../sync/sharedReview";
 import { readProjectSteps, readTagTasks, type LocalTask } from "../sync/sharedTask";
+import { indentedBodyEnd } from "../taskParser";
 
 /** An item with a comment thread in the Client app. */
 export interface CommentTarget {
@@ -11,8 +12,8 @@ export interface CommentTarget {
 }
 
 /** The Task line or its indented body (same rule as the Description) holds `line`. */
-const covers = (t: LocalTask, line: number) =>
-	t.line <= line && line <= t.line + (t.description ? t.description.split("\n").length : 0);
+const holdsLine = (lines: string[], t: LocalTask, line: number) =>
+	t.line <= line && line <= indentedBodyEnd(lines, t.line);
 
 /**
  * Whose thread the comment panel shows for the cursor on `line` (0-based):
@@ -31,10 +32,11 @@ export function commentTargetAt(
 		const review = readReview(path, content);
 		return review.suiviId ? { kind: "review", id: review.suiviId, title: review.title } : null;
 	}
-	const tagTask = readTagTasks(path, content, null).find((t) => covers(t, line));
+	const lines = content.split("\n");
+	const tagTask = readTagTasks(path, content, null).find((t) => holdsLine(lines, t, line));
 	if (tagTask?.blockId) return { kind: "task", id: tagTask.blockId, title: tagTask.title };
 	if (!tagTask) {
-		const step = readProjectSteps(path, content).find((s) => covers(s, line));
+		const step = readProjectSteps(path, content).find((s) => holdsLine(lines, s, line));
 		if (step?.blockId) return { kind: "task", id: step.blockId, title: step.title };
 	}
 	const project = readSharedProject(path, content);
