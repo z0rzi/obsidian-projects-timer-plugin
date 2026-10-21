@@ -39,12 +39,12 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	async function open(item: InboxEntry["item"] | undefined, title: string, thread: boolean) {
 		// An entry the app sent without an item (archived, or a Push line) must not break the panel.
 		if (!item) {
-			new Notice(`${title}: nothing to open.`);
+			new Notice(`${title} : rien à ouvrir.`);
 			return;
 		}
 		const at = await itemLocation(data.sync, vaultFiles(app), item);
 		if (at) await openLine(at.path, at.line);
-		else if (!thread) new Notice(`${item.title} is not in this vault.`);
+		else if (!thread) new Notice(`${item.title} n'est pas dans ce coffre.`);
 		if (thread) await deps.openThread({ kind: item.kind, id: item.id, title: item.title });
 	}
 
@@ -73,8 +73,8 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	 */
 	function triageTarget(view: MarkdownView | null): ReturnType<TriageDeps["target"]> {
 		const file = view?.file;
-		if (!view || !file) return { error: "Open the note where the Task goes and put the cursor there." };
-		if (file.path === data.settings.projectTemplate) return { error: "That is the Project template." };
+		if (!view || !file) return { error: "Ouvrez la note où va la Tâche et placez-y le curseur." };
+		if (file.path === data.settings.projectTemplate) return { error: "C'est le modèle de Projet." };
 		const content = view.editor.getValue();
 		const folder = data.settings.projectsLocation.replace(/\/+$/, "");
 		const section = file.parent?.path === folder ? findTasksHeadingSection(content.split("\n")) : null;
@@ -84,7 +84,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		const projectFile = projectPath ? app.vault.getFileByPath(projectPath) : null;
 		if (!projectFile || projectFile.parent?.path !== folder) return { path: file.path, projectId: null, step };
 		const fm = app.metadataCache.getFileCache(projectFile)?.frontmatter as Record<string, unknown> | undefined;
-		if (fm?.prive === true) return { error: `${projectFile.basename} is private: the Client would lose this Task.` };
+		if (fm?.prive === true) return { error: `${projectFile.basename} est privé : le Client perdrait cette Tâche.` };
 		// Not pushed yet: the next Push links the Task once the Project has its id.
 		return { path: file.path, projectId: typeof fm?.suivi_id === "string" ? fm.suivi_id : null, step };
 	}
@@ -92,7 +92,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	function triage(entry: InboxEntry) {
 		const view = noteView();
 		if (!view) {
-			new Notice("Open the note where the Task goes and put the cursor there.");
+			new Notice("Ouvrez la note où va la Tâche et placez-y le curseur.");
 			return;
 		}
 		const target = triageTarget(view);
@@ -117,8 +117,8 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 						},
 					}),
 				);
-				if (result.ok) new Notice(`Inserted: ${result.line}`);
-				else new Notice(`Triage failed: ${result.error}`, 10_000);
+				if (result.ok) new Notice(`Insérée : ${result.line}`);
+				else new Notice(`Échec du tri : ${result.error}`, 10_000);
 				await store.refresh();
 			})();
 		}).open();
@@ -145,9 +145,9 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 					}),
 				);
 				if (result.ok) {
-					new Notice(`Created ${result.path}`);
+					new Notice(`Créée : ${result.path}`);
 					await openLine(result.path, 0);
-				} else new Notice(`New project failed: ${result.error}`, 10_000);
+				} else new Notice(`Échec du nouveau projet : ${result.error}`, 10_000);
 				await store.refresh();
 			})();
 		}).open();

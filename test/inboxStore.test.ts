@@ -126,8 +126,8 @@ describe("Inbox feed", () => {
 		expect(store.current.conflicts).toEqual([
 			expect.objectContaining({
 				kind: "conflict",
-				title: "Conflict on Fix heatmap",
-				detail: "Suivi has P1, you changed it too: pick in Push to Suivi",
+				title: "Conflit sur Fix heatmap",
+				detail: "Suivi a P1, vous l'avez changé aussi : choisissez dans Push to Suivi",
 				item: { kind: "task", id: "t7f3a", title: "Fix heatmap" },
 			}),
 		]);

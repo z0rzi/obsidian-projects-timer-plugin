@@ -105,7 +105,7 @@ export class InboxView extends ItemView {
 			this.draw(root, state);
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
-			root.createEl("p", { text: `Suivi inbox failed to render: ${message}`, cls: "mod-warning" });
+			root.createEl("p", { text: `Affichage de la boîte Suivi impossible : ${message}`, cls: "mod-warning" });
 		}
 	}
 
@@ -117,7 +117,7 @@ export class InboxView extends ItemView {
 	private draw(root: HTMLElement, state: InboxState) {
 		this.drawHeader(root, state);
 		if (state.error) root.createEl("p", { text: state.error, cls: "mod-warning" });
-		if (state.status === "loading") root.createEl("p", { text: "Loading…" });
+		if (state.status === "loading") root.createEl("p", { text: "Chargement…" });
 
 		const toTriage = this.section(root, "to-triage", `À trier${state.toTriage.length ? ` (${state.toTriage.length})` : ""}`);
 		if (state.toTriage.length === 0) toTriage.createEl("p", { text: "Rien à trier.", cls: "suivi-inbox-empty" });
@@ -149,7 +149,7 @@ export class InboxView extends ItemView {
 		header.style.gap = "4px";
 		header.style.alignItems = "center";
 		header.createEl("h4", { text: "Suivi inbox" }).style.flexGrow = "1";
-		const reload = header.createEl("button", { cls: "clickable-icon", attr: { "aria-label": "Reload" } });
+		const reload = header.createEl("button", { cls: "clickable-icon", attr: { "aria-label": "Recharger" } });
 		setIcon(reload, "refresh-cw");
 		reload.onclick = () => void this.store.refresh();
 
@@ -165,7 +165,7 @@ export class InboxView extends ItemView {
 			const clear = tools.createEl("button", {
 				text: `${state.item.title} ✕`,
 				cls: "mod-cta",
-				attr: { "aria-label": "Show every item" },
+				attr: { "aria-label": "Afficher tous les éléments" },
 			});
 			clear.onclick = () => this.store.setItemFilter(null);
 		}
@@ -193,12 +193,12 @@ export class InboxView extends ItemView {
 		if (entry.kind === "ticket" && entry.ticketType === "idea") {
 			el.createEl("button", {
 				text: "Nouveau projet",
-				attr: { "aria-label": "Create the Project file from the template" },
+				attr: { "aria-label": "Créer la note du Projet depuis le modèle" },
 			}).onclick = () => this.newProject(entry);
 		} else if (entry.kind === "ticket") {
 			const insert = el.createEl("button", {
 				text: "Insérer ici",
-				attr: { "aria-label": "Write this Task at the cursor of the open note" },
+				attr: { "aria-label": "Écrire cette Tâche au curseur de la note ouverte" },
 			});
 			// Keep the note's cursor: the button must not take focus from the editor first.
 			insert.onmousedown = (e) => e.preventDefault();

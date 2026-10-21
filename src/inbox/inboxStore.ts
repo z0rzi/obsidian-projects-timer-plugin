@@ -45,7 +45,7 @@ export type InboxItemFilter = { id: string; title: string };
 
 type Conflicts = () => Record<string, PullConflict> | undefined;
 
-const p = (v: unknown) => (typeof v === "number" ? `P${v}` : "inherited");
+const p = (v: unknown) => (typeof v === "number" ? `P${v}` : "héritée");
 
 const TICKET_LABELS: Partial<Record<TaskType, string>> = {
 	bug: "Bug",
@@ -71,8 +71,8 @@ function conflictEntry(c: PullConflict): InboxEntry {
 		key: `c${c.id}:${c.field}`,
 		kind: "conflict",
 		item: { kind: c.kind, id: c.id, title: c.title },
-		title: `Conflict on ${c.title}`,
-		detail: `Suivi has ${c.field === "status" ? "Terminé (Review validée)" : p(c.remote)}, you changed it too: pick in Push to Suivi`,
+		title: `Conflit sur ${c.title}`,
+		detail: `Suivi a ${c.field === "status" ? "Terminé (Review validée)" : p(c.remote)}, vous l'avez changé aussi : choisissez dans Push to Suivi`,
 	};
 }
 
