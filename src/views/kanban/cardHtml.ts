@@ -1,10 +1,24 @@
-import type { ProjectCard, ProjectCardItem } from "../../types";
+import type { ProjectCard, ProjectCardItem, TaskTagLabel } from "../../types";
 
 const PLAY_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
 const DONE_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
 
 /** Marker on a Project card's step line whose item has unread Inbox entries; styled in styles.css. */
 const UNREAD_DOT = '<span class="suivi-unread-dot" aria-label="Unread Inbox entries"></span>';
+
+/** Card label per type; a plain task has none. */
+const TYPE_LABELS: Partial<Record<TaskTagLabel, string>> = { bug: "BUG", quick: "RAPIDE", wait: "ATTENTE" };
+
+/** Small type label in the type's colour (styles.css), empty for a task. */
+function typeLabelHtml(type: TaskTagLabel): string {
+	const label = TYPE_LABELS[type];
+	return label ? `<span class="kanban-type-label" data-type="${type}">${label}</span>` : "";
+}
+
+/** Dot before a step's text in its type's colour (styles.css), empty for a task. */
+function typeDotHtml(type: TaskTagLabel): string {
+	return TYPE_LABELS[type] ? `<span class="kanban-step-dot" data-type="${type}"></span>` : "";
+}
 
 function escapeHtml(text: string): string {
 	return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -24,14 +38,15 @@ export function badgeOf(badges: Map<string, string>, itemId: string | undefined)
 	return itemId && text ? { itemId, text } : undefined;
 }
 
-/** Card of a Tag task: unread badge, title (`[x]` highlighted), body, done and play buttons. */
-export function cardHtml(id: string, title: string, description: string, badge?: CardBadge): string {
+/** Card of a Tag task: unread badge, type label, title (`[x]` highlighted), body, done and play buttons. */
+export function cardHtml(id: string, title: string, description: string, type: TaskTagLabel, badge?: CardBadge): string {
 	const highlightedTitle = escapeHtml(title).replace(
 		/\[(.+?)\]/g,
 		'<span style="color: var(--text-faint)">[<span style="color: var(--card-color);">$1</span>]</span>',
 	);
 	return `
 		${badgeHtml(badge)}
+		${typeLabelHtml(type)}
 		<span>${highlightedTitle}</span>
 		<br>
 		<small>${escapeHtml(description).replace(/\n/g, "<br/>")}</small>
@@ -48,7 +63,7 @@ function stepItemHtml(card: ProjectCard, item: ProjectCardItem, extraClass: stri
 	return `
 		<div class="${classes}" data-project-id="${card.id}" data-line="${item.line}" data-type="${item.type}">
 			<input type="checkbox" class="kanban-project-item-checkbox" data-project-id="${card.id}" data-line="${item.line}" ${item.checked ? "checked" : ""} />
-			<span class="kanban-project-item-text">${marked ? UNREAD_DOT : ""}${escapeHtml(item.text)}</span>
+			${typeDotHtml(item.type)}<span class="kanban-project-item-text">${marked ? UNREAD_DOT : ""}${escapeHtml(item.text)}</span>
 		</div>
 	`;
 }

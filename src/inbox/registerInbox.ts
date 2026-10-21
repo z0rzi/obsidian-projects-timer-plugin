@@ -10,8 +10,9 @@ import { INBOX_VIEW_TYPE, InboxView } from "../views/InboxView";
 import { withInboxNotice } from "./inboxNotice";
 import { InboxStore, type InboxEntry, type InboxState } from "./inboxStore";
 import { itemLocation } from "./itemLocation";
-import { placeLine, runTriage, type TriageChoice } from "./triage";
+import { placeLine, runTriage, type TriageChoice, type TriageDeps } from "./triage";
 import { tagTaskProject } from "../sync/taskProject";
+import { findTasksHeadingSection } from "../projectCards";
 import { TriageModal } from "../ui/TriageModal";
 import { NewProjectModal } from "../ui/NewProjectModal";
 import { runNewProject } from "./newProject";
@@ -66,19 +67,26 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		return leaf?.view instanceof MarkdownView && leaf.view.file ? leaf.view : null;
 	}
 
-	/** Note and Project the line goes to, with the same Project rule as the Push. */
-	function triageTarget(view: MarkdownView | null) {
+	/**
+	 * Note and Project the line goes to, with the same Project rule as the Push. The cursor
+	 * on the Tasks heading or in its section of a Project note makes the line a Project step.
+	 */
+	function triageTarget(view: MarkdownView | null): ReturnType<TriageDeps["target"]> {
 		const file = view?.file;
 		if (!view || !file) return { error: "Open the note where the Task goes and put the cursor there." };
 		if (file.path === data.settings.projectTemplate) return { error: "That is the Project template." };
-		const projectPath = tagTaskProject(app, file, view.editor.getValue());
-		const projectFile = projectPath ? app.vault.getFileByPath(projectPath) : null;
+		const content = view.editor.getValue();
 		const folder = data.settings.projectsLocation.replace(/\/+$/, "");
-		if (!projectFile || projectFile.parent?.path !== folder) return { path: file.path, projectId: null };
+		const section = file.parent?.path === folder ? findTasksHeadingSection(content.split("\n")) : null;
+		const cursor = view.editor.getCursor().line;
+		const step = section !== null && cursor >= section.start - 1 && cursor < section.end;
+		const projectPath = step ? file.path : tagTaskProject(app, file, content);
+		const projectFile = projectPath ? app.vault.getFileByPath(projectPath) : null;
+		if (!projectFile || projectFile.parent?.path !== folder) return { path: file.path, projectId: null, step };
 		const fm = app.metadataCache.getFileCache(projectFile)?.frontmatter as Record<string, unknown> | undefined;
 		if (fm?.prive === true) return { error: `${projectFile.basename} is private: the Client would lose this Task.` };
 		// Not pushed yet: the next Push links the Task once the Project has its id.
-		return { path: file.path, projectId: typeof fm?.suivi_id === "string" ? fm.suivi_id : null };
+		return { path: file.path, projectId: typeof fm?.suivi_id === "string" ? fm.suivi_id : null, step };
 	}
 
 	function triage(entry: InboxEntry) {
@@ -87,14 +95,20 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 			new Notice("Open the note where the Task goes and put the cursor there.");
 			return;
 		}
-		new TriageModal(app, { title: entry.item.title, type: entry.ticketType ?? "task" }, (choice: TriageChoice) => {
+		const target = triageTarget(view);
+		if ("error" in target) {
+			new Notice(target.error);
+			return;
+		}
+		const item = { title: entry.item.title, type: entry.ticketType ?? "task", step: target.step };
+		new TriageModal(app, item, (choice: TriageChoice) => {
 			void (async () => {
 				const result = await data.exclusive(() =>
 					runTriage(entry.item, choice, {
 						remote,
 						sync: data.sync,
 						save: () => data.save(),
-						target: () => triageTarget(view),
+						target: () => target,
 						insert: (line) => {
 							const editor = view.editor;
 							const lines = editor.getValue().split("\n");

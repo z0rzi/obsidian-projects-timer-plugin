@@ -38,35 +38,33 @@ export function boardIdToToken(boardId: string): StatusToken | null {
 export const PROJECT_CARD_STYLE = { label: "project", color: "#2677b8", css: "border: 3px solid var(--card-color);" };
 export const OVERRIDE_CARD_STYLE = { label: "step", color: "#2677b8", css: "border-left: 4px solid var(--card-color);" };
 
-/** Per card type CSS (colour, border, type label in the corner), from TASKS_TYPES plus Project and Override cards. */
+/**
+ * Per card type CSS (colour, border), from TASKS_TYPES plus Project and
+ * Override cards, and the `--type-color` of the type labels and step dots
+ * (laid out in styles.css).
+ */
 export function cardTypesCss(): string {
 	const styles = [
 		...TASKS_TYPES.map((t) => ({ label: t.tag, color: t.color, css: t.css })),
 		PROJECT_CARD_STYLE,
 		OVERRIDE_CARD_STYLE,
 	];
-	return styles
-		.map((type) => {
-			const props = [type.color ? `--card-color: ${type.color};` : "", type.css].filter(Boolean);
-			const selector = `.tasks-kanban-view-container .kanban-item[data-type="${type.label}"]`;
-			return `
-				${selector} {
-					position: relative;
-					${props.join("\n")};
-				}
-				${selector}::before {
-					content: "${type.label}";
-					display: block;
-					position: absolute;
-					top: 0;
-					right: 0;
-					font-style: italic;
-					font-size: 0.8em;
-					color: white;
-					opacity: 0.2;
-					padding: 5px;
-				}
-			`;
-		})
-		.join("");
+	const cardsCss = styles.map((type) => {
+		const props = [type.color ? `--card-color: ${type.color};` : "", type.css].filter(Boolean);
+		return `
+			.tasks-kanban-view-container .kanban-item[data-type="${type.label}"] {
+				position: relative;
+				${props.join("\n")};
+			}
+		`;
+	});
+	const markersCss = TASKS_TYPES.filter((t) => t.color).map(
+		(t) => `
+			.tasks-kanban-view-container .kanban-type-label[data-type="${t.tag}"],
+			.tasks-kanban-view-container .kanban-step-dot[data-type="${t.tag}"] {
+				--type-color: ${t.color};
+			}
+		`,
+	);
+	return [...cardsCss, ...markersCss].join("");
 }
