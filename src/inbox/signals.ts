@@ -28,3 +28,25 @@ export function toastText(entry: ActivityEntry): string {
 	}
 	return title ? `${entry.label} : ${title}` : entry.label;
 }
+
+/**
+ * Text of a kanban card's badge from its item's unread entries (newest first, as
+ * `InboxStore.unreadByItem` gives them), e.g. "💬 2 · P1→P2": comments counted,
+ * the priority move from the oldest change to the newest, the latest Review
+ * answer, then a count of anything else.
+ */
+export function badgeText(entries: ActivityEntry[]): string {
+	const comments = entries.filter((e) => e.type === "comment.created");
+	const priorities = entries.filter((e) => e.type === "item.updated" && e.field === "priority");
+	const answers = entries.filter((e) => e.type === "review.answered" && e.answer);
+	const answer = answers[0]?.answer;
+	const others = entries.length - comments.length - priorities.length - answers.length;
+	const parts: string[] = [];
+	if (comments.length) parts.push(`💬 ${comments.length}`);
+	const newest = priorities[0];
+	const oldest = priorities.at(-1);
+	if (newest && oldest) parts.push(`${priorityLabel(oldest.from)}→${priorityLabel(newest.to)}`);
+	if (answer) parts.push(ANSWERS[answer]);
+	if (others > 0) parts.push(`🔔 ${others}`);
+	return parts.join(" · ");
+}

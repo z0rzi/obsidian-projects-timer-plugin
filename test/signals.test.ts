@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ActivityEntry } from "../src/remote/api";
-import { toastText } from "../src/inbox/signals";
+import { badgeText, toastText } from "../src/inbox/signals";
 
 const JMJ: ActivityEntry["actor"] = { email: "jmj@edf.fr", handle: "jmj", role: "client" };
 
@@ -44,5 +44,26 @@ describe("toastText", () => {
 
 	it("falls back to the app's label for other events", () => {
 		expect(toastText(entry({ type: "idea.launched", label: "Idée lancée" }))).toBe("Idée lancée : Algo détection");
+	});
+});
+
+describe("badgeText", () => {
+	const comment = (id: number) => entry({ id });
+	const priority = (id: number, from: number, to: number) => entry({ id, type: "item.updated", field: "priority", from, to });
+
+	it("counts comments and shows the priority move from the oldest to the newest", () => {
+		// Newest first, as unreadByItem gives them.
+		expect(badgeText([comment(4), priority(3, 2, 3), comment(2), priority(1, 1, 2)])).toBe("💬 2 · P1→P3");
+	});
+
+	it("shows only what is there", () => {
+		expect(badgeText([comment(1)])).toBe("💬 1");
+		expect(badgeText([priority(1, 1, 2)])).toBe("P1→P2");
+	});
+
+	it("shows the latest Review answer and counts the other entries", () => {
+		const answer = entry({ id: 3, type: "review.answered", answer: "valide" });
+		const ticket = entry({ id: 2, type: "ticket.created" });
+		expect(badgeText([answer, ticket])).toBe("Validé · 🔔 1");
 	});
 });
