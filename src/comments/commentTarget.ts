@@ -1,12 +1,11 @@
 import { readSharedProject } from "../sync/sharedProject";
-import { readReview } from "../sync/sharedReview";
 import { readProjectSteps, readTagTasks, type LocalTask } from "../sync/sharedTask";
 import { indentedBodyEnd } from "../taskParser";
 
 /** An item with a comment thread in the Client app. */
 export interface CommentTarget {
-	kind: "task" | "project" | "review";
-	/** App id: the Task's block ID, or the Project's or Review's `suivi_id:`. */
+	kind: "task" | "project";
+	/** App id: the Task's block ID, or the Project's `suivi_id:`. */
 	id: string;
 	title: string;
 }
@@ -21,17 +20,7 @@ const holdsLine = (lines: string[], t: LocalTask, line: number) =>
  * is in, else the note's own Project if it has been pushed. Null when nothing
  * there is in the app.
  */
-export function commentTargetAt(
-	path: string,
-	content: string,
-	line: number,
-	/** Folder of Review notes: a pushed one shows its Review's thread wherever the cursor is. */
-	reviewsFolder?: string,
-): CommentTarget | null {
-	if (reviewsFolder && path.startsWith(`${reviewsFolder.replace(/\/+$/, "")}/`)) {
-		const review = readReview(path, content);
-		return review.suiviId ? { kind: "review", id: review.suiviId, title: review.title } : null;
-	}
+export function commentTargetAt(path: string, content: string, line: number): CommentTarget | null {
 	const lines = content.split("\n");
 	const tagTask = readTagTasks(path, content, null).find((t) => holdsLine(lines, t, line));
 	if (tagTask?.blockId) return { kind: "task", id: tagTask.blockId, title: tagTask.title };

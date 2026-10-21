@@ -8,7 +8,7 @@ export interface InboxEntry {
 	key: string;
 	kind: "conflict" | "ticket";
 	/** What opening the entry goes to. */
-	item: { kind: "project" | "task" | "review"; id: string; title: string };
+	item: { kind: "project" | "task"; id: string; title: string };
 	title: string;
 	detail: string;
 	/** Client who did it, ISO date. */
@@ -70,7 +70,7 @@ function ticketEntry(t: InboxTicket): InboxEntry {
 function remoteValue(c: PullConflict): string {
 	if (c.field !== "status") return p(c.remote);
 	if (c.answer === "a_reprendre") return "En cours (À reprendre)";
-	return c.answer ? "Terminé (Validé)" : "Terminé (Review validée)";
+	return "Terminé (Validé)";
 }
 
 function conflictEntry(c: PullConflict): InboxEntry {

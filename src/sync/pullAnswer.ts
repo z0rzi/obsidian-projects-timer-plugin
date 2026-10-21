@@ -115,17 +115,8 @@ async function writeTaskAnswer(files: VaultFiles, path: string, id: string, line
 	else await writeDone(files, path, id, line, date);
 }
 
-/**
- * Marks the Task line `^id` done as a Validé answer does: `#done <doneOn>`
- * for a Tag task, ticked (token removed) for a Project step. "Take Suivi's"
- * on a status conflict.
- */
-export async function writeValidated(files: VaultFiles, id: string, path: string, doneOn: string | null): Promise<void> {
-	const { path: at, found } = await locateItem(files, id, path, taskLine(id));
-	await writeDone(files, at, id, found, doneOn ?? localDay());
-}
-
-export async function writeDone(files: VaultFiles, path: string, id: string, line: LocalTask, date: string) {
+/** Validé on the Task line `^id`: `#done <date>` for a Tag task, ticked (token removed) for a Project step. */
+async function writeDone(files: VaultFiles, path: string, id: string, line: LocalTask, date: string) {
 	await processLineById(files.process, path, id, (now, ref) => {
 		if (!line.step) return rewriteTaskTag(now, ref, `#done ${date}`);
 		const result = rewriteStepToken(now, ref, null);
@@ -134,6 +125,6 @@ export async function writeDone(files: VaultFiles, path: string, id: string, lin
 }
 
 /** Sets the `p0` token of the Task line `^id` (À reprendre). */
-export async function writeP0(files: VaultFiles, path: string, id: string): Promise<void> {
+async function writeP0(files: VaultFiles, path: string, id: string): Promise<void> {
 	await processLineById(files.process, path, id, (now, ref) => setTaskToken(now, ref, "p0"));
 }

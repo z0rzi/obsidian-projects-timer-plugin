@@ -36,7 +36,7 @@ const DONE_LINE = /^#done(?=\s|$)(?:\s+(\d{4}-\d{2}-\d{2})(?=\s|$))?\s*(.*)$/;
 
 function fromToken(token: StatusToken | null): Pick<LocalTask, "status" | "priority"> | null {
 	if (!token) return null;
-	if (token.status === "review") return { status: "a_valider", priority: null };
+	if (token.status === "a_valider") return { status: "a_valider", priority: null };
 	if (token.priority === 0) return { status: "en_cours", priority: 0 };
 	return { status: "a_faire", priority: token.priority };
 }

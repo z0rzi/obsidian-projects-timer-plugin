@@ -41,7 +41,7 @@ describe("parseTasks status token", () => {
 
 	it("reads pr as awaiting validation", () => {
 		const task = parseOne("#task pr Titre");
-		expect(task.status).toBe("review");
+		expect(task.status).toBe("a_valider");
 		expect(task.title).toBe("Titre");
 	});
 
@@ -96,7 +96,7 @@ describe("parseTasks block ID", () => {
 		const task = parseOne("#task pr Export CSV ^t04be");
 		expect(task.title).toBe("Export CSV");
 		expect(task.blockId).toBe("t04be");
-		expect(task.status).toBe("review");
+		expect(task.status).toBe("a_valider");
 		expect(task.raw).toBe("#task pr Export CSV ^t04be");
 	});
 });

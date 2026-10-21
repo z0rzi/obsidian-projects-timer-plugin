@@ -2,7 +2,6 @@ import type { ApiEvent } from "../remote/api";
 import type { PullConflict } from "./pullPriority";
 import type { PushedProjects } from "./pushPlan";
 import type { PushedTasks } from "./taskPlan";
-import type { PushedReviews } from "./reviewPlan";
 
 /** What the plugin remembers about the Client app between sessions (one machine only). */
 export interface SyncState {
@@ -10,8 +9,6 @@ export interface SyncState {
 	pushedProjects: PushedProjects;
 	/** Same for Tasks, by app id (= block ID). */
 	pushedTasks: PushedTasks;
-	/** Same for Reviews, by app id (= `suivi_id:` of the note); unset until one is pushed. */
-	pushedReviews?: PushedReviews;
 	/**
 	 * Done lines without a date (`[x]` steps, undated `#done`) that were left
 	 * out of the first Push, as `path\nline`. Unset until a first Push applied.
@@ -31,6 +28,22 @@ export interface SyncState {
 }
 
 const emptySync = (): SyncState => ({ pushedProjects: {}, pushedTasks: {} });
+
+/** The keys a SyncState has; anything else in data.json (state of removed features) is dropped on load. */
+const SYNC_KEYS: Record<keyof SyncState, true> = {
+	pushedProjects: true,
+	pushedTasks: true,
+	doneHistory: true,
+	cursor: true,
+	pullRetry: true,
+	conflicts: true,
+	appImages: true,
+};
+
+function readSync(raw: unknown): SyncState {
+	const known = Object.entries((raw ?? {}) as Record<string, unknown>).filter(([key]) => key in SYNC_KEYS);
+	return { ...emptySync(), ...(Object.fromEntries(known) as Partial<SyncState>) };
+}
 
 /**
  * The plugin's data.json: settings at the top level (as before) plus the
@@ -53,7 +66,7 @@ export class PluginData<S extends object> {
 		const { sync, ...settings } = raw;
 		return new PluginData(
 			Object.assign({}, defaults, settings) as S,
-			{ ...emptySync(), ...(sync as Partial<SyncState> | undefined) },
+			readSync(sync),
 			write,
 		);
 	}

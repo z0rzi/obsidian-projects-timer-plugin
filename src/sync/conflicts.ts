@@ -28,7 +28,7 @@ export interface PendingConflict {
 	/** `status` conflict: the vault item's status, and the done date "theirs" writes. */
 	localStatus?: string;
 	doneOn?: string | null;
-	/** `status` conflict from `item.answered`: the Answer "theirs" writes (unset: a Validé Review answer). */
+	/** `status` conflict from `item.answered`: the Answer "theirs" writes (unset in older data: Validé). */
 	answer?: ItemAnswer;
 	choice: "mine" | "theirs";
 	change: Extract<PushChange, { op: "update" }>;

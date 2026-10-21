@@ -56,8 +56,8 @@ export interface TaskFields {
   type: PushedTaskType;
   status: PushedTaskStatus;
   /**
-   * The Task's Description: its vault body, de-indented, shared like a Review
-   * body (images uploaded, wikilinks to text). A Push may omit it on create (`""`).
+   * The Task's Description: its vault body, de-indented, shared with images
+   * uploaded and wikilinks turned to text. A Push may omit it on create (`""`).
    */
   description: string;
   /** 0–5, or null = inherit the Project's Priority (a Project step without token). */
@@ -68,40 +68,6 @@ export interface TaskFields {
   done_on?: string | null;
   /** A Project step (a line of the Project's steps list); false for a Tag task. A line moved between the two changes it. */
   step: boolean;
-}
-
-/**
- * Fields of a Review the Developer sets by Push (a note of the vault's reviews
- * folder). Creating it publishes it: the Client is emailed and the linked Task
- * becomes a_valider. Updating title or body of a Review answered À reprendre
- * publishes it again (back to en_attente, Task a_valider again).
- */
-export interface ReviewFields {
-  title: string;
-  /**
-   * Markdown, shared whole. Images are `![](/uploads/<name>)` (upload them
-   * first); a Loom share URL alone on a line becomes an embedded player.
-   */
-  body: string;
-  /** App id of the Project the Review is about. */
-  project_id: string;
-  /** App id of the Task it asks to validate, or null. */
-  task_id: string | null;
-}
-
-/** Review answer codes; the app shows them as En attente, Validé, À reprendre. */
-export const REVIEW_ANSWERS = ["en_attente", "valide", "a_reprendre"] as const;
-export type ReviewAnswer = (typeof REVIEW_ANSWERS)[number];
-
-/**
- * Payload of `review.answered` (the item is the Review): the Client's answer
- * and the Task it settles. `valide` makes the Task termine (vault: `#done
- * <date>`), `a_reprendre` makes it en_cours P0 (vault: `p0`); the app emits
- * those Task changes as `item.updated` events carrying `review: <review id>`.
- */
-export interface ReviewAnsweredPayload {
-  answer: Exclude<ReviewAnswer, "en_attente">;
-  task_id: string | null;
 }
 
 /** Answer codes of the Client on a Task or Project À valider; the app shows them as Validé, À reprendre. */
@@ -130,10 +96,7 @@ export type PushChange =
   | { op: "archive"; kind: "project"; id: string }
   | { op: "create"; kind: "task"; fields: TaskFields }
   | { op: "update"; kind: "task"; id: string; fields: Partial<TaskFields> }
-  | { op: "archive"; kind: "task"; id: string }
-  | { op: "create"; kind: "review"; fields: ReviewFields }
-  | { op: "update"; kind: "review"; id: string; fields: Partial<ReviewFields> }
-  | { op: "archive"; kind: "review"; id: string };
+  | { op: "archive"; kind: "task"; id: string };
 
 /** `POST /api/push` body. */
 export interface PushRequest {
@@ -160,8 +123,6 @@ export const EVENT_TYPES = [
   "ticket.created",
   "idea.launched",
   "item.triaged",
-  "review.published",
-  "review.answered",
   "item.answered",
   "comment.created",
   "comment.edited",
@@ -186,7 +147,7 @@ export interface ApiEvent {
   actor: string;
   origin: EventOrigin;
   type: EventType;
-  /** Id of the Project, Task, Review or Comment concerned; null for batch events. */
+  /** Id of the Project, Task or Comment concerned; null for batch events. */
   item: string | null;
   /** Shape depends on `type`, e.g. `ItemUpdatedPayload` for `item.updated`. */
   payload: Record<string, unknown>;
@@ -214,12 +175,12 @@ export interface EventsResponse {
 }
 
 /**
- * One comment of a thread. Projects, Tasks and Reviews each have one thread,
+ * One comment of a thread. Projects and Tasks each have one thread,
  * addressed by the item's id. Deleted comments are never returned.
  */
 export interface Comment {
   id: string;
-  /** Id of the Project, Task or Review the comment is on. */
+  /** Id of the Project or Task the comment is on. */
   item_id: string;
   author_id: string;
   author_email: string;
@@ -284,14 +245,13 @@ export interface InboxNotification {
   actor_email: string;
   /**
    * `comment.created`: a new comment; `item.updated`: a Client priority change (`from` → `to`);
-   * `review.answered`: the Client answered a Review (`answer`); `item.answered`: the Client
-   * answered a Task or Project À valider (`answer`). The changes an answer causes are not
+   * `item.answered`: the Client answered a Task or Project À valider (`answer`). The changes an answer causes are not
    * Notifications of their own.
    */
-  type: "comment.created" | "item.updated" | "review.answered" | "item.answered";
-  /** The Project, Task or Review concerned (for a comment, the one it's on). */
+  type: "comment.created" | "item.updated" | "item.answered";
+  /** The Project or Task concerned (for a comment, the one it's on). */
   item_id: string;
-  item_kind: "project" | "task" | "review";
+  item_kind: "project" | "task";
   item_title: string;
   /** `comment.created`: id and current text of the comment. */
   comment_id?: string;
@@ -300,7 +260,7 @@ export interface InboxNotification {
   field?: string;
   from?: unknown;
   to?: unknown;
-  /** `review.answered` and `item.answered`: the answer given. */
+  /** `item.answered`: the answer given. */
   answer?: ItemAnswer;
 }
 
@@ -352,8 +312,8 @@ export interface ActivityEntry {
   type: EventType;
   /** French, e.g. "Commentaire", "Priorité : P3 → P1", "Push : 12 changements". */
   label: string;
-  /** The Project, Task or Review concerned (for a comment, the one it's on); absent once archived. */
-  item?: { kind: "project" | "task" | "review"; id: string; title: string };
+  /** The Project or Task concerned (for a comment, the one it's on); absent once archived. */
+  item?: { kind: "project" | "task"; id: string; title: string };
   /**
    * Comment events: the comment; `body` absent once deleted. `mentions`:
    * handles of the users mentioned (see `Comment`); `mentioned`: the caller is
@@ -364,7 +324,7 @@ export interface ActivityEntry {
   field?: string;
   from?: unknown;
   to?: unknown;
-  /** `review.answered` and `item.answered`: the answer given. */
+  /** `item.answered`: the answer given. */
   answer?: ItemAnswer;
   /** `push.completed`: the Push's counts. */
   push?: { applied: number; rejected: number };

@@ -22,10 +22,6 @@ import { withInboxNotice } from "../src/inbox/inboxNotice";
 import { InboxStore } from "../src/inbox/inboxStore";
 import { placeLine, runTriage } from "../src/inbox/triage";
 import { runNewProject } from "../src/inbox/newProject";
-import { LineRef, setTaskToken, type StatusToken } from "../src/lineWriter";
-import { shareReviewBody } from "../src/sync/reviewBody";
-import { planReviewPush } from "../src/sync/reviewPlan";
-import { readReview } from "../src/sync/sharedReview";
 
 const url = process.env.SUIVI_E2E_URL ?? "";
 const token = process.env.SUIVI_E2E_TOKEN ?? "";
@@ -427,99 +423,7 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 		expect(ideas).toContain("Lancée");
 	});
 });
-describe.skipIf(!url || !token || !clientSession)("Reviews against a running Suivi", () => {
-	it("publishes a Review note (image, Loom, wikilinks), sets its Task pr; JMJ's Validé comes back as #done", async () => {
-		const remote = createHttpRemote({ url, token }, fetchTransport);
-		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-		const projectPath = `2.projects/Revue E2E ${stamp}.md`;
-		const reviewPath = `2.projects/reviews/Démo ${stamp}.md`;
-		const loom = "0123456789abcdef0123456789abcdef";
-		const files = new Map<string, string>([
-			[projectPath, "---\npriority: 2\n---\n# Description\nWidget\n\n# Tasks\n---\n"],
-			["1.meetings/rv.md", `#task p2 Widget revue ${stamp}\n`],
-		]);
-		const vault: VaultFiles = {
-			read: async (p) => files.get(p) ?? null,
-			process: async (p, edit) => void files.set(p, edit(files.get(p)!)),
-			paths: () => [...files.keys()],
-		};
-		const deps = {
-			remote,
-			sync,
-			save: async () => {},
-			writeSuiviId: async (p: string, id: string) => void files.set(p, files.get(p)!.replace("---\n", `---\nsuivi_id: ${id}\n`)),
-			writeBlockId: async (p: string, ref: { line: number; raw: string }, id: string) => {
-				const r = appendBlockId(files.get(p)!, ref, id);
-				if (r.ok) files.set(p, r.content);
-			},
-			shareBody: (p: string, body: string) =>
-				shareReviewBody(body, async () => remote.upload(new Uint8Array(Buffer.from(PNG, "base64")).buffer, "capture.png")),
-			writeTaskToken: async (p: string, id: string, token: string) => {
-				const r = setTaskToken(files.get(p)!, LineRef.byId(id), token as StatusToken);
-				if (!r.ok) throw new Error(r.reason);
-				files.set(p, r.content);
-			},
-		};
-		await runPull({ remote, sync, save: async () => {}, files: vault }); // catch up
 
-		// Project and Task first.
-		const project = readSharedProject(projectPath, files.get(projectPath)!);
-		if (!project?.ok) throw new Error("project unreadable");
-		await runPush(planProjectPush([project.project], sync.pushedProjects), deps);
-		const projectId = files.get(projectPath)!.match(/suivi_id: (\w+)/)![1]!;
-		const links: ProjectLinks = { [projectPath]: { id: projectId, title: `Revue E2E ${stamp}` } };
-		const tasks = readTagTasks("1.meetings/rv.md", files.get("1.meetings/rv.md")!, projectPath);
-		await runPush(planTaskPush(tasks, links, sync.pushedTasks, { now: new Date() }).changes, deps);
-		const taskId = files.get("1.meetings/rv.md")!.match(/\^(\w+)$/m)![1]!;
-
-		files.set(
-			reviewPath,
-			`---\nproject: "[[Revue E2E ${stamp}]]"\ntask: ^${taskId}\n---\nVoir [[Revue E2E ${stamp}|le projet]].\n![[capture.png]]\nhttps://www.loom.com/share/${loom}\n`,
-		);
-		const planned = planReviewPush([{ ...readReview(reviewPath, files.get(reviewPath)!), projectPath }], links, {});
-		expect(planned.problems).toEqual([]);
-		expect(await runPush(planned.changes, deps)).toEqual({ applied: 1, failed: [] });
-		const reviewId = files.get(reviewPath)!.match(/suivi_id: (\w+)/)![1]!;
-		expect(files.get("1.meetings/rv.md")).toBe(`#task pr Widget revue ${stamp} ^${taskId}\n`);
-
-		const site = (path: string, init: RequestInit = {}) =>
-			fetch(`${url}${path}`, { ...init, redirect: "manual", headers: { cookie: `suivi_session=${clientSession}`, ...init.headers } });
-		const page = await (await site(`/revues/${reviewId}`)).text();
-		expect(page).toContain(`src="https://www.loom.com/embed/${loom}"`);
-		const upload = page.match(/<img src="(\/uploads\/[\w-]+\.png)"/)?.[1];
-		expect(upload).toBeTruthy();
-		// Uploads need a session or the token: the plugin fetches them with the token.
-		expect((await fetch(`${url}${upload}`, { redirect: "manual" })).status).not.toBe(200);
-		const image = await remote.image(upload!);
-		expect(image.type).toBe("image/png");
-		expect(Buffer.from(image.data).toString("base64")).toBe(PNG);
-		expect(page).toContain("Voir le projet.");
-		expect(page).not.toContain("[[");
-
-		const answer = await site(`/revues/${reviewId}/reponse`, {
-			method: "POST",
-			headers: { "content-type": "application/x-www-form-urlencoded" },
-			body: new URLSearchParams({ answer: "valide", body: "Parfait" }).toString(),
-		});
-		expect(answer.status).toBe(303);
-		expect((await remote.comments(reviewId)).map((c) => c.body)).toEqual(["Parfait"]);
-
-		const outcome = await runPull({ remote, sync, save: async () => {}, files: vault });
-		expect(outcome.failed).toEqual([]);
-		expect(files.get("1.meetings/rv.md")).toMatch(new RegExp(`^#done \\d{4}-\\d{2}-\\d{2} Widget revue ${stamp} \\^${taskId}\\n$`));
-		const after = readTagTasks("1.meetings/rv.md", files.get("1.meetings/rv.md")!, projectPath);
-		expect(planTaskPush(after, links, sync.pushedTasks, { now: new Date() }).changes).toEqual([]);
-
-		const store = new InboxStore(remote, () => ({}), () => {});
-		await store.refresh();
-		const entries = store.current.feed.filter((e) => e.item?.id === reviewId && e.unread);
-		expect(entries.map((e) => e.type)).toEqual(["comment.created", "review.answered"]);
-		await store.markAllRead();
-	});
-});
-
-/** 1×1 transparent PNG. */
-const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
 function noopDeps(remote: ReturnType<typeof createHttpRemote>, sync: SyncState) {
 	return {

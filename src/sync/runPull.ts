@@ -4,7 +4,6 @@ import type { Remote } from "../remote/remote";
 import type { SyncState } from "./pluginData";
 import { NotInVault } from "./locateItem";
 import { pullItemUpdated } from "./pullPriority";
-import { pullReviewAnswered } from "./pullReview";
 import { pullItemAnswered } from "./pullAnswer";
 
 /** The few vault operations a Pull needs (an in-memory map in tests). */
@@ -53,7 +52,6 @@ export type PullHandler = (event: ApiEvent, ctx: PullContext) => Promise<void>;
  */
 export const PULL_HANDLERS: Partial<Record<EventType, PullHandler>> = {
 	"item.updated": pullItemUpdated,
-	"review.answered": pullReviewAnswered,
 	"item.answered": pullItemAnswered,
 };
 

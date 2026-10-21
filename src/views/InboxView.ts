@@ -26,8 +26,6 @@ const TYPE_ICONS: Record<EventType, string> = {
 	"ticket.created": "ticket",
 	"idea.launched": "lightbulb",
 	"item.triaged": "inbox",
-	"review.published": "eye",
-	"review.answered": "circle-check",
 	"item.answered": "circle-check",
 	"comment.created": "message-square",
 	"comment.edited": "message-square",

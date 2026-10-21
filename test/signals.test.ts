@@ -34,12 +34,8 @@ describe("toastText", () => {
 		);
 	});
 
-	it("announces a new ticket and a Review answer", () => {
+	it("announces a new ticket", () => {
 		expect(toastText(entry({ type: "ticket.created" }))).toBe("Nouveau ticket : Algo détection");
-		expect(toastText(entry({ type: "review.answered", answer: "valide" }))).toBe("Revue Algo détection : Validé");
-		expect(toastText(entry({ type: "review.answered", answer: "a_reprendre" }))).toBe(
-			"Revue Algo détection : À reprendre",
-		);
 	});
 
 	it("announces the Client's Answer on a Task or a Project", () => {
@@ -69,8 +65,8 @@ describe("badgeText", () => {
 		expect(badgeText([priority(1, 1, 2)])).toBe("P1→P2");
 	});
 
-	it("shows the latest Review answer and counts the other entries", () => {
-		const answer = entry({ id: 3, type: "review.answered", answer: "valide" });
+	it("shows the latest Answer and counts the other entries", () => {
+		const answer = entry({ id: 3, type: "item.answered", answer: "valide" });
 		const ticket = entry({ id: 2, type: "ticket.created" });
 		expect(badgeText([answer, ticket])).toBe("Validé · 🔔 1");
 	});

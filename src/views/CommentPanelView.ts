@@ -6,7 +6,7 @@ import type { Comment } from "../remote/api";
 
 export const COMMENT_PANEL_VIEW_TYPE = "suivi-comments-view";
 
-const KIND_LABELS = { task: "Task", project: "Project", review: "Review" } as const;
+const KIND_LABELS = { task: "Task", project: "Project" } as const;
 
 const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" });
 

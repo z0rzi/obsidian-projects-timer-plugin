@@ -38,6 +38,15 @@ describe("PluginData", () => {
 		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { pushedProjects: {}, pushedTasks: {} } });
 	});
 
+	it("drops the pushedReviews of an older data.json on load", async () => {
+		const review = { path: "2.projects/reviews/Démo.md", fields: { title: "Démo", body: "" }, answer: "valide" };
+		const io = disk({ sync: { pushedProjects: pushed, pushedTasks: {}, pushedReviews: { r1abc: review } } });
+		const data = await PluginData.load(defaults, io.load, io.save);
+
+		await data.save();
+		expect(io.d.data).toEqual({ ...defaults, sync: { pushedProjects: pushed, pushedTasks: {} } });
+	});
+
 	it("starts empty when there is no data.json yet", async () => {
 		const io = disk(null);
 		const data = await PluginData.load(defaults, io.load, io.save);

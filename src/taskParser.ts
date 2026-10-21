@@ -4,7 +4,7 @@ import { Task, TaskStatus, TaskTagLabel, TASKS_TYPES } from "./types";
 
 const DEFAULT_PRIORITY = 1;
 const PRIORITY_TOKEN = /^p([0-5])$/;
-const REVIEW_TOKEN = "pr";
+const A_VALIDER_TOKEN = "pr";
 
 /** Regex source of the status token: lowercase `p0`-`p5` or `pr`. */
 export const STATUS_TOKEN_SOURCE = "p[0-5]|pr";
@@ -19,7 +19,7 @@ export function readStatusToken(text: string): { token: StatusToken | null; rest
 	const [firstWord = "", ...others] = text.split(" ");
 	const match = PRIORITY_TOKEN.exec(firstWord);
 	if (match) return { token: { priority: +match[1]!, status: "priority" }, rest: others.join(" ") };
-	if (firstWord === REVIEW_TOKEN) return { token: { priority: DEFAULT_PRIORITY, status: "review" }, rest: others.join(" ") };
+	if (firstWord === A_VALIDER_TOKEN) return { token: { priority: DEFAULT_PRIORITY, status: "a_valider" }, rest: others.join(" ") };
 	return { token: null, rest: text };
 }
 

@@ -1,13 +1,14 @@
-import { Notice, Plugin, TFile } from "obsidian";
+import { Notice, parseLinktext, Plugin, TFile, type App } from "obsidian";
 import { appendBlockId, processLine, type LineRef } from "../lineWriter";
+import { UPLOAD_MAX_BYTES } from "../remote/api";
 import { obsidianTransport } from "../remote/obsidianTransport";
-import { createHttpRemote, RemoteError } from "../remote/remote";
+import { createHttpRemote, RemoteError, type Remote } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
 import { PushModal } from "../ui/PushModal";
-import type { PluginData } from "./pluginData";
+import type { PluginData, SyncState } from "./pluginData";
 import { settleConflicts, withConflicts } from "./conflicts";
 import { writeRemotePriority } from "./pullPriority";
-import { writeAnswer, writeValidated } from "./pullAnswer";
+import { writeAnswer } from "./pullAnswer";
 import { planProjectPush, type PendingChange } from "./pushPlan";
 import { vaultFiles } from "./vaultFiles";
 import { runPush } from "./runPush";
@@ -15,19 +16,18 @@ import { readSharedProject, type SharedProject } from "./sharedProject";
 import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
 import { planTaskPush, type ProjectLinks } from "./taskPlan";
 import { tagTaskProject } from "./taskProject";
-import { planReviewPush } from "./reviewPlan";
-import { readReviews, reviewBodySharer, writeTaskTokenIn } from "./reviewVault";
-import { reviewsFolder } from "./sharedReview";
+import { IMAGE_TYPES, shareBody } from "./sharedBody";
+import { uploadImage } from "./sharedImages";
 
 /**
- * Adds the "Push to Suivi" command: review pending Project and Task changes,
+ * Adds the "Push to Suivi" command: lists pending Project and Task changes,
  * then send the ticked ones. `afterPush` runs once a Push ended (conflicts may be settled).
  */
 export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, afterPush?: () => void) {
 	const { app } = plugin;
 	const files = vaultFiles(app);
 
-	/** Project notes directly in the projects folder (subfolders such as reviews/ are not Projects). */
+	/** Project notes directly in the projects folder (notes in its subfolders are not Projects). */
 	function projectFiles(): TFile[] {
 		const folder = data.settings.projectsLocation.replace(/\/+$/, "");
 		return app.vault.getMarkdownFiles().filter((f) => f.parent?.path === folder);
@@ -64,11 +64,8 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 
 	async function readTasks(): Promise<LocalTask[]> {
 		const tasks: LocalTask[] = [];
-		const reviews = reviewsFolder(data.settings.projectsLocation);
 		for (const file of app.vault.getMarkdownFiles()) {
 			if (file.path === data.settings.projectTemplate) continue;
-			// A Review note is shared whole as a Review, never as Tasks.
-			if (reviews && file.path.startsWith(`${reviews}/`)) continue;
 			const content = await app.vault.cachedRead(file);
 			if (!/^#\w/m.test(content)) continue;
 			tasks.push(...readTagTasks(file.path, content, tagTaskProject(app, file, content)));
@@ -99,17 +96,10 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 			data.sync.pushedTasks,
 			{ now: new Date(), doneHistory: data.sync.doneHistory },
 		);
-		const reviews = planReviewPush(
-			await readReviews(app, reviewsFolder(data.settings.projectsLocation)!),
-			local.links,
-			data.sync.pushedReviews ?? {},
-		);
-		for (const p of reviews.problems) new Notice(`Push skips the Review ${p.path}: ${p.error}`, 10_000);
 		const pending: PendingChange[] = withConflicts(
 			[
 				...planProjectPush(local.projects, data.sync.pushedProjects, local.unreadable),
 				...tasks.changes,
-				...reviews.changes,
 			],
 			data.sync,
 			local.projects,
@@ -132,10 +122,8 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 					writeBlockId,
 					writePriority: (kind, id, path, priority) =>
 						writeRemotePriority(files, kind, id, path, priority),
-					writeValidated: (id, path, doneOn) => writeValidated(files, id, path, doneOn),
 					writeAnswer: (write) => writeAnswer(files, write),
-					shareBody: reviewBodySharer(app, remote, data.sync),
-					writeTaskToken: (path, id, token) => writeTaskTokenIn(app, path, id, token),
+					shareBody: bodySharer(app, remote, data.sync),
 				}));
 				for (const f of outcome.failed) new Notice(`Push: ${f.title}: ${f.error}`, 10_000);
 				new Notice(`Pushed ${outcome.applied} change(s) to Suivi.`);
@@ -147,4 +135,17 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 	}
 
 	plugin.addCommand({ id: "push-to-suivi", name: "Push to Suivi", callback: () => void push() });
+}
+
+/** `shareBody` of a Push: vault images found from the note, uploaded to Suivi (once: see `uploadImage`). */
+function bodySharer(app: App, remote: Remote, sync: SyncState) {
+	return (path: string, body: string) =>
+		shareBody(body, async (link) => {
+			const target = app.metadataCache.getFirstLinkpathDest(parseLinktext(link).path, path);
+			if (!target) throw new Error(`image ${link} not found in the vault`);
+			if (!IMAGE_TYPES[target.extension.toLowerCase()]) throw new Error(`${link} is not a PNG, JPEG, GIF or WebP image`);
+			const data = await app.vault.readBinary(target);
+			if (data.byteLength > UPLOAD_MAX_BYTES) throw new Error(`image ${link} is over 10 MB`);
+			return uploadImage(sync, { path: target.path, name: target.name, data }, (d, name) => remote.upload(d, name));
+		});
 }

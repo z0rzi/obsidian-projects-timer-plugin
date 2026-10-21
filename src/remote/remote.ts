@@ -23,7 +23,7 @@ export interface Remote {
 	push(changes: PushChange[]): Promise<PushResult[]>;
 	/** Events after `cursor` (null = from the start) and the cursor to keep. */
 	pull(cursor: number | null): Promise<EventsResponse>;
-	/** Thread of a Project, Task or Review, oldest first. */
+	/** Thread of a Project or Task, oldest first. */
 	comments(itemId: string): Promise<Comment[]>;
 	/** Adds a comment to an item's thread. */
 	comment(itemId: string, body: string): Promise<Comment>;

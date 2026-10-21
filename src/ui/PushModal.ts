@@ -61,7 +61,7 @@ export class PushModal extends Modal {
 				const isTask = change.change.kind === "task";
 				const setting = new Setting(contentEl)
 					.setName(
-						isTask ? change.title : `${change.change.kind === "review" ? "Review" : "Project"}: ${change.title}`,
+						isTask ? change.title : `Project: ${change.title}`,
 					)
 					.addToggle((t) =>
 						t.setValue(true).onChange((on) => {
@@ -85,8 +85,8 @@ export class PushModal extends Modal {
 				if ("detail" in change) desc.createDiv({ text: change.detail });
 				if (change.group === "changed") {
 					for (const d of change.diffs) {
-						// Task and Review diffs come ready to show.
-						const text = isTask || change.change.kind === "review"
+						// Task diffs come ready to show.
+						const text = isTask
 							? `${d.field}: ${d.from} → ${d.to}`
 							: `${d.field}: ${show(d.field, d.from)} → ${show(d.field, d.to)}`;
 						desc.createDiv({ text });

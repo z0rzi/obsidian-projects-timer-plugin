@@ -90,7 +90,7 @@ describe("runPush with Tasks", () => {
 		expect(v.plan().changes).toEqual([]);
 	});
 
-	it("shares the body like a Review's (image uploaded) and remembers the vault text as last pushed", async () => {
+	it("shares the body (image uploaded) and remembers the vault text as last pushed", async () => {
 		const app = fakeApp();
 		const v = vault([line({ description: "Voir ![[capture.png]]\n`![[pas une image]]`" })]);
 

@@ -2,7 +2,7 @@ import { UPLOADED_IMAGE } from "../comments/commentMarkdown";
 import type { TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { SyncState } from "../sync/pluginData";
-import { rewriteOutsideCode } from "../sync/reviewBody";
+import { rewriteOutsideCode } from "../sync/sharedBody";
 import { deindent } from "../sync/sharedTask";
 import { readIndentedBody } from "../taskParser";
 

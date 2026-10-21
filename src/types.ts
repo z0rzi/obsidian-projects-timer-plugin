@@ -11,8 +11,8 @@ export const TASKS_TYPES = [
 
 export type TaskTagLabel = typeof TASKS_TYPES[number]['tag']
 
-/** "review" = `pr` token, shown in the À valider column. */
-export type TaskStatus = "priority" | "review";
+/** "a_valider" = `pr` token, shown in the À valider column. */
+export type TaskStatus = "priority" | "a_valider";
 
 export type Task = {
 	id: string;

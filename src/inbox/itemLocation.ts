@@ -10,15 +10,11 @@ import type { VaultFiles } from "../sync/runPull";
 export async function itemLocation(
 	sync: SyncState,
 	files: VaultFiles,
-	item: { kind: "project" | "task" | "review"; id: string } | undefined,
+	item: { kind: "project" | "task"; id: string } | undefined,
 ): Promise<{ path: string; line: number } | null> {
 	if (!item) return null;
 	if (item.kind === "project") {
 		const pushed = sync.pushedProjects[item.id];
-		return pushed ? { path: pushed.path, line: 0 } : null;
-	}
-	if (item.kind === "review") {
-		const pushed = sync.pushedReviews?.[item.id];
 		return pushed ? { path: pushed.path, line: 0 } : null;
 	}
 	const pushed = sync.pushedTasks[item.id];

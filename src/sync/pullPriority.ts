@@ -9,7 +9,7 @@ import { locateItem, projectNote, taskLine } from "./locateItem";
  * A Client change the Pull didn't apply because the Developer had changed the
  * same field in the vault and not pushed it yet. Shown in the Push modal with
  * both values; the Developer picks. Keyed `<id>:<field>` in `SyncState.conflicts`.
- * `status` is an Answer (Validé on a Review, or `answer` on the item itself)
+ * `status` is the Client's Answer on the item
  * against a Task line whose status or priority changed locally, or a Project
  * whose status did.
  */
@@ -24,7 +24,7 @@ export interface PullConflict {
 	remote: number | null;
 	/** `status` conflict: the done date the answer gives a Tag task (null for a Project step). */
 	doneOn?: string | null;
-	/** `status` conflict from `item.answered`: the Client's Answer (unset: a Validé Review answer). */
+	/** `status` conflict from `item.answered`: the Client's Answer (unset in older data: Validé). */
 	answer?: ItemAnswer;
 }
 
@@ -32,9 +32,9 @@ export const conflictKey = (id: string, field: string) => `${id}:${field}`;
 
 /** `item.updated`: dispatches on the field; only priority comes from the Client today. */
 export async function pullItemUpdated(event: ApiEvent, ctx: PullContext): Promise<void> {
-	const payload = event.payload as Partial<ItemUpdatedPayload> & { review?: string; answer?: number };
-	// Part of an Answer: `review.answered` or `item.answered` wrote the vault already.
-	if (payload.review || payload.answer) return;
+	const payload = event.payload as Partial<ItemUpdatedPayload> & { answer?: number };
+	// Part of an Answer: `item.answered` wrote the vault already.
+	if (payload.answer) return;
 	if (payload.field === "priority" && event.item) await pullPriority(event.item, payload.to, ctx);
 }
 

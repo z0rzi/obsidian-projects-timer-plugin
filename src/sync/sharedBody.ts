@@ -13,13 +13,13 @@ const extension = (link: string) => link.slice(link.lastIndexOf(".") + 1).toLowe
 const WIKI = /(!?)\[\[([^\]|#]*)(?:#([^\]|]*))?(?:\|([^\]]*))?\]\]/g;
 
 /**
- * The body of a Review note as Suivi gets it: embedded vault images are
+ * A Task body as Suivi gets it: embedded vault images are
  * uploaded (once each) and linked as `![](<url>)`; other embeds and wikilinks
  * become plain text, so the Client never sees a broken link. Code blocks and
  * inline code are kept as written. `upload` gets the embed's link text and
  * returns the app URL; it throws if the image can't be found or sent.
  */
-export async function shareReviewBody(body: string, upload: (link: string) => Promise<string>): Promise<string> {
+export async function shareBody(body: string, upload: (link: string) => Promise<string>): Promise<string> {
 	const urls = new Map<string, Promise<string>>();
 	const uploadOnce = (link: string) => {
 		let url = urls.get(link);

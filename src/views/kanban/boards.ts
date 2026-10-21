@@ -1,14 +1,14 @@
 import type { StatusToken } from "../../lineWriter";
 import { TASKS_TYPES, type TaskStatus } from "../../types";
 
-export const REVIEW_BOARD_ID = "pr";
+export const A_VALIDER_BOARD_ID = "pr";
 
 export type BoardDef = { id: string; title: string; class: string; items: unknown[] };
 
 /** The columns, left to right: À valider, doing (P0), P1 to P5. */
 export function emptyBoards(): BoardDef[] {
 	return [
-		{ id: REVIEW_BOARD_ID, title: "À valider", class: "kanban-board-review", items: [] },
+		{ id: A_VALIDER_BOARD_ID, title: "À valider", class: "kanban-board-a-valider", items: [] },
 		{ id: "doing", title: "doing", class: "kanban-board-doing", items: [] },
 		...[1, 2, 3, 4, 5].map((p) => ({ id: `p${p}`, title: `P${p}`, class: "kanban-board-priority", items: [] })),
 	];
@@ -24,13 +24,13 @@ export function priorityToBoardId(priority: number): string {
 }
 
 export function statusBoardId(item: { priority: number; status: TaskStatus }): string {
-	if (item.status === "review") return REVIEW_BOARD_ID;
+	if (item.status === "a_valider") return A_VALIDER_BOARD_ID;
 	return priorityToBoardId(item.priority);
 }
 
 /** Status token written on the line when a card is dropped on a board. */
 export function boardIdToToken(boardId: string): StatusToken | null {
-	if (boardId === REVIEW_BOARD_ID) return "pr";
+	if (boardId === A_VALIDER_BOARD_ID) return "pr";
 	if (boardId === "doing") return "p0";
 	return /^p[1-5]$/.test(boardId) ? (boardId as StatusToken) : null;
 }

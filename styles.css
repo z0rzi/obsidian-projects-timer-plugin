@@ -112,12 +112,12 @@
 	color: #fff;
 }
 
-.tasks-kanban-view-container .kanban-board-review header {
+.tasks-kanban-view-container .kanban-board-a-valider header {
 	background: var(--color-green, #2f9e44);
 	color: #fff;
 }
 
-.tasks-kanban-view-container .kanban-board-review .kanban-title-board {
+.tasks-kanban-view-container .kanban-board-a-valider .kanban-title-board {
 	color: #fff;
 }
 

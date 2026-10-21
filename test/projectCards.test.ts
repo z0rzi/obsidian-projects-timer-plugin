@@ -37,7 +37,7 @@ describe("extractCheckboxItems", () => {
 
 		expect(items.map((i) => i.override)).toEqual([
 			{ priority: 0, status: "priority" },
-			{ priority: 1, status: "review" },
+			{ priority: 1, status: "a_valider" },
 		]);
 		expect(items.map((i) => i.text)).toEqual(["En cours", "Export CSV"]);
 	});

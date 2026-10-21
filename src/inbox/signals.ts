@@ -22,9 +22,6 @@ export function toastText(entry: ActivityEntry): string {
 			break;
 		case "ticket.created":
 			return `Nouveau ticket : ${title}`;
-		case "review.answered":
-			if (entry.answer) return `Revue ${title} : ${ANSWERS[entry.answer]}`;
-			break;
 		case "item.answered":
 			if (entry.answer) return `${actorName(entry.actor)} : ${ANSWERS[entry.answer]} sur ${title}`;
 			break;
@@ -36,12 +33,12 @@ export function toastText(entry: ActivityEntry): string {
  * Text of a kanban card's badge from its item's unread entries (newest first, as
  * `InboxStore.unreadByItem` gives them), e.g. "💬 2 · P1→P2": comments counted,
  * the priority move from the oldest change to the newest, the latest Answer
- * (on the Task or Project, or on a Review), then a count of anything else.
+ * on the Task or Project, then a count of anything else.
  */
 export function badgeText(entries: ActivityEntry[]): string {
 	const comments = entries.filter((e) => e.type === "comment.created");
 	const priorities = entries.filter((e) => e.type === "item.updated" && e.field === "priority");
-	const answers = entries.filter((e) => (e.type === "item.answered" || e.type === "review.answered") && e.answer);
+	const answers = entries.filter((e) => e.type === "item.answered" && e.answer);
 	const answer = answers[0]?.answer;
 	const others = entries.length - comments.length - priorities.length - answers.length;
 	const parts: string[] = [];

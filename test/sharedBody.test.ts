@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { shareReviewBody } from "../src/sync/reviewBody";
+import { shareBody } from "../src/sync/sharedBody";
 
-describe("Review body as shared with Suivi", () => {
+describe("Task body as shared with Suivi", () => {
 	it("uploads embedded images once and links them; wikilinks become plain text", async () => {
 		const uploads: string[] = [];
 		const upload = async (link: string) => {
@@ -15,7 +15,7 @@ describe("Review body as shared with Suivi", () => {
 			"![[Autre note]]",
 			"https://www.loom.com/share/0123456789abcdef",
 		].join("\n");
-		expect(await shareReviewBody(body, upload)).toBe(
+		expect(await shareBody(body, upload)).toBe(
 			[
 				"Voir Widget saison et le widget, section Widget saison > Export.",
 				"![](/uploads/1.png)",
@@ -29,6 +29,6 @@ describe("Review body as shared with Suivi", () => {
 
 	it("leaves code blocks and inline code alone", async () => {
 		const body = "```\n[[pas un lien]]\n```\n`[[non plus]]` mais [[oui]]";
-		expect(await shareReviewBody(body, async () => "x")).toBe("```\n[[pas un lien]]\n```\n`[[non plus]]` mais oui");
+		expect(await shareBody(body, async () => "x")).toBe("```\n[[pas un lien]]\n```\n`[[non plus]]` mais oui");
 	});
 });

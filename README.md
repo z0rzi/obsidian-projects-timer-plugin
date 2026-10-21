@@ -47,7 +47,7 @@ Tasks appear in the Kanban board and are linked to their project if the note has
 - **Open Projects List** — Browse all project files.
 - **Open Activities** — View recent logged activities.
 - **Push to Suivi** — Review pending Project and Task changes (new / changed old → new / deleted) and send the ticked ones to the Client app.
-- **Pull from Suivi** — Fetch the Client's changes now (priorities, Review answers) and write them into the vault; a field you changed locally and haven't pushed becomes a conflict to settle in **Push to Suivi**. Also runs on startup and every 5 minutes.
+- **Pull from Suivi** — Fetch the Client's changes now (priorities, Answers on Tasks and Projects) and write them into the vault; a field you changed locally and haven't pushed becomes a conflict to settle in **Push to Suivi**. Also runs on startup and every 5 minutes.
 - **Open Suivi comments** — Side panel with the Client app comment thread of the pushed Task or Project under the cursor; reply, edit or delete your own comments there.
 - **Open Suivi inbox** — Items to triage and Pull conflicts pinned on top, then the activity feed, newest first: every event of the app, your own Pushes as one line each, filtered Tous / JMJ / Moi, "Charger plus" for older pages; comments that mention you stand out. The Client's entries stay unread until you click "Lu" or "Tout marquer comme lu"; opening an entry jumps to its line (and its thread for a comment) without marking it read. After a Pull, each new Client event shows a toast; the status bar shows the unread count; kanban cards with unread entries get a badge ("💬 2 · P1→P2") that opens the inbox filtered to that item.
 
@@ -64,7 +64,7 @@ Tasks appear in the Kanban board and are linked to their project if the note has
 
 The plugin makes network requests only to the Suivi URL you set, once it and the API token are set:
 
-- **Pull**: on startup, every 5 minutes and with **Pull from Suivi**, it fetches the app's new events (`GET /api/events`) and writes the Client's priority changes and Review answers into your notes.
+- **Pull**: on startup, every 5 minutes and with **Pull from Suivi**, it fetches the app's new events (`GET /api/events`) and writes the Client's priority changes and Answers into your notes.
 - **Inbox**: after the startup Pull, after each Pull that brought events, after a triage and with its reload button, it fetches the items to triage (`GET /api/inbox`) and the first page of the activity feed (`GET /api/activity`, 30 days); "Charger plus" fetches the page before. Marking entries read sends their event ids, or with "Tout marquer comme lu" the id of the newest loaded entry.
 - **Push to Suivi**: only when you run it (details below).
 - **Comments panel**: only while it is open (details below).
@@ -72,9 +72,7 @@ The plugin makes network requests only to the Suivi URL you set, once it and the
 
 Push sends, for each note directly in the projects folder not marked `prive: true`: the file name (title), the `# Description` section, `status:` and `priority:` (P5 if missing). Time logs, other sections and other notes are never sent. The app's id is written back as `suivi_id:` in the Project's frontmatter.
 
-It also sends Tasks with their body (the indented lines below the Task line, up to the next line at indent zero, de-indented; `![[...]]` images uploaded and other wikilinks sent as plain text, as for Reviews): Tag task lines (`#task`, `#bug`, `#quick`, `#wait`, `#done`) in any note, and the top-level checkboxes under a shared Project's Tasks heading, minus lines carrying `#private` and the Tasks of `prive` Projects. Sent: the title, type, status token, Project, `#done` date, whether it is a Project step, and the body. A first Push leaves out items done more than 30 days ago (and undated done lines). The app's id is written back as a `^id` block ID at the end of the line. Sync state (what was last pushed) is kept in the plugin's `data.json` under `sync`.
-
-Reviews: each note in the `reviews/` subfolder of the projects folder (frontmatter `project:` link, optional `task:` with a Task's `^id`) is sent whole, title and body, once its Project is shared. Images embedded with `![[...]]` are uploaded (PNG, JPEG, GIF, WebP, 10 MB max); other wikilinks are sent as plain text. The app's id is written back as `suivi_id:`; the linked Task line gets `pr`. When the Client answers, the Pull writes `#done <date>` (Validé) or `p0` (À reprendre) on that line.
+It also sends Tasks with their body (the indented lines below the Task line, up to the next line at indent zero, de-indented; `![[...]]` images uploaded (PNG, JPEG, GIF, WebP, 10 MB max) and other wikilinks sent as plain text): Tag task lines (`#task`, `#bug`, `#quick`, `#wait`, `#done`) in any note, and the top-level checkboxes under a shared Project's Tasks heading, minus lines carrying `#private` and the Tasks of `prive` Projects. Sent: the title, type, status token, Project, `#done` date, whether it is a Project step, and the body. A first Push leaves out items done more than 30 days ago (and undated done lines). The app's id is written back as a `^id` block ID at the end of the line. Sync state (what was last pushed) is kept in the plugin's `data.json` under `sync`.
 
 The comments panel fetches the thread of the item under the cursor (identified by its `^id` or `suivi_id:` only), the images uploaded in it (with your token; shown from memory, never saved), and sends the replies and edits you type in it. Comments are never written into your notes.
 

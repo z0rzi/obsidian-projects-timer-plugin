@@ -5,7 +5,6 @@ import type { ProjectsTimerSettings } from "../settings";
 import type { PluginData } from "../sync/pluginData";
 import { COMMENT_PANEL_VIEW_TYPE, CommentPanelView } from "../views/CommentPanelView";
 import { commentTargetAt, type CommentTarget } from "./commentTarget";
-import { reviewsFolder } from "../sync/sharedReview";
 import { ThreadSession, type ThreadState } from "./threadSession";
 
 /** How often the open panel checks what is under the cursor. */
@@ -39,7 +38,7 @@ export function registerComments(plugin: Plugin, data: PluginData<ProjectsTimerS
 		const key = `${view.file.path}\n${line}\n${content.length}`;
 		if (key === last) return;
 		last = key;
-		await session.show(commentTargetAt(view.file.path, content, line, reviewsFolder(data.settings.projectsLocation)));
+		await session.show(commentTargetAt(view.file.path, content, line));
 	}
 	plugin.registerInterval(window.setInterval(() => void followCursor(), CURSOR_POLL_MS));
 	plugin.registerEvent(app.workspace.on("active-leaf-change", () => void followCursor()));
