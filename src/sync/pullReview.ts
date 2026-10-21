@@ -25,7 +25,7 @@ export async function pullReviewAnswered(event: ApiEvent, ctx: PullContext): Pro
 	const { path, found: line } = await locateItem(ctx.files, taskId, task.path, taskLine(taskId));
 	task.path = path;
 	const date = localDay(new Date(event.at));
-	const isStep = line.type === "step";
+	const isStep = line.step;
 
 	if (line.status !== task.fields.status || line.priority !== task.fields.priority) {
 		const base = { kind: "task" as const, id: taskId, path, title: task.fields.title };
@@ -63,7 +63,7 @@ export async function writeValidated(files: VaultFiles, id: string, path: string
 
 async function writeDone(files: VaultFiles, path: string, id: string, line: LocalTask, date: string) {
 	await processLineById(files.process, path, id, (now, ref) => {
-		if (line.type !== "step") return rewriteTaskTag(now, ref, `#done ${date}`);
+		if (!line.step) return rewriteTaskTag(now, ref, `#done ${date}`);
 		const result = rewriteStepToken(now, ref, null);
 		return result.ok && line.status !== "termine" ? toggleCheckbox(result.content, ref) : result;
 	});
