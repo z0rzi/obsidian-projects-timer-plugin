@@ -145,7 +145,7 @@ function bodySharer(app: App, remote: Remote, sync: SyncState) {
 			if (!target) throw new Error(`image ${link} not found in the vault`);
 			if (!IMAGE_TYPES[target.extension.toLowerCase()]) throw new Error(`${link} is not a PNG, JPEG, GIF or WebP image`);
 			const data = await app.vault.readBinary(target);
-			if (data.byteLength > UPLOAD_MAX_BYTES) throw new Error(`image ${link} is over 10 MB`);
+			if (data.byteLength > UPLOAD_MAX_BYTES) throw new Error(`image ${link} is over ${UPLOAD_MAX_BYTES / 1024 / 1024} MB`);
 			return uploadImage(sync, { path: target.path, name: target.name, data }, (d, name) => remote.upload(d, name));
 		});
 }

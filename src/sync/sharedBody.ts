@@ -1,4 +1,4 @@
-/** Image types Suivi accepts (`UPLOAD_TYPES` of the API), by file extension. */
+/** Image types Suivi shows inline (`INLINE_IMAGE_TYPES` of the API), by file extension. */
 export const IMAGE_TYPES: Record<string, string> = {
 	png: "image/png",
 	jpg: "image/jpeg",

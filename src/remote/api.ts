@@ -185,7 +185,7 @@ export interface Comment {
   author_id: string;
   author_email: string;
   author_role: "client" | "developer";
-  /** Markdown. Uploaded images are `![](/uploads/<name>)`, relative to the app URL. */
+  /** Markdown. Uploaded files are `![](/uploads/<name>)` (images) or `[nom](/uploads/<name>)`, relative to the app URL. */
   body: string;
   /**
    * Handles of the users the body mentions (`@jmj` → "jmj"), in writing
@@ -223,11 +223,19 @@ export interface DeleteCommentResponse {
   ok: true;
 }
 
-/** Image types `POST /api/uploads` accepts (multipart field `file`), at most `UPLOAD_MAX_BYTES`. */
-export const UPLOAD_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
-export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * `POST /api/uploads` (multipart field `file`, optional field `item_id`) takes any file type. These raster
+ * images are served inline (`![](url)`); everything else, SVG and HTML included, as a download (`[nom](url)`).
+ */
+export const INLINE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
+/** Per file (413 above). */
+export const UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+/** All the files of one item, its Description and comments (413 above, with what is left). */
+export const UPLOAD_MAX_PER_ITEM_BYTES = 100 * 1024 * 1024;
+/** All uploads together: past it, uploads are refused (507) and the Developer is emailed. */
+export const UPLOADS_MAX_TOTAL_BYTES = 10 * 1024 * 1024 * 1024;
 
-/** `POST /api/uploads` response: path of the image, relative to the app URL (`/uploads/<name>`). */
+/** `POST /api/uploads` response: path of the file, relative to the app URL (`/uploads/<name>`). */
 export interface UploadResponse {
   url: string;
 }
@@ -275,7 +283,7 @@ export interface InboxTicket {
   id: string;
   type: TaskType;
   title: string;
-  /** Markdown. Uploaded images are `![](/uploads/<name>)`, relative to the app URL. */
+  /** Markdown. Uploaded files are `![](/uploads/<name>)` (images) or `[nom](/uploads/<name>)`, relative to the app URL. */
   description: string;
   /** ISO date-time. */
   created_at: string;
