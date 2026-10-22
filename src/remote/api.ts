@@ -280,7 +280,19 @@ export interface InboxTicket {
   /** ISO date-time. */
   created_at: string;
   author_email: string;
+  /**
+   * How much it gets in the Client's way, a Priority suggestion for Triage:
+   * bloquant → P0, genant → P1, quand_possible → P3. Null for an Idea and
+   * for Tickets sent before the question existed.
+   */
+  urgency: TicketUrgency | null;
+  /** The Project the Client thinks it concerns (a suggestion; Triage decides). Null: « Je ne sais pas », or an Idea. */
+  project_id: string | null;
 }
+
+/** Answers to « À quel point c'est gênant ? » on a Bug or Amélioration Ticket. */
+export const TICKET_URGENCIES = ["bloquant", "genant", "quand_possible"] as const;
+export type TicketUrgency = (typeof TICKET_URGENCIES)[number];
 
 /**
  * `GET /api/inbox` response: the Notifications the Developer hasn't marked

@@ -14,6 +14,8 @@ const ticket = (id = "t7f3a", type: InboxTicket["type"] = "bug"): InboxTicket =>
 	description: "Rien ne s'affiche",
 	created_at: "2026-10-20T10:00:00.000Z",
 	author_email: "jmj@edf.fr",
+	urgency: "genant",
+	project_id: null,
 });
 
 describe("Inbox À trier", () => {

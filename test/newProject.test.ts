@@ -132,7 +132,7 @@ describe("runNewProject (Nouveau projet)", () => {
 
 describe("Inbox À trier with a launched Idea", () => {
 	it("lists it as an Idée to triage", async () => {
-		const to_triage = [{ ...IDEA, type: "idea", created_at: "2026-10-20T10:00:00.000Z", author_email: "jmj@edf.fr" }];
+		const to_triage = [{ ...IDEA, type: "idea", created_at: "2026-10-20T10:00:00.000Z", author_email: "jmj@edf.fr", urgency: null, project_id: null }];
 		const remote = {
 			inbox: async () => ({ notifications: [], to_triage }),
 			activity: async () => ({ entries: [], next: null }),
