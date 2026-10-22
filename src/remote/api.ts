@@ -29,7 +29,7 @@ export interface ProjectFields {
 }
 
 /**
- * Task type codes; the app shows them as Tâche, Bug, Tâche rapide, En attente,
+ * Task type codes; the app shows them as Tâche, Bug, Rapide, En attente,
  * Amélioration, Idée. The last two only come from the Client. A Project step
  * is not a type but the `step` flag: a step has a type like any Task.
  */
