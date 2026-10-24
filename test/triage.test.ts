@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { contextText, InboxStore } from "../src/inbox/inboxStore";
-import { defaultPriority, placeFirstStep, placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
+import { defaultPriority, firstStepTarget, placeFirstStep, placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
 import type { InboxTicket, TaskFields, TriageRequest } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
 import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
@@ -310,6 +310,33 @@ describe("runTriage (Insérer ici)", () => {
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "task", priority: null }, d);
 		expect(sent).toEqual([["t7f3a", { as: "task", type: "task", step: true, priority: null, project_id: "p1abc" }]]);
 		expect(inserted).toEqual(["- [ ] #task Heatmap vide ^t7f3a"]);
+	});
+});
+
+describe("runTriage (Insérer dans <Projet>)", () => {
+	const widget = { id: "p1abc", path: "2.projects/Widget.md", title: "Widget" };
+
+	it("calls the app and writes nothing when the note to edit has no Tasks heading", async () => {
+		const { d, sent, inserted } = deps({ target: () => firstStepTarget(["# Widget", "- [ ] a"], widget) });
+		const result = await runTriage({ id: "t7f3a", title: "X" }, { type: "bug", priority: 2 }, d);
+		expect(result).toEqual({ ok: false, error: "Widget n'a pas de titre « Tasks » : ajoutez-le, puis réessayez." });
+		expect(sent).toEqual([]);
+		expect(inserted).toEqual([]);
+	});
+
+	it("targets the Project note as a step when it has a Tasks heading", () => {
+		expect(firstStepTarget(["# Widget", "## Tasks"], widget)).toEqual({ path: "2.projects/Widget.md", projectId: "p1abc", step: true });
+	});
+
+	it("reports no success and sends no base when the line could not be written", async () => {
+		const { d, bases } = deps({
+			insert: () => {
+				throw new Error("plus de titre « Tasks »");
+			},
+		});
+		const result = await runTriage({ id: "t7f3a", title: "X" }, { type: "bug", priority: 2 }, d);
+		expect(result).toEqual({ ok: false, error: expect.stringContaining("triée dans l'app, mais pas écrite (plus de titre « Tasks »)") });
+		expect(bases).toEqual({});
 	});
 });
 

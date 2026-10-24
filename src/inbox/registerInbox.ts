@@ -1,4 +1,4 @@
-import { type EditorPosition, MarkdownView, Notice, type Plugin, type WorkspaceLeaf } from "obsidian";
+import { MarkdownView, Notice, type Plugin, type WorkspaceLeaf } from "obsidian";
 import type { CommentTarget } from "../comments/commentTarget";
 import { listeners, settingsRemote } from "../remote/settingsRemote";
 import { openView } from "../ui/openView";
@@ -12,7 +12,7 @@ import { vaultFiles } from "../sync/vaultFiles";
 import { INBOX_VIEW_TYPE, InboxView } from "../views/InboxView";
 import { InboxStore, type InboxEntry, type InboxState, type VaultProject } from "./inboxStore";
 import { itemLocation } from "./itemLocation";
-import { insertUnplacedTask, placeFirstStep, placeLine, runTriage, type TriageChoice, type TriageDeps } from "./triage";
+import { firstStepTarget, insertUnplacedTask, placeFirstStep, placeLine, runTriage, type TriageChoice, type TriageDeps } from "./triage";
 import { removeFromApp, type UnplacedItem } from "../sync/unplaced";
 import { tagTaskProject } from "../sync/taskProject";
 import { findTasksHeadingSection } from "../projectCards";
@@ -170,39 +170,30 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 
 	/**
 	 * « Insérer dans <Projet> »: the Ticket triaged as a step of the Client's Project, written
-	 * first under its Tasks heading, then the note shown with the cursor at the end of that line.
-	 * A Project note without a Tasks heading gets a Notice and nothing is triaged.
+	 * first under its Tasks heading, then the cursor put at the end of that line. A note
+	 * without a Tasks heading gets a Notice and nothing is triaged.
 	 */
-	async function insertInto(entry: InboxEntry) {
+	function insertInto(entry: InboxEntry) {
 		const project = entry.context?.project;
-		const file = project && app.vault.getFileByPath(project.path);
-		if (!project || !file) return;
-		if (!findTasksHeadingSection((await app.vault.cachedRead(file)).split("\n"))) {
-			new Notice(`${project.title} n'a pas de titre « Tasks » : ajoutez-le, puis réessayez.`, 10_000);
-			return;
-		}
+		if (!project) return;
 		const item = { title: entry.item.title, type: entry.ticketType ?? "task", step: true, context: entry.context, into: project.title, urgency: entry.urgency };
 		new TriageModal(app, item, (choice: TriageChoice) => {
 			void (async () => {
 				const view = await openNote(project.path, 0);
 				if (!view) return;
 				const { editor } = view;
-				/** End of the step's line once written. */
-				const written: EditorPosition[] = [];
 				await triageWith(entry, choice, project.path, {
-					target: () => ({ path: project.path, projectId: project.id, step: true }),
+					// Checked on the buffer the step is written into, before the app is called.
+					target: () => firstStepTarget(editor.getValue().split("\n"), project),
 					insert: (text) => {
 						const at = placeFirstStep(editor.getValue().split("\n"), text);
-						if (!at) return;
+						if (!at) throw new Error(`${project.title} n'a plus de titre « Tasks »`);
 						editor.replaceRange(at.text, at.from, at.to);
-						written.push({ line: at.line, ch: editor.getLine(at.line).length });
+						const end = { line: at.line, ch: editor.getLine(at.line).length };
+						editor.setCursor(end);
+						editor.scrollIntoView({ from: end, to: end }, true);
 					},
 				});
-				const end = written[0];
-				if (end) {
-					editor.setCursor(end);
-					editor.scrollIntoView({ from: end, to: end }, true);
-				}
 				await store.refresh();
 			})();
 		}).open();
@@ -292,7 +283,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				() => data.settings.suiviUrl,
 				(path) => remote.image(path),
 				triage,
-				(entry) => void insertInto(entry),
+				insertInto,
 				newProject,
 				(conflict, choice) => void pick(conflict, choice),
 				{ insert: (item) => void insertUnplaced(item), remove: (items) => void removeUnplaced(items) },

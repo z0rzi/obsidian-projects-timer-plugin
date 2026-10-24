@@ -48,8 +48,8 @@ export interface TriageDeps extends AppDescriptionDeps {
 	 * line is a Project step (cursor in a Project note's Tasks section), or why there is none.
 	 */
 	target(): { path: string; projectId: string | null; step: boolean } | { error: string };
-	/** Writes the line (and its body lines) at the cursor of that note. */
-	insert(text: string): void;
+	/** Writes the line (and its body lines) at the cursor of that note; throws when it can't. */
+	insert(text: string): void | Promise<void>;
 }
 
 /** `missingImages`: app images left as app links because they couldn't be copied into the vault. */
@@ -131,7 +131,12 @@ async function writeTask(
 	const line = `${head} ${title} ^${item.id}`;
 	const { text: body, missing } = await descriptionForVault(fields.description, deps);
 	const written = [line, ...taskBody(body)];
-	deps.insert(written.join("\n"));
+	try {
+		await deps.insert(written.join("\n"));
+	} catch (e) {
+		const error = e instanceof Error ? e.message : String(e);
+		return { ok: false, error: `triée dans l'app, mais pas écrite (${error}) : le prochain Pull la proposera à insérer` };
+	}
 	// The base as the next Push reads it back from the vault, so it compares equal.
 	const description = deindent(readIndentedBody(written, 0).join("\n"));
 	try {
@@ -168,6 +173,15 @@ export function placeLine(lines: string[], cursor: number, newLine: string): { f
 	}
 	const end = { line: cursor, ch: current.length };
 	return { from: end, to: end, text: `\n${newLine}${tail}` };
+}
+
+/**
+ * « Insérer dans <Projet> »'s target: a step of the Project note whose `lines` will be
+ * edited, or why not when they have no Tasks heading (checked before the app is called).
+ */
+export function firstStepTarget(lines: string[], project: { id: string; path: string; title: string }): ReturnType<TriageDeps["target"]> {
+	if (!findTasksHeadingSection(lines)) return { error: `${project.title} n'a pas de titre « Tasks » : ajoutez-le, puis réessayez.` };
+	return { path: project.path, projectId: project.id, step: true };
 }
 
 /**
