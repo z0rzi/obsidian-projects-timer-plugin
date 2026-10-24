@@ -65,7 +65,7 @@ export type ProjectTitles = () => Map<string, string>;
 /** « Projet : <title> · <Urgency> » for a Ticket, nothing for an Idea. */
 function ticketContext(t: InboxTicket, projectTitles: Map<string, string>): string | undefined {
 	if (t.type === "idea") return undefined;
-	const project = t.project_id === null ? "je ne sais pas" : (projectTitles.get(t.project_id) ?? "(hors du vault)");
+	const project = t.project_id === null ? "je ne sais pas" : (projectTitles.get(t.project_id) ?? "(introuvable dans le vault)");
 	return [`Projet : ${project}`, t.urgency && URGENCIES[t.urgency].label].filter(Boolean).join(" · ");
 }
 

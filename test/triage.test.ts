@@ -71,7 +71,7 @@ describe("Inbox À trier", () => {
 		expect(store.current.toTriage.map((e) => e.context)).toEqual([
 			"Projet : Widget · Bloquant",
 			"Projet : je ne sais pas · Quand vous pourrez",
-			"Projet : (hors du vault)",
+			"Projet : (introuvable dans le vault)",
 			undefined,
 		]);
 		expect(store.current.toTriage[0]!.urgency).toBe("bloquant");
