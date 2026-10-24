@@ -27,6 +27,8 @@ const ticket: InboxEntry = {
 const state = (patch: Partial<InboxState>): InboxState => ({
 	status: "ready",
 	toTriage: [],
+	unplaced: [],
+	unplacedBulk: [],
 	conflicts: [],
 	feed: [],
 	filter: "all",
@@ -75,6 +77,8 @@ describe("InboxView", () => {
 		expect(nothingToHandle(state({ feed: [entry(2, false)] }))).toBe(true);
 		expect(nothingToHandle(state({ feed: [entry(2, true)] }))).toBe(false);
 		expect(nothingToHandle(state({ toTriage: [ticket] }))).toBe(false);
+		expect(nothingToHandle(state({ unplaced: [{ ...ticket, kind: "unplaced" }] }))).toBe(false);
+		expect(nothingToHandle(state({ unplacedBulk: [{ kind: "project", id: "p0002", fields: { title: "W", description: "", status: "a_faire", priority: 1 } }] }))).toBe(false);
 		expect(nothingToHandle(state({ conflicts: [{ ...ticket, kind: "conflict" }] }))).toBe(false);
 		expect(nothingToHandle(state({ status: "loading" }))).toBe(false);
 	});

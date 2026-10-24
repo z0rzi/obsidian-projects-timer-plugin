@@ -5,6 +5,7 @@ import { acknowledgements, compareState, type BaseUpdate, type Conflict, type Pu
 import type { PushVault } from "./planPush";
 import { writeAnswer } from "./pullAnswer";
 import { writeRemotePriority } from "./pullPriority";
+import { unplacedItems, type UnplacedItem } from "./unplaced";
 
 /** The few vault operations a Pull needs (an in-memory map in tests). */
 export interface VaultFiles {
@@ -30,6 +31,8 @@ export interface PullOutcome {
 	applied: number;
 	/** The conflicts now, for the Inbox and the Push review. */
 	conflicts: Conflict[];
+	/** The app's Items no readable note carries, for the Inbox's « Hors du vault ». */
+	unplaced: UnplacedItem[];
 	/** Writes that couldn't be made (line refused, file gone): found again at the next Pull. */
 	failed: { title: string; error: string }[];
 	/** The app's state the Pull compared against. */
@@ -51,7 +54,7 @@ export function writePull(files: VaultFiles, pull: PullWrite): Promise<void> {
 export async function runPull(deps: PullDeps): Promise<PullOutcome> {
 	const app = await fetchAppItems(deps.remote);
 	const { pulls, aligned, conflicts } = compareState(deps.vault, app);
-	const outcome: PullOutcome = { applied: 0, conflicts, failed: [], app };
+	const outcome: PullOutcome = { applied: 0, conflicts, unplaced: unplacedItems(deps.vault, app), failed: [], app };
 	const written: BaseUpdate[] = [];
 	for (const pull of pulls) {
 		try {

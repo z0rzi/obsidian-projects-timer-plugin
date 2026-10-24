@@ -15,6 +15,7 @@ type Held = {
 	fields: Record<string, unknown>;
 	base: ItemBase | null;
 	archived: boolean;
+	triaged: boolean;
 	answer: StateAnswer | null;
 	priority_by: string | null;
 };
@@ -30,7 +31,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 	const held = new Map<string, Held>(
 		items.map((i) => [
 			i.id,
-			{ kind: i.kind, fields: { ...i.fields }, base: i.base, archived: i.archived, answer: i.answer, priority_by: i.priority_by },
+			{ kind: i.kind, fields: { ...i.fields }, base: i.base, archived: i.archived, triaged: i.triaged, answer: i.answer, priority_by: i.priority_by },
 		]),
 	);
 	const received: PushChange[][] = [];
@@ -48,7 +49,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 			if (now && (now.kind !== c.kind || Object.entries(c.fields).some(([k, v]) => now.fields[k] !== v))) {
 				return { ok: false, error: `Id ${id} déjà pris` };
 			}
-			held.set(id, { kind: c.kind, fields, base: c.base ?? null, archived: false, answer: null, priority_by: null });
+			held.set(id, { kind: c.kind, fields, base: c.base ?? null, archived: false, triaged: true, answer: null, priority_by: null });
 			return { ok: true, id };
 		}
 		const now = held.get(c.id);
@@ -73,7 +74,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 			return changes.map(apply);
 		},
 		async state(): Promise<ItemState[]> {
-			return [...held].map(([id, h]) => ({ id, triaged: true, ...h }) as ItemState);
+			return [...held].map(([id, h]) => ({ id, ...h }) as ItemState);
 		},
 		async acknowledge(items: AcknowledgedItem[]) {
 			acknowledged.push(items);
@@ -90,6 +91,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 		},
 		async triage(id: string, as: TriageRequest): Promise<TriageResponse> {
 			const item = held.get(id)!;
+			item.triaged = true;
 			if (as.as === "project") {
 				item.kind = "project";
 				item.fields = { title: item.fields.title, description: item.fields.description, status: as.priority === 0 ? "en_cours" : "a_faire", priority: as.priority };

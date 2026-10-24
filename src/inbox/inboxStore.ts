@@ -1,12 +1,13 @@
 import type { ActivityEntry, InboxTicket, TaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { Conflict } from "../sync/compareState";
+import { unplacedDetail, type UnplacedItem } from "../sync/unplaced";
 
-/** A pinned line of the Inbox view: a Ticket À trier or a conflict. */
+/** A pinned line of the Inbox view: a Ticket À trier, an Unplaced item or a conflict. */
 export interface InboxEntry {
-	/** Stable across reloads: `t<ticket id>` or `c<conflict key>`. */
+	/** Stable across reloads: `t<ticket id>`, `u<item id>` or `c<conflict key>`. */
 	key: string;
-	kind: "conflict" | "ticket";
+	kind: "conflict" | "ticket" | "unplaced";
 	/** What opening the entry goes to. */
 	item: { kind: "project" | "task"; id: string; title: string };
 	title: string;
@@ -18,6 +19,8 @@ export interface InboxEntry {
 	ticketType?: TaskType;
 	/** `conflict`: what its buttons settle. */
 	conflict?: Conflict;
+	/** `unplaced`: the Item « Insérer ici » and « Retirer de l'app » act on. */
+	unplaced?: UnplacedItem;
 }
 
 /** Whose entries the feed shows: everyone's, or those of the actors of one role. */
@@ -27,6 +30,10 @@ export interface InboxState {
 	status: "idle" | "loading" | "ready" | "error";
 	/** Tickets À trier, pinned on top with their buttons. */
 	toTriage: InboxEntry[];
+	/** « Hors du vault », one entry each. */
+	unplaced: InboxEntry[];
+	/** « Hors du vault » in one entry « n éléments hors du vault » (from 5), empty for none. */
+	unplacedBulk: UnplacedItem[];
 	/** Conflicts the last Pull worked out, each settled by its buttons. */
 	conflicts: InboxEntry[];
 	/** The loaded Activity entries the filter shows, newest first. */
@@ -76,17 +83,25 @@ function conflictEntry(c: Conflict): InboxEntry {
 	};
 }
 
+function unplacedEntry(item: UnplacedItem): InboxEntry {
+	const { title } = item.fields;
+	return { key: `u${item.id}`, kind: "unplaced", item: { kind: item.kind, id: item.id, title }, title, detail: unplacedDetail(item), unplaced: item };
+}
+
+/** From this many Unplaced items not yet seen in the bulk modal, they show as one entry. */
+const BULK_FROM = 5;
+
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * What the Inbox view and the kanban show: the Activity feed (`GET
- * /api/activity`, paged), the Tickets À trier (`GET /api/inbox`) and the
- * conflicts the last Pull worked out. Read state lives in the app, so it survives
+ * /api/activity`, paged), the Tickets À trier (`GET /api/inbox`), and the
+ * Unplaced items and conflicts the last Pull worked out. Read state lives in the app, so it survives
  * restarts; marking read updates the view at once and the app right after,
  * putting the entry back on failure.
  */
 export class InboxStore {
-	private state: InboxState = { status: "idle", toTriage: [], conflicts: [], feed: [], filter: "all", item: null, unread: 0, more: false };
+	private state: InboxState = { status: "idle", toTriage: [], unplaced: [], unplacedBulk: [], conflicts: [], feed: [], filter: "all", item: null, unread: 0, more: false };
 	private tickets: InboxTicket[] = [];
 	private entries: ActivityEntry[] = [];
 	/** `before` of the next page, null when nothing is older. */
@@ -96,6 +111,9 @@ export class InboxStore {
 	private filter: InboxFilter = "all";
 	private item: InboxItemFilter | null = null;
 	private conflicts: Conflict[] = [];
+	private unplaced: UnplacedItem[] = [];
+	/** Ids of Unplaced items kept in the bulk modal: they show one entry each from then on. */
+	private readonly kept = new Set<string>();
 	/** Newest entry id of the previous load, null before the first one. */
 	private newest: number | null = null;
 
@@ -136,6 +154,23 @@ export class InboxStore {
 	/** Shows the conflicts the last Pull worked out. */
 	setConflicts(conflicts: Conflict[]): void {
 		this.conflicts = conflicts;
+		this.rebuild();
+	}
+
+	/** Shows the Unplaced items the last Pull found. */
+	setUnplaced(items: UnplacedItem[]): void {
+		this.unplaced = items;
+		this.rebuild();
+	}
+
+	/** Takes out Unplaced items just inserted or removed. */
+	dropUnplaced(ids: string[]): void {
+		this.setUnplaced(this.unplaced.filter((i) => !ids.includes(i.id)));
+	}
+
+	/** Shows Unplaced items the bulk modal kept one entry each, whatever their number. */
+	keepUnplaced(ids: string[]): void {
+		for (const id of ids) this.kept.add(id);
 		this.rebuild();
 	}
 
@@ -199,9 +234,13 @@ export class InboxStore {
 
 	/** The ready state from what is loaded. */
 	private build(): InboxState {
+		const fresh = this.unplaced.filter((i) => !this.kept.has(i.id));
+		const bulk = fresh.length >= BULK_FROM;
 		return {
 			status: "ready",
 			toTriage: this.tickets.map(ticketEntry),
+			unplaced: (bulk ? this.unplaced.filter((i) => this.kept.has(i.id)) : this.unplaced).map(unplacedEntry),
+			unplacedBulk: bulk ? fresh : [],
 			conflicts: this.conflicts.map(conflictEntry),
 			feed: this.shown(),
 			filter: this.filter,

@@ -12,12 +12,13 @@ import { vaultFiles } from "../sync/vaultFiles";
 import { INBOX_VIEW_TYPE, InboxView } from "../views/InboxView";
 import { InboxStore, type InboxEntry, type InboxState } from "./inboxStore";
 import { itemLocation } from "./itemLocation";
-import { placeLine, runTriage, type TriageChoice, type TriageDeps } from "./triage";
+import { insertUnplacedTask, placeLine, runTriage, type TriageChoice, type TriageDeps } from "./triage";
+import { removeFromApp, type UnplacedItem } from "../sync/unplaced";
 import { tagTaskProject } from "../sync/taskProject";
 import { findTasksHeadingSection } from "../projectCards";
 import { TriageModal } from "../ui/TriageModal";
 import { NewProjectModal } from "../ui/NewProjectModal";
-import { runNewProject } from "./newProject";
+import { insertUnplacedProject, runNewProject, type NewProjectDeps } from "./newProject";
 import { badgeText, toastText } from "./signals";
 
 export interface InboxDeps {
@@ -27,7 +28,7 @@ export interface InboxDeps {
 
 /**
  * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici"), launched Ideas ("Nouveau projet"),
- * the conflicts of the last Pull and the Activity feed. Reloads from the app after each Pull and toasts the
+ * the Unplaced items and conflicts of the last Pull and the Activity feed. Reloads from the app after each Pull and toasts the
  * Client's entries that are new since the previous reload; a status bar item shows the unread count. Returns
  * the store, `subscribe`, `badges` and `openOnItem` (for the kanban), `pick` (a conflict's buttons) and `afterPull`.
  */
@@ -94,6 +95,13 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		return { path: file.path, projectId: typeof fm?.suivi_id === "string" ? fm.suivi_id : null, step };
 	}
 
+	/** Writes `text` at the cursor of `view` as Triage places a Task line. */
+	function insertAtCursor(view: MarkdownView, text: string) {
+		const editor = view.editor;
+		const at = placeLine(editor.getValue().split("\n"), editor.getCursor().line, text);
+		editor.replaceRange(at.text, at.from, at.to);
+	}
+
 	/** An app image (`/uploads/…`) fetched with the token into the attachment folder of `notePath`. */
 	async function copyAppImage(url: string, notePath: string) {
 		const { data } = await remote.image(url);
@@ -121,12 +129,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 					runTriage(entry.item, choice, {
 						remote,
 						target: () => target,
-						insert: (line) => {
-							const editor = view.editor;
-							const lines = editor.getValue().split("\n");
-							const at = placeLine(lines, editor.getCursor().line, line);
-							editor.replaceRange(at.text, at.from, at.to);
-						},
+						insert: (line) => insertAtCursor(view, line),
 						localImage: (url) => copyAppImage(url, target.path),
 					}),
 				);
@@ -142,24 +145,62 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		}).open();
 	}
 
+	/** Where and how a Project file is created from the template. */
+	function projectDeps(): NewProjectDeps {
+		return {
+			remote,
+			folder: data.settings.projectsLocation,
+			template: async () => {
+				const path = data.settings.projectTemplate;
+				const file = path ? app.vault.getFileByPath(path) : null;
+				return file ? app.vault.read(file) : "";
+			},
+			exists: (path) => app.vault.getAbstractFileByPath(path) !== null,
+			create: async (path, content) => {
+				await app.vault.create(path, content);
+			},
+		};
+	}
+
+	/**
+	 * « Insérer ici » on an Unplaced item: a Task's line at the cursor of the note last
+	 * edited (as Triage places it), a Project's file from the template; it then leaves the Inbox.
+	 */
+	async function insertUnplaced(item: UnplacedItem): Promise<void> {
+		const failed = (error: string): void => void new Notice(`Échec de l'insertion : ${error}`, 10_000);
+		if (item.kind === "project") {
+			const result = await data.exclusive(() => insertUnplacedProject(item, projectDeps()));
+			if (!result.ok) return failed(result.error);
+			new Notice(`Créée : ${result.path}`);
+			await openLine(result.path, 0);
+		} else {
+			const view = noteView();
+			if (!view) return failed("ouvrez la note où va la Tâche et placez-y le curseur.");
+			const result = await data.exclusive(() =>
+				insertUnplacedTask(item, { remote, target: () => triageTarget(view), insert: (line) => insertAtCursor(view, line) }),
+			);
+			if (!result.ok) return failed(result.error);
+			new Notice(`Insérée : ${result.line}`);
+		}
+		store.dropUnplaced([item.id]);
+	}
+
+	/** « Retirer de l'app »: archives the Items; the ones archived leave the Inbox, a failure gets a Notice. */
+	async function removeUnplaced(items: UnplacedItem[]) {
+		try {
+			const { removed, failed } = await data.exclusive(() => removeFromApp(remote, items));
+			store.dropUnplaced(removed);
+			for (const f of failed) new Notice(`Retrait impossible : ${f}`, 10_000);
+		} catch (e) {
+			new Notice(`Retrait impossible : ${(e as Error).message}`, 10_000);
+		}
+	}
+
 	function newProject(entry: InboxEntry) {
 		new NewProjectModal(app, entry.item, (choice) => {
 			void (async () => {
 				const result = await data.exclusive(() =>
-					runNewProject(entry.item, choice, {
-						remote,
-						folder: data.settings.projectsLocation,
-						template: async () => {
-							const path = data.settings.projectTemplate;
-							const file = path ? app.vault.getFileByPath(path) : null;
-							return file ? app.vault.read(file) : "";
-						},
-						exists: (path) => app.vault.getAbstractFileByPath(path) !== null,
-						create: async (path, content) => {
-							await app.vault.create(path, content);
-						},
-					}),
-				);
+runNewProject(entry.item, choice, projectDeps()));
 				if (result.ok) {
 					new Notice(`Créée : ${result.path}`);
 					await openLine(result.path, 0);
@@ -182,6 +223,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				triage,
 				newProject,
 				(conflict, choice) => void pick(conflict, choice),
+				{ insert: (item) => void insertUnplaced(item), remove: (items) => void removeUnplaced(items) },
 			),
 	);
 
@@ -219,9 +261,10 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		}
 	}
 
-	/** After each Pull: its conflicts and state, then the feed reloaded and the Client's new entries toasted. */
+	/** After each Pull: its Unplaced items, conflicts and state, then the feed reloaded and the Client's new entries toasted. */
 	function afterPull(outcome: PullOutcome) {
 		lastState = outcome.app;
+		store.setUnplaced(outcome.unplaced);
 		store.setConflicts(outcome.conflicts);
 		void store.refresh().then((fresh) => {
 			for (const entry of fresh) new Notice(toastText(entry));
