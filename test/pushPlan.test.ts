@@ -26,6 +26,12 @@ describe("planProjectPush", () => {
 		]);
 	});
 
+	it("lists a suivi_id not in the app's format as an error, not pushed", () => {
+		expect(planProjectPush([local({ suiviId: "legacy-42" })], appWith())).toEqual([
+			{ group: "error", key: "error:2.projects/Widget.md", path: "2.projects/Widget.md", title: "Widget", error: "id non reconnu" },
+		]);
+	});
+
 	it("does not offer archived Projects that were never pushed", () => {
 		expect(planProjectPush([local({ archived: true, fields: { status: "termine" } })], appWith())).toEqual([]);
 	});

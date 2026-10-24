@@ -1,3 +1,4 @@
+import { APP_ID } from "../blockId";
 import type { ProjectFields, PushChange } from "../remote/api";
 import type { AppItems } from "./appState";
 import type { PendingConflict } from "./conflicts";
@@ -49,7 +50,7 @@ const FIELDS = ["title", "description", "status", "priority"] as const;
  * Compares the vault's shared Projects with their base in the app. Projects
  * never pushed and already archived stay vault-only. An id the app doesn't
  * know is created keeping it; one it holds archived is restored; a Task's id
- * is an error. App Projects no note carries are not offered (Unplaced).
+ * or an id not in the app's format is an error. App Projects no note carries are not offered (Unplaced).
  */
 export function planProjectPush(local: SharedProject[], app: AppItems): (PendingProjectChange | PushError)[] {
 	const changes: (PendingProjectChange | PushError)[] = [];
@@ -59,12 +60,17 @@ export function planProjectPush(local: SharedProject[], app: AppItems): (Pending
 		const { path, fields } = p;
 		const title = fields.title;
 		const id = p.suiviId;
+		const error = (message: string) => changes.push({ group: "error", key: `error:${path}`, path, title, error: message });
+		if (id && !APP_ID.test(id)) {
+			error("id non reconnu");
+			continue;
+		}
 		if (id && seen.has(id)) continue; // a copied file keeps the id: the first one wins
 		if (id) seen.add(id);
 		const held = id ? app.projects[id] : undefined;
 
 		if (id && app.tasks[id]) {
-			changes.push({ group: "error", key: `error:${path}`, path, title, error: `suivi_id: ${id} is a Task in Suivi; fix it in the note` });
+			error(`suivi_id: ${id} is a Task in Suivi; fix it in the note`);
 		} else if (!id || !held) {
 			if (!id && p.archived) continue;
 			const change: ProjectChange = { op: "create", kind: "project", ...(id ? { id } : {}), fields };
