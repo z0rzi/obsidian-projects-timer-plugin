@@ -89,6 +89,12 @@ export class PluginData<S extends object> {
 		return run;
 	}
 
+	/** Forgets everything about the Client app (in memory; `save()` to persist). */
+	clearSync(): void {
+		for (const key of Object.keys(this.sync)) delete this.sync[key as keyof SyncState];
+		Object.assign(this.sync, emptySync());
+	}
+
 	save(): Promise<void> {
 		return this.write({ ...this.settings, sync: this.sync });
 	}

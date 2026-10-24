@@ -6,8 +6,12 @@ import {
 	Setting,
 	TFile,
 	TFolder,
+	Notice,
 } from "obsidian";
 import ProjectsTimerPlugin from "./main";
+import { countAppIds, disconnect, disconnectMessage } from "./sync/disconnect";
+import { vaultFiles } from "./sync/vaultFiles";
+import { DisconnectModal } from "./ui/DisconnectModal";
 
 export interface ProjectsTimerSettings {
 	projectsLocation: string;
@@ -228,5 +232,30 @@ export class ProjectsTimerSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+
+		new Setting(this.containerEl)
+			.setName("Se déconnecter de l'app Client")
+			.setDesc("Removes the Client app IDs from the notes and clears the Suivi URL and token. Never calls the app.")
+			.addButton((button) =>
+				button
+					.setButtonText("Se déconnecter de l'app Client")
+					.setWarning()
+					.onClick(() => this.confirmDisconnect()),
+			);
+	}
+
+	/** Counts the app ids in the vault, then disconnects once the Developer confirms. */
+	private async confirmDisconnect(): Promise<void> {
+		const files = vaultFiles(this.app);
+		const message = disconnectMessage(await countAppIds(files), this.plugin.settings);
+		new DisconnectModal(this.app, message, async () => {
+			try {
+				await disconnect(files, this.plugin.data);
+				new Notice("Disconnected from the Client app.");
+			} catch (e) {
+				new Notice(`Disconnect failed: ${(e as Error).message}`, 10_000);
+			}
+			this.display();
+		}).open();
 	}
 }
