@@ -22,6 +22,9 @@ const STATUSES: Record<string, ProjectStatus> = {
 	termine: "termine",
 };
 
+/** The YAML spellings of null, read by `readFrontmatter` as plain strings. */
+const YAML_NULL = new Set(["null", "Null", "NULL", "~"]);
+
 /** Priority pushed for a Project without a numeric `priority:`. */
 export const DEFAULT_PRIORITY = 5;
 
@@ -46,7 +49,8 @@ export function readSharedProject(path: string, content: string): ReadResult | n
 		if (!known) return refuse(`Unknown status "${fm.status}" in ${path}`);
 		status = known;
 	}
-	const dueDate = fm.due_date || null;
+	// `due_date: null` and `due_date: ~` are YAML's none, as an empty value.
+	const dueDate = !fm.due_date || YAML_NULL.has(fm.due_date) ? null : fm.due_date;
 	if (dueDate !== null && !isDay(dueDate)) return refuse(`Invalid due_date "${dueDate}" in ${path}`);
 
 	const priority = /^\d+$/.test(fm.priority ?? "") ? Math.min(Number(fm.priority), 5) : DEFAULT_PRIORITY;

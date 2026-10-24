@@ -93,7 +93,7 @@ describe("readSharedProject", () => {
 		expect(r?.ok && r.project.suiviId).toBe("00123");
 	});
 
-	it("reads due_date as the Échéance; absent or empty is none", () => {
+	it("reads due_date as the Échéance; absent, empty or YAML null is none", () => {
 		const dueDate = (fm: string) => {
 			const r = readSharedProject("p/X.md", note(fm, ""));
 			return r?.ok ? r.project.fields.due_date : r;
@@ -102,6 +102,8 @@ describe("readSharedProject", () => {
 		expect(dueDate("due_date: 2027-01-15")).toBe("2027-01-15");
 		expect(dueDate('due_date: "2027-01-15"')).toBe("2027-01-15");
 		expect(dueDate("due_date:")).toBeNull();
+		expect(dueDate("due_date: null")).toBeNull();
+		expect(dueDate("due_date: ~")).toBeNull();
 		expect(dueDate("priority: 3")).toBeNull();
 	});
 
