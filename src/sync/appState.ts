@@ -53,7 +53,7 @@ export function appItems(items: ItemState[]): AppItems {
 		if (item.kind === "project") {
 			const current = withDueDate(item.fields);
 			const stored = item.base as Base<ProjectFields> | null;
-			const base = stored ? { ...stored, fields: withDueDate(stored.fields) } : { path: "", fields: current };
+			const base = stored ? { ...stored, fields: baseFields(stored.fields) } : { path: "", fields: current };
 			out.projects[item.id] = { base, current, ...common, dueDateBy: item.due_date_by ?? null };
 		} else {
 			const base = (item.base as Base<TaskFields> | null) ?? { path: "", fields: item.fields as TaskFields };
@@ -66,6 +66,12 @@ export function appItems(items: ItemState[]): AppItems {
 /** Project fields with `due_date` null when absent: a Base written (or an app) from before the Échéance has none. */
 function withDueDate(fields: ProjectFields): ProjectFields {
 	return { ...fields, due_date: fields.due_date ?? null };
+}
+
+/** A stored Base's fields: `due_date` null when absent, and a day (written before the Échéance was a month) read as its month. */
+function baseFields(fields: ProjectFields): ProjectFields {
+	const { due_date } = withDueDate(fields);
+	return { ...fields, due_date: due_date === null ? null : due_date.slice(0, 7) };
 }
 
 /** Fetches the app's state (`GET /api/state`) by id. */
