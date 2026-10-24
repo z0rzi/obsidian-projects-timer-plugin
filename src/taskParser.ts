@@ -9,6 +9,9 @@ const A_VALIDER_TOKEN = "pr";
 /** Regex source of the status token: lowercase `p0`-`p5` or `pr`. */
 export const STATUS_TOKEN_SOURCE = "p[0-5]|pr";
 
+/** Regex source of a day, `YYYY-MM-DD`. */
+export const DAY_SOURCE = "\\d{4}-\\d{2}-\\d{2}";
+
 export type StatusToken = { priority: number; status: TaskStatus };
 
 /**
