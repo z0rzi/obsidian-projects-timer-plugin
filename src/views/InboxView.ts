@@ -1,4 +1,4 @@
-import { Component, ItemView, MarkdownRenderer, setIcon, type WorkspaceLeaf } from "obsidian";
+import { Component, ItemView, MarkdownRenderer, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
 import type { InboxEntry, InboxFilter, InboxState, InboxStore } from "../inbox/inboxStore";
@@ -16,6 +16,36 @@ const FILTERS: { filter: InboxFilter; label: string }[] = [
 	{ filter: "client", label: "JMJ" },
 	{ filter: "developer", label: "Moi" },
 ];
+
+/** What the pane shows: what needs the Developer, or the whole log. */
+export type InboxMode = "inbox" | "activity";
+
+const MODES: { mode: InboxMode; label: string }[] = [
+	{ mode: "inbox", label: "Inbox" },
+	{ mode: "activity", label: "Activité" },
+];
+
+/** A feed entry as `mode` shows it. */
+export interface FeedLine {
+	entry: ActivityEntry;
+	/** Read, in the Activity: drawn faded. */
+	dimmed: boolean;
+}
+
+/** The feed entries `mode` lists: the Inbox keeps the unread ones, the Activity all of them, the read ones dimmed. */
+export function feedLines(feed: ActivityEntry[], mode: InboxMode): FeedLine[] {
+	return feed.filter((entry) => mode === "activity" || entry.unread).map((entry) => ({ entry, dimmed: !entry.unread }));
+}
+
+/** Loaded, with nothing pinned and no unread entry shown: the Inbox says « Rien à traiter ». */
+export function nothingToHandle(state: InboxState): boolean {
+	return (
+		state.status === "ready" &&
+		state.toTriage.length === 0 &&
+		state.conflicts.length === 0 &&
+		!state.feed.some((entry) => entry.unread)
+	);
+}
 
 /** Lucide icon of each event type. */
 const TYPE_ICONS: Record<EventType, string> = {
@@ -37,8 +67,10 @@ const TYPE_ICONS: Record<EventType, string> = {
 export type OpenInboxItem = (item: InboxEntry["item"] | undefined, title: string, thread: boolean) => void;
 
 /**
- * The Developer's Inbox: Tickets À trier ("Insérer ici", launched Ideas
- * "Nouveau projet") and Pull conflicts pinned on top, then the Activity feed
+ * The Developer's pane, two views toggled in its header (kept in the view
+ * state). The Inbox: Tickets À trier ("Insérer ici", launched Ideas "Nouveau
+ * projet") and Pull conflicts, then the unread feed entries; « Lu » or opening
+ * one takes it out. The Activity: the whole feed, read entries dimmed. Both
  * newest first, grouped by day. Opening is delegated (`openItem`); filtering,
  * paging and marking read go through the store, so the app keeps the read state.
  */
@@ -48,6 +80,7 @@ export class InboxView extends ItemView {
 	private renderScope: Component | null = null;
 	/** Uploaded images of comment bodies, fetched with the token while the pane is open. */
 	private readonly images: AppImages;
+	private mode: InboxMode = "inbox";
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -75,6 +108,17 @@ export class InboxView extends ItemView {
 
 	getIcon(): string {
 		return "inbox";
+	}
+
+	getState(): Record<string, unknown> {
+		return { ...super.getState(), mode: this.mode };
+	}
+
+	async setState(state: unknown, result: ViewStateResult): Promise<void> {
+		const mode = (state as { mode?: unknown } | null)?.mode;
+		if (mode === "inbox" || mode === "activity") this.mode = mode;
+		await super.setState(state, result);
+		this.render(this.store.current);
 	}
 
 	async onOpen() {
@@ -118,29 +162,45 @@ export class InboxView extends ItemView {
 		if (state.error) root.createEl("p", { text: state.error, cls: "mod-warning" });
 		if (state.status === "loading") root.createEl("p", { text: "Chargement…" });
 
-		const toTriage = this.section(root, "to-triage", `À trier${state.toTriage.length ? ` (${state.toTriage.length})` : ""}`);
-		if (state.toTriage.length === 0) toTriage.createEl("p", { text: "Rien à trier.", cls: "suivi-inbox-empty" });
-		for (const entry of state.toTriage) this.renderPinned(toTriage, entry);
-		if (state.conflicts.length > 0) {
-			const conflicts = this.section(root, "conflicts", `Conflits (${state.conflicts.length})`);
-			for (const entry of state.conflicts) this.renderPinned(conflicts, entry);
-		}
+		if (this.mode === "inbox") this.drawPinned(root, state);
 
 		const feed = root.createDiv({ cls: "suivi-inbox-section", attr: { "data-section": "feed" } });
-		if (state.status === "ready" && state.feed.length === 0) {
+		if (this.mode === "inbox" && nothingToHandle(state)) {
+			feed.createEl("p", { text: "Rien à traiter", cls: "suivi-inbox-empty" });
+		} else if (this.mode === "activity" && state.status === "ready" && state.feed.length === 0) {
 			feed.createEl("p", { text: "Rien de nouveau.", cls: "suivi-inbox-empty" });
 		}
 		let day = "";
-		for (const entry of state.feed) {
+		for (const { entry, dimmed } of feedLines(state.feed, this.mode)) {
 			const entryDay = DAY.format(new Date(entry.at));
 			if (entryDay !== day) feed.createEl("h5", { text: entryDay, cls: "suivi-inbox-day" });
 			day = entryDay;
-			this.renderActivity(feed, entry);
+			this.renderActivity(feed, entry, dimmed);
 		}
 		if (state.more) feed.createEl("button", { text: "Charger plus" }).onclick = () => void this.store.loadMore();
 	}
 
-	/** Title, filter, item filter (its button clears it), "Tout marquer comme lu" and the reload icon. */
+	/** The Inbox's pinned sections, each drawn only when it has entries (ticket 10 adds « Hors du vault » after À trier). */
+	private drawPinned(root: HTMLElement, state: InboxState) {
+		const sections = [
+			{ id: "to-triage", title: "À trier", entries: state.toTriage },
+			{ id: "conflicts", title: "Conflits", entries: state.conflicts },
+		];
+		for (const { id, title, entries } of sections) {
+			if (entries.length === 0) continue;
+			const section = this.section(root, id, `${title} (${entries.length})`);
+			for (const entry of entries) this.renderPinned(section, entry);
+		}
+	}
+
+	/** Switches between the Inbox and the Activity; Obsidian saves the choice with the view state. */
+	private setMode(mode: InboxMode) {
+		this.mode = mode;
+		this.app.workspace.requestSaveLayout();
+		this.render(this.store.current);
+	}
+
+	/** Title, Inbox / Activité toggle, filter, item filter (its button clears it), "Tout marquer comme lu" and the reload icon. */
 	private drawHeader(root: HTMLElement, state: InboxState) {
 		const header = root.createDiv({ cls: "suivi-inbox-header" });
 		header.style.display = "flex";
@@ -148,6 +208,11 @@ export class InboxView extends ItemView {
 		header.style.gap = "4px";
 		header.style.alignItems = "center";
 		header.createEl("h4", { text: "Suivi inbox" }).style.flexGrow = "1";
+		for (const { mode, label } of MODES) {
+			const button = header.createEl("button", { text: label });
+			if (mode === this.mode) button.addClass("mod-cta");
+			button.onclick = () => this.setMode(mode);
+		}
 		const reload = header.createEl("button", { cls: "clickable-icon", attr: { "aria-label": "Recharger" } });
 		setIcon(reload, "refresh-cw");
 		reload.onclick = () => void this.store.refresh();
@@ -207,10 +272,15 @@ export class InboxView extends ItemView {
 
 	/**
 	 * An entry of the feed: type icon, actor, time, label, item title, comment
-	 * body; "Lu" while unread. A comment that mentions the Developer stands out.
+	 * body; "Lu" while unread. A comment that mentions the Developer stands out;
+	 * a `dimmed` one is faded. Opening an unread entry marks it read.
 	 */
-	private renderActivity(parent: HTMLElement, entry: ActivityEntry) {
+	private renderActivity(parent: HTMLElement, entry: ActivityEntry, dimmed: boolean) {
 		const el = this.entryBox(parent, entry.type);
+		if (dimmed) {
+			el.addClass("is-read");
+			el.style.opacity = "0.6";
+		}
 		if (entry.unread) {
 			el.addClass("is-unread");
 			el.style.background = "var(--background-modifier-hover)";
@@ -235,7 +305,12 @@ export class InboxView extends ItemView {
 			};
 		}
 		const thread = entry.type.startsWith("comment.");
-		if (entry.item) this.link(el, entry.item.title, () => this.openItem(entry.item, entry.label, thread));
+		if (entry.item) {
+			this.link(el, entry.item.title, () => {
+				void this.store.markRead(entry);
+				this.openItem(entry.item, entry.label, thread);
+			});
+		}
 		const { comment } = entry;
 		if (comment?.body) {
 			this.renderMarkdown(el.createDiv({ cls: "suivi-inbox-body" }), highlightMentions(comment.body, comment.mentions));
