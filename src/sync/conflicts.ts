@@ -66,7 +66,7 @@ export async function pickConflict(
 ): Promise<void> {
 	if (choice === "mine") {
 		const [result] = await deps.remote.push([conflict.mine.change]);
-		if (!result?.ok) throw new Error(result?.error ?? "no answer from Suivi");
+		if (!result?.ok) throw new Error(result?.error ?? "pas de réponse");
 		return;
 	}
 	await writePull(deps.files, conflict.theirs.pull);

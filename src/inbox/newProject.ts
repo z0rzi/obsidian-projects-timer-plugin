@@ -41,49 +41,51 @@ export async function runNewProject(
 	} catch (e) {
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
-	if (response.as !== "project") return { ok: false, error: "The app did not make it a Project." };
+	if (response.as !== "project") return { ok: false, error: "L'app n'en a pas fait un Projet." };
 	return writeProjectNote(at, item.id, response.fields, deps);
 }
 
 /**
  * « Insérer ici » on an Unplaced Project: its file is created from the
- * template with its id and the app's fields now, and its base is sent.
- * Nothing is written if the file already exists.
+ * template with its id and the app's fields now, and its base is sent,
+ * acknowledging the Answer its status comes from, as the Pull does. Nothing
+ * is written if the file already exists.
  */
 export function insertUnplacedProject(
-	item: { id: string; fields: ProjectFields },
+	item: { id: string; fields: ProjectFields; answer?: number },
 	deps: Omit<NewProjectDeps, "remote"> & { remote: Pick<Remote, "acknowledge"> },
 ): Promise<NewProjectResult> {
 	const at = projectPath(item.fields.title, deps);
 	if ("error" in at) return Promise.resolve({ ok: false, error: at.error });
-	return writeProjectNote(at, item.id, item.fields, deps);
+	return writeProjectNote(at, item.id, item.fields, deps, item.answer);
 }
 
 /** Where the Project file of `title` goes, or why it can't. */
 function projectPath(title: string, deps: Pick<NewProjectDeps, "folder" | "exists">): { path: string; name: string } | { error: string } {
 	const folder = deps.folder.replace(/\/+$/, "");
-	if (!folder) return { error: "Set the Projects folder in the plugin settings first." };
+	if (!folder) return { error: "Indiquez d'abord le dossier des Projets dans les réglages du plugin." };
 	const name = fileName(title);
-	if (!name) return { error: "The title is not usable as a file name." };
+	if (!name) return { error: "Le titre n'est pas utilisable comme nom de fichier." };
 	const path = `${folder}/${name}.md`;
-	if (deps.exists(path)) return { error: `${path} already exists.` };
+	if (deps.exists(path)) return { error: `${path} existe déjà.` };
 	return { path, name };
 }
 
-/** Creates the Project file at `at` from the template, then sends `fields` as its base. */
+/** Creates the Project file at `at` from the template, then sends `fields` as its base, acknowledging `answer` if any. */
 async function writeProjectNote(
 	at: { path: string; name: string },
 	id: string,
 	fields: ProjectFields,
 	deps: Pick<NewProjectDeps, "template" | "create"> & { remote: Pick<Remote, "acknowledge"> },
+	answer?: number,
 ): Promise<NewProjectResult> {
 	const { path } = at;
 	await deps.create(path, projectFile(await deps.template(), at.name, id, fields));
 	try {
-		await deps.remote.acknowledge([{ id, base: { path, fields } }]);
+		await deps.remote.acknowledge([{ id, base: { path, fields }, ...(answer !== undefined ? { answer } : {}) }]);
 	} catch (e) {
 		const error = e instanceof Error ? e.message : String(e);
-		return { ok: false, error: `${path} created, but its base was not sent (${error})` };
+		return { ok: false, error: `${path} créé, mais sa base n'a pas été envoyée (${error})` };
 	}
 	return { ok: true, path };
 }

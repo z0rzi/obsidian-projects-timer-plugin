@@ -6,6 +6,7 @@ import type { ActivityEntry, EventType } from "../remote/api";
 import type { Conflict } from "../sync/compareState";
 import type { UnplacedItem } from "../sync/unplaced";
 import { UnplacedModal } from "../ui/UnplacedModal";
+import { drawPinnedButtons, type UnplacedActions } from "./inboxPinned";
 
 export const INBOX_VIEW_TYPE = "suivi-inbox-view";
 
@@ -67,20 +68,6 @@ const TYPE_ICONS: Record<EventType, string> = {
 	"comment.deleted": "message-square-x",
 	"push.completed": "upload",
 };
-
-/** The two buttons of a conflict, `[ P0 (moi) ]  [ P1 (jmj) ]`: the value first, who chose it in brackets. */
-export function conflictButtons(c: Conflict): { choice: "mine" | "theirs"; text: string }[] {
-	return [
-		{ choice: "mine", text: `${c.mine.label} (moi)` },
-		{ choice: "theirs", text: `${c.theirs.label} (${c.theirs.by ?? "Client"})` },
-	];
-}
-
-/** The buttons of « Hors du vault »: « Insérer ici » and « Retirer de l'app » (several at once from the bulk modal). */
-export interface UnplacedActions {
-	insert(item: UnplacedItem): void;
-	remove(items: UnplacedItem[]): void;
-}
 
 /** What opening something in the Inbox goes to; `thread` also opens its comment thread. */
 export type OpenInboxItem = (item: InboxEntry["item"] | undefined, title: string, thread: boolean) => void;
@@ -291,41 +278,7 @@ export class InboxView extends ItemView {
 		if (meta) el.createDiv({ text: meta, cls: "suivi-inbox-meta" }).style.color = "var(--text-faint)";
 		const detail = entry.detail.length > EXCERPT ? `${entry.detail.slice(0, EXCERPT)}…` : entry.detail;
 		el.createDiv({ text: detail, cls: "suivi-inbox-detail" }).style.whiteSpace = "pre-wrap";
-		if (entry.conflict) {
-			const conflict = entry.conflict;
-			for (const { choice, text } of conflictButtons(conflict)) {
-				const button = el.createEl("button", { text });
-				button.onclick = () => {
-					button.disabled = true;
-					this.pick(conflict, choice);
-				};
-			}
-		} else if (entry.unplaced) {
-			const item = entry.unplaced;
-			const insert = el.createEl("button", {
-				text: "Insérer ici",
-				attr: {
-					"aria-label": item.kind === "project" ? "Créer la note du Projet depuis le modèle" : "Écrire cette Tâche au curseur de la note ouverte",
-				},
-			});
-			insert.onmousedown = (e) => e.preventDefault();
-			insert.onclick = () => this.unplaced.insert(item);
-			el.createEl("button", { text: "Retirer de l'app", attr: { "aria-label": "Archiver dans l'app : le Client ne le voit plus" } }).onclick =
-				() => this.unplaced.remove([item]);
-		} else if (entry.kind === "ticket" && entry.ticketType === "idea") {
-			el.createEl("button", {
-				text: "Nouveau projet",
-				attr: { "aria-label": "Créer la note du Projet depuis le modèle" },
-			}).onclick = () => this.newProject(entry);
-		} else if (entry.kind === "ticket") {
-			const insert = el.createEl("button", {
-				text: "Insérer ici",
-				attr: { "aria-label": "Écrire cette Tâche au curseur de la note ouverte" },
-			});
-			// Keep the note's cursor: the button must not take focus from the editor first.
-			insert.onmousedown = (e) => e.preventDefault();
-			insert.onclick = () => this.triage(entry);
-		}
+		drawPinnedButtons(el, entry, { triage: this.triage, newProject: this.newProject, pick: this.pick, unplaced: this.unplaced });
 	}
 
 	/**

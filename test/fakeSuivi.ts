@@ -4,7 +4,7 @@ import type { Remote } from "../src/remote/remote";
 import { appItems, fetchAppItems, type AppItems } from "../src/sync/appState";
 import type { Conflict } from "../src/sync/compareState";
 import { pickConflict } from "../src/sync/conflicts";
-import { planPush, readPushVault, type Note } from "../src/sync/planPush";
+import { planPush, readVaultItems, type Note } from "../src/sync/planPush";
 import type { PendingChange } from "../src/sync/pushPlan";
 import { runPush, vaultWriters } from "../src/sync/runPush";
 import { shareBody } from "../src/sync/sharedBody";
@@ -192,7 +192,7 @@ export function pushWorld(notes: Record<string, string>, items: ItemState[] = []
 	const v = memoryVault(notes);
 	const all = (): Note[] => [...v.files].map(([path, content]) => ({ path, content }));
 	const read = () =>
-		readPushVault(
+		readVaultItems(
 			all().filter((n) => n.path.startsWith("2.projects/")),
 			all(),
 			(n) => (n.path.startsWith("2.projects/") ? n.path : null),

@@ -2,7 +2,7 @@ import { App, Modal, Setting } from "obsidian";
 import type { Conflict } from "../sync/compareState";
 import type { PendingConflict } from "../sync/conflicts";
 import type { PendingChange } from "../sync/pushPlan";
-import { conflictButtons } from "../views/InboxView";
+import { conflictButtons } from "../views/inboxPinned";
 
 const GROUPS: { group: PendingChange["group"]; heading: string }[] = [
 	{ group: "new", heading: "New" },

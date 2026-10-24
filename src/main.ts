@@ -56,13 +56,6 @@ export default class ProjectsTimerPlugin extends Plugin {
 	/** Suivi Inbox (its store, badges and item opener feed the kanban); set in onload. */
 	inbox: ReturnType<typeof registerInbox> | null = null;
 
-	/** App id of the Project note at `path`: its `suivi_id:`. */
-	suiviIdOf(path: string): string | undefined {
-		const file = this.app.vault.getFileByPath(path);
-		const id: unknown = file ? this.app.metadataCache.getFileCache(file)?.frontmatter?.suivi_id : undefined;
-		return typeof id === "string" && id ? id : undefined;
-	}
-
 	revenueSpan: HTMLElement;
 	todayWorkedSpan: HTMLElement;
 	weekWorkedSpan: HTMLElement;

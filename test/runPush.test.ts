@@ -9,7 +9,7 @@ const refuseTitle = (c: PushChange) => (c.op !== "archive" && c.fields.title ===
 /** Deps whose vault writers do nothing. */
 const deps = (w: ReturnType<typeof pushWorld>, over: Partial<PushDeps> = {}): PushDeps => ({
 	remote: w.app.remote,
-	app: { projects: {}, tasks: {}, hasBases: false },
+	app: { projects: {}, tasks: {}, withBase: new Set() },
 	writeSuiviId: async () => {},
 	writeBlockId: async () => {},
 	writeDoneDate: async () => {},

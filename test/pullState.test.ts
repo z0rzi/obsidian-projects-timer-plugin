@@ -52,6 +52,14 @@ describe("Pull compares state", () => {
 		expect(w.app.held.get("t7f3a")!.base).toEqual({ path: meeting, fields: { ...heatmap, priority: 1 } });
 	});
 
+	it("a priority conflict where the vault changed the status: each button shows what its line would be", async () => {
+		const w = pushWorld({ [meeting]: "#task pr Heatmap ^t7f3a\n" }, [
+			appTask("t7f3a", { ...heatmap, status: "a_valider", priority: 1 }, { base: { path: meeting, fields: heatmap }, priority_by: "jmj" }),
+		]);
+		const { conflicts } = await w.pull();
+		expect(conflicts).toMatchObject([{ unit: "priority", mine: { label: "À valider" }, theirs: { label: "P1", by: "jmj" } }]);
+	});
+
 	it("a vault pointed at a fresh app pulls nothing", async () => {
 		const w = pushWorld({ [meeting]: "#task p3 Heatmap ^t7f3a\n" });
 		expect(await w.pull()).toMatchObject({ applied: 0, conflicts: [], failed: [] });

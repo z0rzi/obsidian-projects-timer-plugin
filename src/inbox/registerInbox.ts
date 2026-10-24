@@ -16,6 +16,7 @@ import { insertUnplacedTask, placeLine, runTriage, type TriageChoice, type Triag
 import { removeFromApp, type UnplacedItem } from "../sync/unplaced";
 import { tagTaskProject } from "../sync/taskProject";
 import { findTasksHeadingSection } from "../projectCards";
+import { suiviIdOf } from "../suiviId";
 import { TriageModal } from "../ui/TriageModal";
 import { NewProjectModal } from "../ui/NewProjectModal";
 import { insertUnplacedProject, runNewProject, type NewProjectDeps } from "./newProject";
@@ -92,7 +93,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		const fm = app.metadataCache.getFileCache(projectFile)?.frontmatter as Record<string, unknown> | undefined;
 		if (fm?.prive === true) return { error: `${projectFile.basename} est privé : le Client perdrait cette Tâche.` };
 		// Not pushed yet: the next Push links the Task once the Project has its id.
-		return { path: file.path, projectId: typeof fm?.suivi_id === "string" ? fm.suivi_id : null, step };
+		return { path: file.path, projectId: suiviIdOf(app, projectFile.path) ?? null, step };
 	}
 
 	/** Writes `text` at the cursor of `view` as Triage places a Task line. */
@@ -199,8 +200,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	function newProject(entry: InboxEntry) {
 		new NewProjectModal(app, entry.item, (choice) => {
 			void (async () => {
-				const result = await data.exclusive(() =>
-runNewProject(entry.item, choice, projectDeps()));
+				const result = await data.exclusive(() => runNewProject(entry.item, choice, projectDeps()));
 				if (result.ok) {
 					new Notice(`Créée : ${result.path}`);
 					await openLine(result.path, 0);

@@ -71,6 +71,21 @@ describe("Unplaced items", () => {
 		expect(await w.plan()).toEqual([]);
 	});
 
+	it("Insérer ici on a Task acknowledges its outstanding Answer, as the Pull does", async () => {
+		const done = { ...heatmap, status: "termine" as const, priority: null, done_on: "2026-10-20" };
+		const answer = { id: 7, answer: "valide" as const, at: "2026-10-20T09:00:00Z", by: "jmj" };
+		const w = pushWorld({ [meeting]: "# Notes\n" }, [appTask("t0ans", done, { base: { path: "gone.md", fields: heatmap }, answer })]);
+		const [item] = (await w.pull()).unplaced;
+		await insertUnplacedTask(item as Extract<UnplacedItem, { kind: "task" }>, {
+			remote: w.app.remote,
+			target: () => ({ path: meeting, projectId: null, step: false }),
+			insert: (text) => w.files.set(meeting, `${w.files.get(meeting)}${text}\n`),
+		});
+		expect(w.app.held.get("t0ans")!.answer).toBeNull();
+		expect(await w.pull()).toMatchObject({ applied: 0, conflicts: [], unplaced: [] });
+		expect(await w.plan()).toEqual([]);
+	});
+
 	it("Insérer ici writes a Project step with its token", async () => {
 		const step = { ...heatmap, title: "Export", step: true, priority: 2, project_id: "p0002" };
 		const note = "---\nsuivi_id: p0002\npriority: 3\nstatus: À faire\n---\n# Tasks\n";
@@ -88,9 +103,10 @@ describe("Unplaced items", () => {
 		expect(await w.plan()).toEqual([]);
 	});
 
-	it("Insérer ici on a Project creates its note with its id, and the Push then has nothing", async () => {
+	it("Insérer ici on a Project creates its note with its id, acknowledges its Answer, and the Push then has nothing", async () => {
 		const fields = { ...widget, description: "Le widget", status: "en_pause" as const };
-		const w = pushWorld({}, [appProject("p0002", fields, { base: { path: "old/Widget.md", fields } })]);
+		const answer = { id: 8, answer: "a_reprendre" as const, at: "2026-10-20T09:00:00Z", by: "jmj" };
+		const w = pushWorld({}, [appProject("p0002", fields, { base: { path: "old/Widget.md", fields }, answer })]);
 		const [item] = (await w.pull()).unplaced;
 		const result = await insertUnplacedProject(item as Extract<UnplacedItem, { kind: "project" }>, {
 			remote: w.app.remote,
@@ -101,6 +117,7 @@ describe("Unplaced items", () => {
 		});
 		expect(result).toEqual({ ok: true, path: project });
 		expect(w.files.get(project)).toContain("suivi_id: p0002");
+		expect(w.app.held.get("p0002")!.answer).toBeNull();
 		expect((await w.pull()).unplaced).toEqual([]);
 		expect(await w.plan()).toEqual([]);
 	});

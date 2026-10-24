@@ -2,7 +2,7 @@ import { STATUS_WORDS } from "../inbox/newProject";
 import { localDay } from "../localDate";
 import type { AcknowledgedItem, ItemAnswer, PushChange } from "../remote/api";
 import type { AppItems, AppProject, AppTask, Base } from "./appState";
-import type { PushVault } from "./planPush";
+import type { VaultItems } from "./planPush";
 import { answeredProject, answeredTask, holdsAnswer } from "./pullAnswer";
 import type { SharedProject } from "./sharedProject";
 import type { LocalTask } from "./sharedTask";
@@ -71,8 +71,11 @@ interface Unit {
 
 const ANSWERS: Record<ItemAnswer, string> = { valide: "Validé", a_reprendre: "À reprendre" };
 
-/** A Task's priority as a conflict button shows it. */
-function priorityLabel(priority: number | null, status: string): string {
+/**
+ * A Task line's priority as a conflict button shows it: the line's status
+ * instead when it is À valider or Terminé (no `status`: a line with a `p<n>` token).
+ */
+function priorityLabel(priority: number | null, status?: string): string {
 	if (status === "a_valider" || status === "termine") return STATUS_WORDS[status];
 	return priority === null ? "Héritée" : `P${priority}`;
 }
@@ -84,20 +87,23 @@ function priorityLabel(priority: number | null, status: string): string {
  * changed alone: left to the Push; both: a conflict. App Items in no readable
  * note are left out (unreadable notes are not in `vault`).
  */
-export function compareState(vault: PushVault, app: AppItems): StateComparison {
+export function compareState(vault: VaultItems, app: AppItems): StateComparison {
 	const out: StateComparison = { pulls: [], aligned: [], conflicts: [] };
 	const seen = new Set<string>();
+	/** The live, Triaged app Item of `id`, the first time the vault carries it. */
+	const carried = <T extends { archived: boolean; triaged: boolean }>(id: string | undefined, items: Record<string, T>): T | undefined => {
+		const item = id ? items[id] : undefined;
+		if (!id || seen.has(id) || !item || item.archived || !item.triaged) return undefined;
+		seen.add(id);
+		return item;
+	};
 	for (const p of vault.projects) {
-		const held = p.suiviId ? app.projects[p.suiviId] : undefined;
-		if (!p.suiviId || seen.has(p.suiviId) || !held || held.archived || !held.triaged) continue;
-		seen.add(p.suiviId);
-		for (const unit of projectUnits(p, held)) settle(out, "project", p.suiviId, p.path, p.fields.title, held.base, unit);
+		const item = carried(p.suiviId, app.projects);
+		if (item) for (const unit of projectUnits(p, item)) settle(out, "project", p.suiviId!, p.path, p.fields.title, item.base, unit);
 	}
 	for (const t of vault.tasks) {
-		const held = t.blockId ? app.tasks[t.blockId] : undefined;
-		if (!t.blockId || seen.has(t.blockId) || !held || held.archived || !held.triaged) continue;
-		seen.add(t.blockId);
-		settle(out, "task", t.blockId, t.path, t.title, held.base, taskUnit(t, held));
+		const item = carried(t.blockId, app.tasks);
+		if (item) settle(out, "task", t.blockId!, t.path, t.title, item.base, taskUnit(t, item));
 	}
 	return out;
 }
@@ -116,21 +122,20 @@ function settle(out: StateComparison, kind: Conflict["kind"], id: string, path: 
 	}
 }
 
+/** (moi)'s change: the vault's `fields` pushed with the app values it expects, and the base they make. */
+function mineChange(common: { kind: Conflict["kind"]; id: string; path: string }, base: object, fields: object, expected: object): UpdateChange {
+	const { kind, id, path } = common;
+	return { op: "update", kind, id, fields, expected, base: { path, fields: { ...base, ...fields } } };
+}
+
 /** A Project's priority, and its status when it comes from an Answer. */
-function projectUnits(p: SharedProject, held: AppProject): Unit[] {
+function projectUnits(p: SharedProject, item: AppProject): Unit[] {
 	const id = p.suiviId!;
-	const base = held.base.fields;
+	const base = item.base.fields;
 	const common = { kind: "project" as const, id, path: p.path, title: p.fields.title };
-	const mine = (fields: object, expected: object): UpdateChange => ({
-		op: "update",
-		kind: "project",
-		id,
-		fields,
-		expected,
-		base: { path: p.path, fields: { ...base, ...fields } },
-	});
+	const mine = (fields: object, expected: object) => mineChange(common, base, fields, expected);
 	const units: Unit[] = [];
-	const answer = held.answer;
+	const answer = item.answer;
 	if (answer) {
 		const vault = p.fields.status;
 		units.push({
@@ -146,12 +151,12 @@ function projectUnits(p: SharedProject, held: AppProject): Unit[] {
 				key: `${id}:answer`,
 				unit: "answer",
 				held: ["status"],
-				mine: { label: STATUS_WORDS[vault], change: mine({ status: vault }, { status: held.current.status }) },
+				mine: { label: STATUS_WORDS[vault], change: mine({ status: vault }, { status: item.current.status }) },
 				theirs: { label: ANSWERS[answer.answer], by: answer.by },
 			}),
 		});
 	}
-	const [vault, now, before] = [p.fields.priority, held.current.priority, base.priority];
+	const [vault, now, before] = [p.fields.priority, item.current.priority, base.priority];
 	units.push({
 		same: vault === now,
 		alignNeeded: vault !== before,
@@ -165,27 +170,20 @@ function projectUnits(p: SharedProject, held: AppProject): Unit[] {
 			unit: "priority",
 			held: ["priority"],
 			mine: { label: `P${vault}`, change: mine({ priority: vault }, { priority: now }) },
-			theirs: { label: `P${now}`, by: held.priorityBy },
+			theirs: { label: `P${now}`, by: item.priorityBy },
 		}),
 	});
 	return units;
 }
 
 /** A Task's Answer (status, priority and done date as one unit) when its status comes from one, else its priority. */
-function taskUnit(t: LocalTask, held: AppTask): Unit {
+function taskUnit(t: LocalTask, item: AppTask): Unit {
 	const id = t.blockId!;
-	const base = held.base.fields;
-	const current = held.current;
+	const base = item.base.fields;
+	const current = item.current;
 	const common = { kind: "task" as const, id, path: t.path, title: t.title };
-	const mine = (fields: object, expected: object): UpdateChange => ({
-		op: "update",
-		kind: "task",
-		id,
-		fields,
-		expected,
-		base: { path: t.path, fields: { ...base, ...fields } },
-	});
-	const answer = held.answer;
+	const mine = (fields: object, expected: object) => mineChange(common, base, fields, expected);
+	const answer = item.answer;
 	if (answer) {
 		const doneOn = localDay(new Date(answer.at));
 		const same = holdsAnswer("task", answer.answer, t);
@@ -216,9 +214,12 @@ function taskUnit(t: LocalTask, held: AppTask): Unit {
 	return {
 		same: t.priority === now,
 		alignNeeded: t.priority !== base.priority,
+		// A vault status change counts as a vault change: writing the app's `p<n>`
+		// token would overwrite that status, so it is a conflict, not a pull.
 		vaultAtBase: t.priority === base.priority && t.status === base.status,
 		appAtBase: now === base.priority,
-		// The token written makes the line p0 = En cours, p1–p5 = À faire.
+		// The token written makes the line p0 = En cours, p1–p5 = À faire; when
+		// vault = app, the line already holds that token, so this is its status.
 		pulled: { priority: now, ...(now === null ? {} : { status: now === 0 ? "en_cours" : "a_faire" }) },
 		write: { priority: now },
 		conflict: () => ({
@@ -227,7 +228,8 @@ function taskUnit(t: LocalTask, held: AppTask): Unit {
 			unit: "priority",
 			held: ["priority"],
 			mine: { label: priorityLabel(t.priority, t.status), change: mine({ priority: t.priority }, { priority: now }) },
-			theirs: { label: priorityLabel(now, current.status), by: held.priorityBy },
+			// Both buttons show the line each choice leaves: the app's token replaces any status.
+			theirs: { label: priorityLabel(now), by: item.priorityBy },
 		}),
 	};
 }

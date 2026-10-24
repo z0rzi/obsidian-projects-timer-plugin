@@ -9,6 +9,7 @@ import { boardSnapshot, fillBoards, type StepRef } from "./kanban/boardItems";
 import { CardWrites } from "./kanban/cardWrites";
 import { isDroppedOnCard } from "./kanban/dropTarget";
 import { TimerBar } from "./kanban/timerBar";
+import { suiviIdOf } from "../suiviId";
 
 declare global {
 	interface Window {
@@ -171,7 +172,7 @@ export class TasksKanbanView extends ItemView {
 		}
 		rootEl.innerHTML = "";
 
-		const filled = fillBoards(tasks, projectCards, this.inboxBadges(), (path) => this.plugin.suiviIdOf(path));
+		const filled = fillBoards(tasks, projectCards, this.inboxBadges(), (path) => suiviIdOf(this.app, path));
 		const boards = filled.boards;
 		this.currentSteps = filled.steps;
 

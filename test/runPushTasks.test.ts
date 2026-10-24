@@ -87,6 +87,24 @@ describe("runPush with Tasks", () => {
 		expect(w.files.get(tetris)).toContain(`- [x] #bug ${localDay()} Export ^s1xyz`);
 		expect(await w.plan()).toEqual([]);
 	});
+
+	it("does not send an undated done line whose date could not be written", async () => {
+		const note = "---\nsuivi_id: p0001\npriority: 3\n---\n# Tasks\n- [x] #bug Export ^s1xyz\n";
+		const w = pushWorld({ [tetris]: note });
+		const pending = (await w.plan()).filter((c) => c.group !== "error" && c.change.kind === "task");
+		const deps = {
+			remote: w.app.remote,
+			app: await fetchAppItems(w.app.remote),
+			...vaultWriters(w.vault),
+			writeDoneDate: () => Promise.reject(new Error("the line changed")),
+		};
+
+		const outcome = await runPush(pending, deps);
+
+		expect(outcome).toMatchObject({ applied: 0, failed: [{ title: "Export", error: expect.stringContaining("the line changed") }] });
+		expect(w.app.received).toEqual([]);
+		expect(w.files.get(tetris)).toBe(note);
+	});
 });
 
 describe("runPush dates a step ticked after it was pushed", () => {

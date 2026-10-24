@@ -3,7 +3,8 @@ import type { TaskStateFields, TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import { rewriteOutsideCode } from "../sync/sharedBody";
 import { deindent } from "../sync/sharedTask";
-import { readIndentedBody } from "../taskParser";
+import { priorityToken } from "../lineWriter";
+import { A_VALIDER_TOKEN, readIndentedBody } from "../taskParser";
 
 /** Tags "Insérer ici" offers, as the vault writes them. */
 export const TRIAGE_TAGS: { type: TriageTaskType; label: string }[] = [
@@ -70,8 +71,8 @@ export async function runTriage(
 	} catch (e) {
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
-	if (response.as === "project") return { ok: false, error: "The app made it a Project, not a Task." };
-	const tagAndToken = choice.priority === null ? `#${choice.type}` : `#${choice.type} p${choice.priority}`;
+	if (response.as === "project") return { ok: false, error: "L'app en a fait un Projet, pas une Tâche." };
+	const tagAndToken = choice.priority === null ? `#${choice.type}` : `#${choice.type} ${priorityToken(choice.priority)}`;
 	return writeTask(item, `${target.step ? "- [ ] " : ""}${tagAndToken}`, response.fields, target.path, deps);
 }
 
@@ -79,11 +80,12 @@ export async function runTriage(
  * « Insérer ici » on an Unplaced Task: its line, written from the app's fields
  * now (type, status token or done date, title, `^id`) as a Tag task or a
  * Project step after the cursor's place, with its Description as body; then
- * its base is sent. The app isn't otherwise changed: a Project or step the
- * placement changes is offered by the next Push.
+ * its base is sent, acknowledging the Answer its fields come from, as the
+ * Pull does. The app isn't otherwise changed: a Project or step the placement
+ * changes is offered by the next Push.
  */
 export function insertUnplacedTask(
-	item: { id: string; fields: TaskStateFields },
+	item: { id: string; fields: TaskStateFields; answer?: number },
 	deps: Omit<TriageDeps, "remote"> & { remote: Pick<Remote, "acknowledge"> },
 ): Promise<TriageResult> {
 	const target = deps.target();
@@ -94,19 +96,21 @@ export function insertUnplacedTask(
 	let head: string;
 	if (fields.status === "termine") head = target.step ? `- [x] ${tag}${date}` : `#done${date}`;
 	else {
-		const token = fields.status === "a_valider" ? "pr" : fields.status === "en_cours" ? "p0" : fields.priority === null ? "" : `p${fields.priority}`;
+		const priority = fields.status === "en_cours" ? 0 : fields.priority;
+		const token = fields.status === "a_valider" ? A_VALIDER_TOKEN : priority === null ? "" : priorityToken(priority);
 		head = `${target.step ? "- [ ] " : ""}${tag}${token ? ` ${token}` : ""}`;
 	}
-	return writeTask({ id: item.id, title: fields.title }, head, fields, target.path, deps);
+	return writeTask({ id: item.id, title: fields.title, answer: item.answer }, head, fields, target.path, deps);
 }
 
 /**
  * Writes the Task line `<head> <title> ^<id>` with the Description of `fields`
  * as its body at the cursor of `path`, then sends `fields` as its base, with
- * the title and description as the vault reads them back, so the next Push sees no change.
+ * the title and description as the vault reads them back, so the next Push
+ * sees no change, and acknowledges the Answer `item.answer`, if any.
  */
 async function writeTask(
-	item: { id: string; title: string },
+	item: { id: string; title: string; answer?: number },
 	head: string,
 	fields: { description: string },
 	path: string,
@@ -120,10 +124,11 @@ async function writeTask(
 	// The base as the next Push reads it back from the vault, so it compares equal.
 	const description = deindent(readIndentedBody(written, 0).join("\n"));
 	try {
-		await deps.remote.acknowledge([{ id: item.id, base: { path, fields: { ...fields, title, description } } }]);
+		const answer = item.answer !== undefined ? { answer: item.answer } : {};
+		await deps.remote.acknowledge([{ id: item.id, base: { path, fields: { ...fields, title, description } }, ...answer }]);
 	} catch (e) {
 		const error = e instanceof Error ? e.message : String(e);
-		return { ok: false, error: `inserted, but its base was not sent (${error}); the next Push offers its description` };
+		return { ok: false, error: `insérée, mais sa base n'a pas été envoyée (${error}) : le prochain Push proposera sa description` };
 	}
 	return { ok: true, line, missingImages: missing };
 }

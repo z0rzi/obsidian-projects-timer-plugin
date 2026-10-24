@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ItemView } from "obsidian";
-import { conflictButtons, feedLines, nothingToHandle, InboxView } from "../src/views/InboxView";
+import { feedLines, nothingToHandle, InboxView } from "../src/views/InboxView";
+import { conflictButtons } from "../src/views/inboxPinned";
 import type { Conflict } from "../src/sync/compareState";
 import type { InboxEntry, InboxState, InboxStore } from "../src/inbox/inboxStore";
 import type { ActivityEntry } from "../src/remote/api";

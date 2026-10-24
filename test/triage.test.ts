@@ -193,7 +193,7 @@ describe("runTriage (Insérer ici)", () => {
 			throw new Error("Suivi unreachable");
 		};
 		const result = await runTriage({ id: "t7f3a", title: "X" }, { type: "bug", priority: 2 }, d);
-		expect(result).toEqual({ ok: false, error: expect.stringContaining("inserted, but its base was not sent (Suivi unreachable)") });
+		expect(result).toEqual({ ok: false, error: expect.stringContaining("insérée, mais sa base n'a pas été envoyée (Suivi unreachable)") });
 		expect(inserted).toHaveLength(1);
 	});
 

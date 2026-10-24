@@ -4,7 +4,8 @@ import { Task, TaskStatus, TaskTagLabel, TASKS_TYPES } from "./types";
 
 const DEFAULT_PRIORITY = 1;
 const PRIORITY_TOKEN = /^p([0-5])$/;
-const A_VALIDER_TOKEN = "pr";
+/** Status token of an À valider line. */
+export const A_VALIDER_TOKEN = "pr";
 
 /** Regex source of the status token: lowercase `p0`-`p5` or `pr`. */
 export const STATUS_TOKEN_SOURCE = "p[0-5]|pr";
