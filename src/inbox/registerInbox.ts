@@ -200,8 +200,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	function newProject(entry: InboxEntry) {
 		new NewProjectModal(app, entry.item, (choice) => {
 			void (async () => {
-				const result = await data.exclusive(() =>
-runNewProject(entry.item, choice, projectDeps()));
+				const result = await data.exclusive(() => runNewProject(entry.item, choice, projectDeps()));
 				if (result.ok) {
 					new Notice(`Créée : ${result.path}`);
 					await openLine(result.path, 0);
