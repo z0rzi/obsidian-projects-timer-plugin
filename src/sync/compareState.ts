@@ -71,8 +71,11 @@ interface Unit {
 
 const ANSWERS: Record<ItemAnswer, string> = { valide: "Validé", a_reprendre: "À reprendre" };
 
-/** A Task's priority as a conflict button shows it. */
-function priorityLabel(priority: number | null, status: string): string {
+/**
+ * A Task line's priority as a conflict button shows it: the line's status
+ * instead when it is À valider or Terminé (no `status`: a line with a `p<n>` token).
+ */
+function priorityLabel(priority: number | null, status?: string): string {
 	if (status === "a_valider" || status === "termine") return STATUS_WORDS[status];
 	return priority === null ? "Héritée" : `P${priority}`;
 }
@@ -216,9 +219,12 @@ function taskUnit(t: LocalTask, held: AppTask): Unit {
 	return {
 		same: t.priority === now,
 		alignNeeded: t.priority !== base.priority,
+		// A vault status change counts as a vault change: writing the app's `p<n>`
+		// token would overwrite that status, so it is a conflict, not a pull.
 		vaultAtBase: t.priority === base.priority && t.status === base.status,
 		appAtBase: now === base.priority,
-		// The token written makes the line p0 = En cours, p1–p5 = À faire.
+		// The token written makes the line p0 = En cours, p1–p5 = À faire; when
+		// vault = app, the line already holds that token, so this is its status.
 		pulled: { priority: now, ...(now === null ? {} : { status: now === 0 ? "en_cours" : "a_faire" }) },
 		write: { priority: now },
 		conflict: () => ({
@@ -227,7 +233,8 @@ function taskUnit(t: LocalTask, held: AppTask): Unit {
 			unit: "priority",
 			held: ["priority"],
 			mine: { label: priorityLabel(t.priority, t.status), change: mine({ priority: t.priority }, { priority: now }) },
-			theirs: { label: priorityLabel(now, current.status), by: held.priorityBy },
+			// Both buttons show the line each choice leaves: the app's token replaces any status.
+			theirs: { label: priorityLabel(now), by: held.priorityBy },
 		}),
 	};
 }
