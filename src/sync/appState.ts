@@ -1,6 +1,5 @@
-import type { ItemState, ProjectFields, TaskFields, TaskStateFields } from "../remote/api";
+import type { ItemState, ProjectFields, StateAnswer, TaskFields, TaskStateFields } from "../remote/api";
 import type { Remote } from "../remote/remote";
-import type { SyncState } from "./pluginData";
 
 /**
  * An Item's base as the plugin writes it (`ItemBase` on the wire): its shared
@@ -11,16 +10,25 @@ export type Base<F> = {
 	fields: F;
 };
 
-export interface AppProject {
-	base: Base<ProjectFields>;
-	current: ProjectFields;
+/** What the Pull and the Push read of every Item besides its fields (see `ItemState`). */
+interface AppItem {
 	archived: boolean;
+	/** Triaged or pushed: a vault note should carry it. */
+	triaged: boolean;
+	/** The Answer the current status comes from, not acknowledged yet. */
+	answer: StateAnswer | null;
+	/** Handle of the Client whose site change set the current priority. */
+	priorityBy: string | null;
 }
 
-export interface AppTask {
+export interface AppProject extends AppItem {
+	base: Base<ProjectFields>;
+	current: ProjectFields;
+}
+
+export interface AppTask extends AppItem {
 	base: Base<TaskFields>;
 	current: TaskStateFields;
-	archived: boolean;
 }
 
 /** The app's Items as the Push plans against them, by id. */
@@ -39,27 +47,19 @@ export interface AppItems {
 export function appItems(items: ItemState[]): AppItems {
 	const out: AppItems = { projects: {}, tasks: {}, hasBases: items.some((i) => i.base !== null) };
 	for (const item of items) {
+		const common = { archived: item.archived, triaged: item.triaged, answer: item.answer, priorityBy: item.priority_by };
 		if (item.kind === "project") {
 			const base = (item.base as Base<ProjectFields> | null) ?? { path: "", fields: item.fields };
-			out.projects[item.id] = { base, current: item.fields, archived: item.archived };
+			out.projects[item.id] = { base, current: item.fields, ...common };
 		} else {
 			const base = (item.base as Base<TaskFields> | null) ?? { path: "", fields: item.fields as TaskFields };
-			out.tasks[item.id] = { base, current: item.fields, archived: item.archived };
+			out.tasks[item.id] = { base, current: item.fields, ...common };
 		}
 	}
 	return out;
 }
 
-/**
- * Fetches the app's state and keeps the bases of its non-archived Items in
- * `sync.pushedProjects` / `pushedTasks` (memory only) for the Pull, conflicts
- * and the Inbox, which still read them there.
- */
-export async function fetchAppItems(remote: Pick<Remote, "state">, sync: SyncState): Promise<AppItems> {
-	const app = appItems(await remote.state());
-	sync.pushedProjects = {};
-	sync.pushedTasks = {};
-	for (const [id, p] of Object.entries(app.projects)) if (!p.archived) sync.pushedProjects[id] = p.base;
-	for (const [id, t] of Object.entries(app.tasks)) if (!t.archived) sync.pushedTasks[id] = t.base;
-	return app;
+/** Fetches the app's state (`GET /api/state`) by id. */
+export async function fetchAppItems(remote: Pick<Remote, "state">): Promise<AppItems> {
+	return appItems(await remote.state());
 }

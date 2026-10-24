@@ -1,41 +1,30 @@
-import { Notice, parseLinktext, Plugin, TFile, type App } from "obsidian";
+import { Notice, parseLinktext, Plugin, type App } from "obsidian";
 import { UPLOAD_MAX_BYTES } from "../remote/api";
 import { obsidianTransport } from "../remote/obsidianTransport";
 import { createHttpRemote, RemoteError, type Remote } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
 import { PushModal } from "../ui/PushModal";
 import type { PluginData } from "./pluginData";
-import { fetchAppItems } from "./appState";
-import { writeRemotePriority } from "./pullPriority";
-import { writeAnswer } from "./pullAnswer";
-import { planPush, readPushVault, type Note } from "./planPush";
+import { fetchAppItems, type AppItems } from "./appState";
+import type { Conflict } from "./compareState";
+import { planPush } from "./planPush";
+import { readVault } from "./readVault";
 import { vaultFiles } from "./vaultFiles";
 import { runPush, vaultWriters } from "./runPush";
-import { tagTaskProject } from "./taskProject";
 import { IMAGE_TYPES, shareBody } from "./sharedBody";
 
 /**
  * Adds the "Push to Suivi" command: fetches the app's state, lists the
- * vault's changes against it, then sends the ticked ones. `afterPush` runs
- * once a Push ended (conflicts may be settled).
+ * vault's changes against it, then sends the ticked ones. A conflict's
+ * buttons go to `pick`, which settles it at once.
  */
-export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, afterPush?: () => void) {
+export function registerPush(
+	plugin: Plugin,
+	data: PluginData<ProjectsTimerSettings>,
+	pick: (conflict: Conflict, choice: "mine" | "theirs") => Promise<boolean>,
+) {
 	const { app } = plugin;
 	const files = vaultFiles(app);
-
-	const note = async (file: TFile): Promise<Note> => ({ path: file.path, content: await app.vault.cachedRead(file) });
-
-	/** Project notes directly in the projects folder (notes in its subfolders are not Projects), and all other notes. */
-	async function readVault() {
-		const folder = data.settings.projectsLocation.replace(/\/+$/, "");
-		const all = app.vault.getMarkdownFiles().filter((f) => f.path !== data.settings.projectTemplate);
-		const notes = await Promise.all(all.map(note));
-		const projectNotes = notes.filter((_, i) => all[i]!.parent?.path === folder);
-		return readPushVault(projectNotes, notes, (n) => {
-			const file = app.vault.getFileByPath(n.path);
-			return file ? tagTaskProject(app, file, n.content) : null;
-		});
-	}
 
 	async function push() {
 		if (!data.settings.projectsLocation) {
@@ -46,26 +35,23 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 			{ url: data.settings.suiviUrl, token: data.settings.suiviToken },
 			obsidianTransport,
 		);
-		const vault = await readVault();
+		const vault = await readVault(app, data.settings);
 		for (const message of vault.skipped) new Notice(message);
 		let pending;
+		let appItems: AppItems;
 		try {
-			const appItems = await data.exclusive(() => fetchAppItems(remote, data.sync));
-			pending = planPush(vault, appItems, data.sync, new Date());
+			appItems = await data.exclusive(() => fetchAppItems(remote));
+			pending = planPush(vault, appItems, new Date());
 		} catch (e) {
 			new Notice(e instanceof RemoteError ? e.message : `Push failed: ${(e as Error).message}`, 10_000);
 			return;
 		}
-		new PushModal(app, appHost(data.settings.suiviUrl), pending, async (selected) => {
+		new PushModal(app, appHost(data.settings.suiviUrl), pending, pick, async (selected) => {
 			try {
 				const outcome = await data.exclusive(() => runPush(selected, {
 					remote,
-					sync: data.sync,
-					save: () => data.save(),
+					app: appItems,
 					...vaultWriters(files),
-					writePriority: (kind, id, path, priority) =>
-						writeRemotePriority(files, kind, id, path, priority),
-					writeAnswer: (write) => writeAnswer(files, write),
 					shareBody: bodySharer(app, remote),
 				}));
 				for (const f of outcome.failed) new Notice(`Push: ${f.title}: ${f.error}`, 10_000);
@@ -73,7 +59,6 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 			} catch (e) {
 				new Notice(e instanceof RemoteError ? e.message : `Push failed: ${(e as Error).message}`, 10_000);
 			}
-			afterPush?.();
 		}).open();
 	}
 

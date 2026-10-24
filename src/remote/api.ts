@@ -468,6 +468,12 @@ interface ItemStateCommon {
   triaged: boolean;
   /** Null when the status doesn't come from an Answer, or that Answer was acknowledged. */
   answer: StateAnswer | null;
+  /**
+   * The `@handle` of the Client whose site change (drag or picker) set the
+   * current priority, for the conflict buttons; null when a Push or Triage
+   * set it, or no handle is set.
+   */
+  priority_by: string | null;
 }
 
 /**

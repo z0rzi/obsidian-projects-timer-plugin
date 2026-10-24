@@ -69,7 +69,7 @@ export function disconnectMessage(counts: { projects: number; tasks: number }, s
 
 /**
  * Disconnects the vault from the Client app: removes the app ids from the
- * notes, clears the Suivi URL, token and sync state, and saves data.json.
+ * notes, clears the Suivi URL and token, and saves data.json.
  * Never calls the app. Runs after any Pull or Push in progress.
  */
 export function disconnect(files: VaultFiles, data: PluginData<SuiviSettings>): Promise<void> {
@@ -77,7 +77,6 @@ export function disconnect(files: VaultFiles, data: PluginData<SuiviSettings>): 
 		await removeAppIds(files);
 		data.settings.suiviUrl = "";
 		data.settings.suiviToken = "";
-		data.clearSync();
 		await data.save();
 	});
 }

@@ -148,8 +148,10 @@ describe("Push planned against the app's state", () => {
 
 	it("drops a foreign appImages from data.json: images go through the upload endpoint", async () => {
 		const disk = { sync: { pushedProjects: {}, pushedTasks: {}, appImages: { "capture.png": { url: "/uploads/foreign.png", bytes: 11 } } } };
-		const data = await PluginData.load({}, async () => disk, async () => {});
-		expect("appImages" in data.sync).toBe(false);
+		const saved: unknown[] = [];
+		const data = await PluginData.load({}, async () => disk, async (d) => void saved.push(d));
+		await data.save();
+		expect(saved).toEqual([{}]);
 
 		const w = world({ "m.md": "#task p2 Heatmap\n\t![[capture.png]]\n" });
 		await w.push();

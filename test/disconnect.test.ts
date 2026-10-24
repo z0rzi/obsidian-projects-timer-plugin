@@ -84,7 +84,7 @@ describe("disconnectMessage", () => {
 });
 
 describe("disconnect", () => {
-	it("removes the ids and clears the Suivi URL, token and sync state in data.json", async () => {
+	it("removes the ids and clears the Suivi URL and token in data.json", async () => {
 		const { vault, files } = vaultWithIds();
 		const disk: { data: unknown } = {
 			data: {
@@ -104,7 +104,7 @@ describe("disconnect", () => {
 
 		await disconnect(vault, data);
 
-		expect(disk.data).toEqual({ hourlyRate: 80, suiviUrl: "", suiviToken: "", sync: {} });
+		expect(disk.data).toEqual({ hourlyRate: 80, suiviUrl: "", suiviToken: "" });
 		expect(files.get(meeting)).toBe("#task Heatmap\nnotes ^abcde\n#bug Crash\n");
 	});
 });

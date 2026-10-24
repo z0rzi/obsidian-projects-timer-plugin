@@ -1,27 +1,40 @@
 // In-memory stand-ins for the Client app (`Remote`) and the vault (`VaultFiles`), for Push tests.
-import type { ItemBase, ItemState, ProjectFields, PushChange, PushResult, TaskStateFields, TriageRequest, TriageResponse } from "../src/remote/api";
+import type { AcknowledgedItem, ItemBase, ItemState, ProjectFields, PushChange, PushResult, StateAnswer, TaskStateFields, TriageRequest, TriageResponse } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
 import { appItems, fetchAppItems, type AppItems } from "../src/sync/appState";
-import type { SyncState } from "../src/sync/pluginData";
+import type { Conflict } from "../src/sync/compareState";
+import { pickConflict } from "../src/sync/conflicts";
 import { planPush, readPushVault, type Note } from "../src/sync/planPush";
 import type { PendingChange } from "../src/sync/pushPlan";
 import { runPush, vaultWriters } from "../src/sync/runPush";
 import { shareBody } from "../src/sync/sharedBody";
-import type { VaultFiles } from "../src/sync/runPull";
+import { runPull, type VaultFiles } from "../src/sync/runPull";
 
-type Held = { kind: "project" | "task"; fields: Record<string, unknown>; base: ItemBase | null; archived: boolean };
+type Held = {
+	kind: "project" | "task";
+	fields: Record<string, unknown>;
+	base: ItemBase | null;
+	archived: boolean;
+	answer: StateAnswer | null;
+	priority_by: string | null;
+};
 
 /**
  * An app holding `items` that applies Pushes as `src/items/push.ts` does: a
  * create keeps the id sent (a retried one with the same fields is ok), a
- * change whose `expected` no longer holds is refused, `base` is stored.
- * Uploads are deduplicated by content.
+ * change whose `expected` no longer holds is refused, `base` is stored, a
+ * change of the status drops the Answer. Acknowledges store the base and clear
+ * the Answer they name. Uploads are deduplicated by content.
  */
 export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => string | undefined = () => undefined) {
 	const held = new Map<string, Held>(
-		items.map((i) => [i.id, { kind: i.kind, fields: { ...i.fields }, base: i.base, archived: i.archived }]),
+		items.map((i) => [
+			i.id,
+			{ kind: i.kind, fields: { ...i.fields }, base: i.base, archived: i.archived, answer: i.answer, priority_by: i.priority_by },
+		]),
 	);
 	const received: PushChange[][] = [];
+	const acknowledged: AcknowledgedItem[][] = [];
 	const uploads = new Map<string, string>();
 	let next = 0;
 
@@ -35,7 +48,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 			if (now && (now.kind !== c.kind || Object.entries(c.fields).some(([k, v]) => now.fields[k] !== v))) {
 				return { ok: false, error: `Id ${id} déjà pris` };
 			}
-			held.set(id, { kind: c.kind, fields, base: c.base ?? null, archived: false });
+			held.set(id, { kind: c.kind, fields, base: c.base ?? null, archived: false, answer: null, priority_by: null });
 			return { ok: true, id };
 		}
 		const now = held.get(c.id);
@@ -47,6 +60,8 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 		const changed = Object.entries(c.expected ?? {}).find(([k, v]) => now.fields[k] !== v);
 		if (changed) return { ok: false, error: `${changed[0]} a changé dans l'app, valeur actuelle : ${JSON.stringify(now.fields[changed[0]])}` };
 		if (c.op === "restore") now.archived = false;
+		if ("status" in c.fields && c.fields.status !== now.fields.status) now.answer = null;
+		if ("priority" in c.fields) now.priority_by = null;
 		Object.assign(now.fields, c.fields);
 		if (c.base) now.base = c.base;
 		return { ok: true, id: c.id };
@@ -58,10 +73,15 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 			return changes.map(apply);
 		},
 		async state(): Promise<ItemState[]> {
-			return [...held].map(([id, h]) => ({ id, triaged: true, answer: null, ...h }) as ItemState);
+			return [...held].map(([id, h]) => ({ id, triaged: true, ...h }) as ItemState);
 		},
-		async acknowledge(acked: { id: string; base: ItemBase }[]) {
-			for (const a of acked) held.get(a.id)!.base = a.base;
+		async acknowledge(items: AcknowledgedItem[]) {
+			acknowledged.push(items);
+			for (const a of items) {
+				const now = held.get(a.id)!;
+				now.base = JSON.parse(JSON.stringify(a.base)) as ItemBase;
+				if (a.answer !== undefined && now.answer?.id === a.answer) now.answer = null;
+			}
 		},
 		async upload(data: ArrayBuffer, name: string) {
 			const key = new TextDecoder().decode(data);
@@ -81,7 +101,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 			return { id, as: "task", fields: fields as never };
 		},
 	};
-	return { remote: remote as unknown as Remote, received, held, uploads };
+	return { remote: remote as unknown as Remote, received, acknowledged, held, uploads };
 }
 
 /** A Task as `GET /api/state` lists it. */
@@ -93,6 +113,7 @@ export function appTask(id: string, fields: Partial<TaskStateFields>, more: Part
 		archived: false,
 		triaged: true,
 		answer: null,
+		priority_by: null,
 		fields: { title: "", type: "task", step: false, status: "a_faire", priority: 1, project_id: null, description: "", done_on: null, ...fields },
 		...more,
 	} as ItemState;
@@ -107,6 +128,7 @@ export function appProject(id: string, fields: Partial<ProjectFields>, more: Par
 		archived: false,
 		triaged: true,
 		answer: null,
+		priority_by: null,
 		fields: { title: "", description: "", status: "a_faire", priority: 5, ...fields },
 		...more,
 	} as ItemState;
@@ -162,11 +184,10 @@ export function appWith(
 
 const now = new Date("2026-10-20T10:00:00Z");
 
-/** A vault and an app; `plan` and `push` go through the same steps as the "Push to Suivi" command. */
+/** A vault and an app; `plan`, `push` and `pull` go through the same steps as the commands, `pick` as a conflict's button. */
 export function pushWorld(notes: Record<string, string>, items: ItemState[] = [], refuse?: (c: PushChange) => string | undefined) {
 	const app = fakeSuivi(items, refuse);
 	const v = memoryVault(notes);
-	const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
 	const all = (): Note[] => [...v.files].map(([path, content]) => ({ path, content }));
 	const read = () =>
 		readPushVault(
@@ -174,16 +195,16 @@ export function pushWorld(notes: Record<string, string>, items: ItemState[] = []
 			all(),
 			(n) => (n.path.startsWith("2.projects/") ? n.path : null),
 		);
-	const plan = async () => planPush(read(), await fetchAppItems(app.remote, sync), sync, now);
+	const plan = async () => planPush(read(), await fetchAppItems(app.remote), now);
 	const push = async (selected?: PendingChange[]) =>
 		runPush(selected ?? (await plan()), {
 			remote: app.remote,
-			sync,
-			save: async () => {},
+			app: await fetchAppItems(app.remote),
 			...vaultWriters(v.vault),
 			// Each embed's link text stands for the image's bytes.
 			shareBody: (_path, body) => shareBody(body, (link) => app.remote.upload(new TextEncoder().encode(link).buffer as ArrayBuffer, link)),
 		});
-	return { app, files: v.files, vault: v.vault, sync, plan, push };
+	const pull = () => runPull({ remote: app.remote, files: v.vault, vault: read() });
+	const pick = (conflict: Conflict, choice: "mine" | "theirs") => pickConflict(conflict, choice, { remote: app.remote, files: v.vault });
+	return { app, files: v.files, vault: v.vault, plan, push, pull, pick };
 }
-

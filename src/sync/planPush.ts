@@ -1,6 +1,6 @@
 import type { AppItems } from "./appState";
-import { settleConflicts, withConflicts } from "./conflicts";
-import type { SyncState } from "./pluginData";
+import { compareState } from "./compareState";
+import { withConflicts } from "./conflicts";
 import { planProjectPush, type PendingChange } from "./pushPlan";
 import { readSharedProject, type SharedProject } from "./sharedProject";
 import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
@@ -56,13 +56,10 @@ export function readPushVault(projectNotes: Note[], notes: Note[], projectOf: (n
 	return vault;
 }
 
-/** The Push review: the vault's changes against the app's state, with the Pull conflicts. */
-export function planPush(vault: PushVault, app: AppItems, sync: SyncState, now: Date): PendingChange[] {
-	settleConflicts(sync, vault.projects, vault.tasks);
+/** The Push review: the vault's changes against the app's state, with the conflicts worked out from it. */
+export function planPush(vault: PushVault, app: AppItems, now: Date): PendingChange[] {
 	return withConflicts(
 		[...planProjectPush(vault.projects, app), ...planTaskPush(vault.tasks, vault.links, app, { now })],
-		sync,
-		vault.projects,
-		vault.tasks,
+		compareState(vault, app).conflicts,
 	);
 }

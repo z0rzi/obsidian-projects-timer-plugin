@@ -1,5 +1,8 @@
 import { App, Modal, Setting } from "obsidian";
+import type { Conflict } from "../sync/compareState";
+import type { PendingConflict } from "../sync/conflicts";
 import type { PendingChange } from "../sync/pushPlan";
+import { conflictButtons } from "../views/InboxView";
 
 const GROUPS: { group: PendingChange["group"]; heading: string }[] = [
 	{ group: "new", heading: "New" },
@@ -35,8 +38,8 @@ function show(field: string, value: string | number | null): string {
  * Lists pending changes grouped new / restored / changed (old → new) /
  * conflicts / errors under the app's host, ticked unless they say otherwise;
  * pushes the ticked ones. « Terminées sans date » is a collapsed group of its
- * own. A conflict shows the vault and Suivi values and the Developer picks
- * which one wins (vault by default). Error lines can't be ticked.
+ * own. A conflict has a button per value, which settles it at once
+ * (`pick`), not with the Push. Error lines can't be ticked.
  */
 export class PushModal extends Modal {
 	private readonly ticked: Set<string>;
@@ -45,11 +48,14 @@ export class PushModal extends Modal {
 		app: App,
 		private readonly host: string,
 		private readonly changes: PendingChange[],
+		private readonly pick: (conflict: Conflict, choice: "mine" | "theirs") => Promise<boolean>,
 		private readonly onPush: (selected: PendingChange[]) => void,
 	) {
 		super(app);
 		this.ticked = new Set(
-			changes.filter((c) => c.group !== "error" && !("ticked" in c && c.ticked === false)).map((c) => c.key),
+			changes
+				.filter((c) => c.group !== "error" && c.group !== "conflict" && !("ticked" in c && c.ticked === false))
+				.map((c) => c.key),
 		);
 	}
 
@@ -89,10 +95,14 @@ export class PushModal extends Modal {
 			);
 	}
 
-	/** One line: its switch (none for an error), then what it changes. */
+	/** One line: its switch (none for an error, buttons for a conflict), then what it changes. */
 	private renderChange(parent: HTMLElement, change: PendingChange) {
 		if (change.group === "error") {
 			new Setting(parent).setName(change.title).setDesc(`${change.path}: ${change.error}`);
+			return;
+		}
+		if (change.group === "conflict") {
+			this.renderConflict(parent, change);
 			return;
 		}
 		const isTask = change.change.kind === "task";
@@ -105,18 +115,6 @@ export class PushModal extends Modal {
 				}),
 			);
 		const desc = setting.descEl;
-		if (change.group === "conflict") {
-			desc.createDiv({ text: `${change.field}: vault ${change.local} · Suivi ${change.remote}` });
-			setting.addDropdown((d) =>
-				d
-					.addOption("mine", `Keep vault (${change.local})`)
-					.addOption("theirs", `Take Suivi (${change.remote})`)
-					.setValue(change.choice)
-					.onChange((v) => {
-						change.choice = v === "theirs" ? "theirs" : "mine";
-					}),
-			);
-		}
 		if ("detail" in change) desc.createDiv({ text: change.detail });
 		if (change.group === "changed") {
 			for (const d of change.diffs) {
@@ -126,6 +124,24 @@ export class PushModal extends Modal {
 					: `${d.field}: ${show(d.field, d.from)} → ${show(d.field, d.to)}`;
 				desc.createDiv({ text });
 			}
+		}
+	}
+
+	/** A conflict: what changed on both sides, and a button per value; once settled, the line says so. */
+	private renderConflict(parent: HTMLElement, entry: PendingConflict) {
+		const { conflict } = entry;
+		const what = conflict.unit === "priority" ? "Priorité" : "Réponse du Client";
+		const setting = new Setting(parent).setName(conflict.kind === "task" ? entry.title : `Project: ${entry.title}`).setDesc(what);
+		for (const { choice, text } of conflictButtons(conflict)) {
+			setting.addButton((b) =>
+				b.setButtonText(text).onClick(async () => {
+					setting.setDisabled(true);
+					if (await this.pick(conflict, choice)) {
+						setting.clear();
+						setting.setDesc(`${what} : ${text}, réglé`);
+					} else setting.setDisabled(false);
+				}),
+			);
 		}
 	}
 

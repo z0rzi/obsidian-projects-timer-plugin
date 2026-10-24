@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ItemView } from "obsidian";
-import { feedLines, nothingToHandle, InboxView } from "../src/views/InboxView";
+import { conflictButtons, feedLines, nothingToHandle, InboxView } from "../src/views/InboxView";
+import type { Conflict } from "../src/sync/compareState";
 import type { InboxEntry, InboxState, InboxStore } from "../src/inbox/inboxStore";
 import type { ActivityEntry } from "../src/remote/api";
 
@@ -76,5 +77,11 @@ describe("InboxView", () => {
 		expect(nothingToHandle(state({ toTriage: [ticket] }))).toBe(false);
 		expect(nothingToHandle(state({ conflicts: [{ ...ticket, kind: "conflict" }] }))).toBe(false);
 		expect(nothingToHandle(state({ status: "loading" }))).toBe(false);
+	});
+
+	it("labels a conflict's buttons with the value first and who chose it", () => {
+		const c = { mine: { label: "P0" }, theirs: { label: "P1", by: "jmj" } } as Conflict;
+		expect(conflictButtons(c).map((b) => b.text)).toEqual(["P0 (moi)", "P1 (jmj)"]);
+		expect(conflictButtons({ ...c, theirs: { ...c.theirs, by: null } }).map((b) => b.text)).toEqual(["P0 (moi)", "P1 (Client)"]);
 	});
 });

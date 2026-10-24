@@ -3,6 +3,7 @@ import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
 import type { InboxEntry, InboxFilter, InboxState, InboxStore } from "../inbox/inboxStore";
 import type { ActivityEntry, EventType } from "../remote/api";
+import type { Conflict } from "../sync/compareState";
 
 export const INBOX_VIEW_TYPE = "suivi-inbox-view";
 
@@ -63,13 +64,21 @@ const TYPE_ICONS: Record<EventType, string> = {
 	"push.completed": "upload",
 };
 
+/** The two buttons of a conflict, `[ P0 (moi) ]  [ P1 (jmj) ]`: the value first, who chose it in brackets. */
+export function conflictButtons(c: Conflict): { choice: "mine" | "theirs"; text: string }[] {
+	return [
+		{ choice: "mine", text: `${c.mine.label} (moi)` },
+		{ choice: "theirs", text: `${c.theirs.label} (${c.theirs.by ?? "Client"})` },
+	];
+}
+
 /** What opening something in the Inbox goes to; `thread` also opens its comment thread. */
 export type OpenInboxItem = (item: InboxEntry["item"] | undefined, title: string, thread: boolean) => void;
 
 /**
  * The Developer's pane, two views toggled in its header (kept in the view
  * state). The Inbox: Tickets À trier ("Insérer ici", launched Ideas "Nouveau
- * projet") and Pull conflicts, then the unread feed entries; « Lu » or opening
+ * projet") and conflicts (each button settles one at once), then the unread feed entries; « Lu » or opening
  * one takes it out. The Activity: the whole feed, read entries dimmed. Both
  * newest first, grouped by day. Opening is delegated (`openItem`); filtering,
  * paging and marking read go through the store, so the app keeps the read state.
@@ -93,6 +102,8 @@ export class InboxView extends ItemView {
 		private readonly triage: (entry: InboxEntry) => void = () => {},
 		/** "Nouveau projet" on a launched Idea À trier. */
 		private readonly newProject: (entry: InboxEntry) => void = () => {},
+		/** A conflict's button. */
+		private readonly pick: (conflict: Conflict, choice: "mine" | "theirs") => void = () => {},
 	) {
 		super(leaf);
 		this.images = new AppImages(fetchImage);
@@ -254,7 +265,16 @@ export class InboxView extends ItemView {
 		if (meta) el.createDiv({ text: meta, cls: "suivi-inbox-meta" }).style.color = "var(--text-faint)";
 		const detail = entry.detail.length > EXCERPT ? `${entry.detail.slice(0, EXCERPT)}…` : entry.detail;
 		el.createDiv({ text: detail, cls: "suivi-inbox-detail" }).style.whiteSpace = "pre-wrap";
-		if (entry.kind === "ticket" && entry.ticketType === "idea") {
+		if (entry.conflict) {
+			const conflict = entry.conflict;
+			for (const { choice, text } of conflictButtons(conflict)) {
+				const button = el.createEl("button", { text });
+				button.onclick = () => {
+					button.disabled = true;
+					this.pick(conflict, choice);
+				};
+			}
+		} else if (entry.kind === "ticket" && entry.ticketType === "idea") {
 			el.createEl("button", {
 				text: "Nouveau projet",
 				attr: { "aria-label": "Créer la note du Projet depuis le modèle" },
