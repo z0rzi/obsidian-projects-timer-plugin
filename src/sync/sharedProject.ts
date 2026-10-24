@@ -50,7 +50,6 @@ export function readSharedProject(path: string, content: string): ReadResult | n
 		if (!known) return refuse(`Unknown status "${fm.status}" in ${path}`);
 		status = known;
 	}
-	// `due_date: null` and `due_date: ~` are YAML's none, as an empty value.
 	const dueDate = !fm.due_date || YAML_NULL.has(fm.due_date) ? null : fm.due_date;
 	if (dueDate !== null && !isDueMonth(dueDate)) return refuse(`Invalid due_date "${dueDate}" in ${path}`);
 

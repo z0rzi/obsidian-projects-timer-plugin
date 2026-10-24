@@ -1,5 +1,6 @@
 import type { ItemState, ProjectFields, StateAnswer, TaskFields, TaskStateFields } from "../remote/api";
 import type { Remote } from "../remote/remote";
+import { dueMonthOf } from "../dueDate";
 
 /**
  * An Item's base as the plugin writes it (`ItemBase` on the wire): its shared
@@ -71,7 +72,7 @@ function withDueDate(fields: ProjectFields): ProjectFields {
 /** A stored Base's fields: `due_date` null when absent, and a day (written before the Échéance was a month) read as its month. */
 function baseFields(fields: ProjectFields): ProjectFields {
 	const { due_date } = withDueDate(fields);
-	return { ...fields, due_date: due_date === null ? null : due_date.slice(0, 7) };
+	return { ...fields, due_date: due_date === null ? null : dueMonthOf(due_date) };
 }
 
 /** Fetches the app's state (`GET /api/state`) by id. */
