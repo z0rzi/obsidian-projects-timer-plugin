@@ -89,13 +89,26 @@ export interface ItemAnsweredPayload {
   comment_id: string | null;
 }
 
-/** One vault change in a Push. Items are addressed by the id the app gave them at creation. */
+/**
+ * An Item's base: its shared fields as the vault last agreed with the app, in
+ * the vault's own form (the plugin's `{ path, fields }` record). The plugin
+ * writes it (Push, Triage, `POST /api/state/acknowledge`) and reads it back
+ * from `GET /api/state`; the app stores any JSON object as sent and never
+ * interprets it.
+ */
+export type ItemBase = { [key: string]: unknown };
+
+/**
+ * One vault change in a Push. Items are addressed by the id the app gave them
+ * at creation. `base`: the Item's base once the change applies, stored with it
+ * (absent = the base stays as it was).
+ */
 export type PushChange =
-  | { op: "create"; kind: "project"; fields: ProjectFields }
-  | { op: "update"; kind: "project"; id: string; fields: Partial<ProjectFields> }
+  | { op: "create"; kind: "project"; fields: ProjectFields; base?: ItemBase }
+  | { op: "update"; kind: "project"; id: string; fields: Partial<ProjectFields>; base?: ItemBase }
   | { op: "archive"; kind: "project"; id: string }
-  | { op: "create"; kind: "task"; fields: TaskFields }
-  | { op: "update"; kind: "task"; id: string; fields: Partial<TaskFields> }
+  | { op: "create"; kind: "task"; fields: TaskFields; base?: ItemBase }
+  | { op: "update"; kind: "task"; id: string; fields: Partial<TaskFields>; base?: ItemBase }
   | { op: "archive"; kind: "task"; id: string };
 
 /** `POST /api/push` body. */
@@ -389,9 +402,10 @@ export type TriageTaskType = (typeof TRIAGE_TASK_TYPES)[number];
  * inherit the Project's, no token on the line). `as: "project"` (launched
  * Ideas, "Nouveau projet"): a Project with `priority` (0 = En cours, 1–5 = À
  * faire), title and description taken from the Idea, which then shows lancée.
- * Either way the item keeps its id, description and comments. 404 for an
- * unknown item, 409 for one not À trier or not of that kind, 400 for a bad
- * body.
+ * Either way the item keeps its id, description and comments. `base`: the
+ * Item's base as the vault will read the new line or file back, stored with
+ * the Triage. 404 for an unknown item, 409 for one not À trier or not of that
+ * kind, 400 for a bad body.
  */
 export type TriageRequest =
   | {
@@ -400,10 +414,12 @@ export type TriageRequest =
       step: boolean;
       priority: number | null;
       project_id: string | null;
+      base?: ItemBase;
     }
   | {
       as: "project";
       priority: number;
+      base?: ItemBase;
     };
 
 /**
@@ -413,3 +429,79 @@ export type TriageRequest =
 export type TriageResponse =
   | { id: string; as: "task"; fields: TaskFields }
   | { id: string; as: "project"; fields: ProjectFields };
+
+/**
+ * The Answer an Item's current status comes from, until the Pull acknowledges
+ * it (`AcknowledgedItem.answer`). The status, priority and done date it set
+ * are the Item's current fields.
+ */
+export interface StateAnswer {
+  /** Id of the `item.answered` event. */
+  id: number;
+  answer: ItemAnswer;
+  /** ISO date-time. */
+  at: string;
+  /** The `@handle` of the Client who answered, null while none is set. */
+  by: string | null;
+}
+
+/** What every Item of `GET /api/state` carries besides its kind and fields. */
+interface ItemStateCommon {
+  id: string;
+  /** Null: the plugin never wrote one; it takes the current fields as the base. */
+  base: ItemBase | null;
+  archived: boolean;
+  /**
+   * Triaged or pushed: a vault note should carry it. False for a Ticket or an
+   * Idea still with the Client or À trier (the Inbox's to_triage).
+   */
+  triaged: boolean;
+  /** Null when the status doesn't come from an Answer, or that Answer was acknowledged. */
+  answer: StateAnswer | null;
+}
+
+/**
+ * One Item of `GET /api/state`. A Task's `type` and `status` may be ones only
+ * the app sets (a Ticket's `amelioration`, `a_trier`); `done_on` is the
+ * `YYYY-MM-DD` (UTC) of its done date, null when not Terminé. A launched Idea
+ * is its Project; its Idea row is not listed.
+ */
+export type ItemState =
+  | (ItemStateCommon & { kind: "project"; fields: ProjectFields })
+  | (ItemStateCommon & {
+      kind: "task";
+      fields: Omit<TaskFields, "type" | "status" | "done_on"> & {
+        type: TaskType;
+        status: TaskStatus;
+        done_on: string | null;
+      };
+    });
+
+/** `GET /api/state` response (the Pull): every Project and Task, archived ones included. */
+export interface StateResponse {
+  items: ItemState[];
+}
+
+/**
+ * An Item whose base the plugin sets: after the Pull wrote an app value into
+ * the vault, or a conflict pick. `answer`: id of the Answer it wrote, which
+ * `GET /api/state` then stops returning.
+ */
+export interface AcknowledgedItem {
+  id: string;
+  base: ItemBase;
+  answer?: number;
+}
+
+/**
+ * `POST /api/state/acknowledge` body. All or nothing: an unknown id is a 404,
+ * a bad entry a 400, and no base is written.
+ */
+export interface AcknowledgeRequest {
+  items: AcknowledgedItem[];
+}
+
+/** `POST /api/state/acknowledge` response. */
+export interface AcknowledgeResponse {
+  ok: true;
+}
