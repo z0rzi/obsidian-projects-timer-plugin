@@ -1,4 +1,5 @@
 import type { LineRef } from "../lineWriter";
+import { localDay } from "../localDate";
 import type { ProjectStatus, PushChange, PushedTaskStatus, PushResult } from "../remote/api";
 import { recordAnswer, type AnswerWrite } from "./pullAnswer";
 import { RemoteError, type Remote } from "../remote/remote";
@@ -17,6 +18,8 @@ export interface PushDeps {
 	writeSuiviId: (path: string, id: string) => Promise<void>;
 	/** Ends the Task line with ` ^<id>`. */
 	writeBlockId: (path: string, ref: Omit<LineRef, "blockId">, id: string) => Promise<void>;
+	/** Writes the done date into the ticked Project step `^id`. */
+	writeStepDate: (path: string, id: string, date: string) => Promise<void>;
 	/** Writes Suivi's priority into the vault ("take theirs" on a Pull conflict). */
 	writePriority?: (kind: "project" | "task", id: string, path: string, priority: number | null) => Promise<void>;
 	/** Writes the Client's Answer into the vault ("take theirs" on a conflict from `item.answered`). */
@@ -166,11 +169,16 @@ async function pushProjects(selected: PendingProjectChange[], deps: PushDeps, ou
 
 /**
  * Pushes Task changes: bodies (the Description) are shared just before
- * sending; the last-pushed snapshot keeps the vault's text.
+ * sending; the last-pushed snapshot keeps the vault's text. A ticked Project
+ * step sent as done without a date is sent with today's, then written into its line.
  */
 async function pushTasks(selected: PendingTaskChange[], deps: PushDeps, outcome: PushOutcome) {
 	const ready: { change: PendingTaskChange; sent: PushChange }[] = [];
-	for (const t of selected) {
+	const today = localDay();
+	const toSend = selected.map((t) => datedStep(t, today));
+	const datedSteps = new Set(toSend.filter((t, i) => t !== selected[i]));
+	const dated: { path: string; title: string; id: string }[] = [];
+	for (const t of toSend) {
 		try {
 			ready.push({ change: t, sent: await withSharedBody(t, deps) });
 		} catch (e) {
@@ -192,6 +200,7 @@ async function pushTasks(selected: PendingTaskChange[], deps: PushDeps, outcome:
 		if (change.group === "deleted") delete pushed[change.id];
 		else pushed[result.id] = { path: change.path, fields: change.fields };
 		if (change.group === "new") created.push({ change, id: result.id });
+		if (change.group !== "deleted" && datedSteps.has(change)) dated.push({ path: change.path, title: change.title, id: result.id });
 	});
 	outcome.applied += applied;
 	if (applied > 0 && !deps.sync.doneHistory) deps.sync.doneHistory = deps.doneHistory ?? [];
@@ -206,6 +215,25 @@ async function pushTasks(selected: PendingTaskChange[], deps: PushDeps, outcome:
 			});
 		}
 	}
+	for (const { path, title, id } of dated) {
+		try {
+			await deps.writeStepDate(path, id, today);
+		} catch (e) {
+			outcome.failed.push({
+				title,
+				error: `sent as done on ${today} but the date could not be written (${(e as Error).message}); add it after the step's type tag by hand`,
+			});
+		}
+	}
+}
+
+/** `t` with today as `done_on` when it sends a ticked Project step as done without a date; else `t` itself. */
+function datedStep(t: PendingTaskChange, today: string): PendingTaskChange {
+	if (t.group === "deleted" || !t.fields.step || t.fields.status !== "termine" || t.fields.done_on) return t;
+	if (t.group === "changed" && !("done_on" in t.change.fields)) return t;
+	const fields = { ...t.fields, done_on: today };
+	if (t.group === "new") return { ...t, fields, change: { ...t.change, fields } };
+	return { ...t, fields, change: { ...t.change, fields: { ...t.change.fields, done_on: today } } };
 }
 
 /** The change to send: its `description`, when not empty, shared through `deps.shareBody`. */

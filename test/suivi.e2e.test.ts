@@ -12,7 +12,7 @@ import { runPush } from "../src/sync/runPush";
 import { readSharedProject, type SharedProject } from "../src/sync/sharedProject";
 import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
 import { planTaskPush, type ProjectLinks } from "../src/sync/taskPlan";
-import { appendBlockId } from "../src/lineWriter";
+import { appendBlockId, LineRef, setStepDone } from "../src/lineWriter";
 import { commentTargetAt } from "../src/comments/commentTarget";
 import { ThreadSession, type ThreadState } from "../src/comments/threadSession";
 import { settleConflicts, withConflicts } from "../src/sync/conflicts";
@@ -124,6 +124,11 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 				if (!r.ok) throw new Error(r.reason);
 				files.set(path, r.content);
 			},
+			writeStepDate: async (path: string, id: string, date: string) => {
+				const r = setStepDone(files.get(path)!, LineRef.byId(id), date);
+				if (!r.ok) throw new Error(r.reason);
+				files.set(path, r.content);
+			},
 		};
 
 		const first = plan();
@@ -219,6 +224,11 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 			},
 			writeBlockId: async (path: string, ref: { line: number; raw: string }, id: string) => {
 				const r = appendBlockId(files.get(path)!, ref, id);
+				if (!r.ok) throw new Error(r.reason);
+				files.set(path, r.content);
+			},
+			writeStepDate: async (path: string, id: string, date: string) => {
+				const r = setStepDone(files.get(path)!, LineRef.byId(id), date);
 				if (!r.ok) throw new Error(r.reason);
 				files.set(path, r.content);
 			},

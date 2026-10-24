@@ -1,6 +1,5 @@
 import { splitBlockId } from "./blockId";
-import { toggleCheckboxLine } from "./projectCards";
-import { STATUS_TOKEN_SOURCE, TYPE_TAG_SOURCE } from "./taskParser";
+import { DAY_SOURCE, STATUS_TOKEN_SOURCE, TYPE_TAG_SOURCE } from "./taskParser";
 
 /** What the kanban knew about a line when it was loaded; with a block ID, the line is found by it alone. */
 export type LineRef = { line: number; raw: string; blockId?: string };
@@ -89,6 +88,11 @@ const CHECKBOX_AND_TOKEN = new RegExp(
 	`^(- \\[[ xX]\\] (?:${TYPE_TAG_SOURCE} )?)(?:(?:${STATUS_TOKEN_SOURCE})(?: |$))?`,
 );
 
+/** Checkbox of a Project step, its type tag (group 1, kept), then its token and done date (dropped). */
+const STEP_HEAD = new RegExp(
+	`^- \\[[ xX]\\] ((?:${TYPE_TAG_SOURCE} )?)(?:(?:${STATUS_TOKEN_SOURCE})(?: |$))?(?:${DAY_SOURCE}(?: |$))?`,
+);
+
 /** Replaces the tag (and priority token) of a Tag task line, keeping title and block ID. */
 export function rewriteTaskTag(content: string, ref: LineRef, newTag: string): WriteResult {
 	return rewriteLine(content, ref, (line) => {
@@ -96,11 +100,6 @@ export function rewriteTaskTag(content: string, ref: LineRef, newTag: string): W
 		const rest = line.replace(TAG_AND_TOKEN, "");
 		return rest ? `${newTag} ${rest}` : newTag;
 	});
-}
-
-/** Toggles a Project step checkbox, keeping its text and block ID. */
-export function toggleCheckbox(content: string, ref: LineRef): WriteResult {
-	return rewriteLine(content, ref, toggleCheckboxLine);
 }
 
 /** Sets (or with null removes) the status token of a Project step, keeping its type tag, text and block ID. */
@@ -113,6 +112,20 @@ function withStepToken(line: string, token: StatusToken | null): string | null {
 	const match = line.match(CHECKBOX_AND_TOKEN);
 	if (!match) return null;
 	return `${match[1]}${token ? `${token} ` : ""}${line.slice(match[0].length)}`;
+}
+
+/**
+ * Ticks a Project step done on `date` (its token removed, the date after its
+ * type tag, or after the checkbox without one), or with null unticks it and
+ * removes the date. Type tag, text and block ID are kept.
+ */
+export function setStepDone(content: string, ref: LineRef, date: string | null): WriteResult {
+	return rewriteLine(content, ref, (line) => {
+		const match = line.match(STEP_HEAD);
+		if (!match) return null;
+		const rest = line.slice(match[0].length);
+		return date ? `- [x] ${match[1]}${date} ${rest}` : `- [ ] ${match[1]}${rest}`;
+	});
 }
 
 /**

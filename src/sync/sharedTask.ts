@@ -25,7 +25,7 @@ export interface LocalTask {
 	status: PushedTaskStatus;
 	/** null = inherit the Project's (Project step without token), or no priority (À valider, Terminé). */
 	priority: number | null;
-	/** Date of `#done <date>`. */
+	/** Date of `#done <date>`, or of a done Project step (`- [x] #bug <date> …`). */
 	doneOn?: string;
 	/** The body with the first body line's indentation removed from every line; "" without body. */
 	description: string;
@@ -138,7 +138,7 @@ export function readProjectSteps(path: string, content: string): LocalTask[] {
 			type: item.type,
 			step: true,
 			...(item.checked
-				? { status: "termine" as const, priority: null }
+				? { status: "termine" as const, priority: null, ...(item.doneOn ? { doneOn: item.doneOn } : {}) }
 				: (fromToken(item.override ?? null) ?? { status: "a_faire" as const, priority: null })),
 			description: deindent(item.body),
 		}));

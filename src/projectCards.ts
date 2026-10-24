@@ -1,7 +1,10 @@
 import { TFile } from "obsidian";
 import { ProjectCard, ProjectCardItem } from "./types";
 import { splitBlockId } from "./blockId";
-import { readIndentedBody, readStatusToken, readTypeTag } from "./taskParser";
+import { DAY_SOURCE, readIndentedBody, readStatusToken, readTypeTag } from "./taskParser";
+
+/** Done date of a ticked step, first word after its type tag. */
+const DONE_DAY = new RegExp(`^(${DAY_SOURCE})(?: |$)`);
 
 export function findTasksHeadingSection(
 	lines: string[],
@@ -45,15 +48,18 @@ export function extractCheckboxItems(
 		const match = line.match(checkboxPattern);
 		if (!match) continue;
 
+		const checked = match[1]!.toLowerCase() === "x";
 		const tagged = readTypeTag(match[2]!.trim());
 		const { token, rest } = readStatusToken(tagged.rest);
-		const { text, blockId } = splitBlockId(rest);
+		const doneOn = checked ? rest.match(DONE_DAY)?.[1] : undefined;
+		const { text, blockId } = splitBlockId(doneOn ? rest.slice(doneOn.length).trimStart() : rest);
 		items.push({
 			text,
 			line: i,
-			checked: match[1]!.toLowerCase() === "x",
+			checked,
 			type: tagged.type,
 			...(blockId ? { blockId } : {}),
+			...(doneOn ? { doneOn } : {}),
 			...(token ? { override: token } : {}),
 			raw: line,
 			body: readIndentedBody(lines, i, end).join("\n"),
@@ -124,15 +130,6 @@ export function parseProjectCard(params: {
 		items: selectPreviewItems(items),
 		overrides: items.filter((item) => item.override && !item.checked),
 	};
-}
-
-export function toggleCheckboxLine(line: string): string | null {
-	const checkboxPattern = /^- \[( |x|X)\] (.+)$/;
-	const match = line.match(checkboxPattern);
-	if (!match) return null;
-
-	const newState = match[1]!.toLowerCase() === "x" ? " " : "x";
-	return `- [${newState}] ${match[2]}`;
 }
 
 /** Sets `priority:` in the frontmatter, adding the key (or the frontmatter) when missing. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { splitBlockId } from "../src/blockId";
-import { appendBlockId, rewriteStepToken, rewriteTaskTag, setTaskToken, toggleCheckbox } from "../src/lineWriter";
+import { appendBlockId, rewriteStepToken, rewriteTaskTag, setStepDone, setTaskToken } from "../src/lineWriter";
 
 describe("splitBlockId", () => {
 	it("strips a trailing block ID from the text", () => {
@@ -68,20 +68,20 @@ describe("rewriteTaskTag status token", () => {
 	});
 });
 
-describe("toggleCheckbox", () => {
-	it("toggles the Project step found by block ID and keeps the ID", () => {
+describe("setStepDone finding the line", () => {
+	it("ticks the Project step found by block ID and keeps the ID", () => {
 		const loaded = "- [ ] Étape ^s1";
 		const content = ["# Tasks", "- [ ] Nouvelle", loaded].join("\n");
 
-		const result = toggleCheckbox(content, { line: 1, raw: loaded, blockId: "s1" });
+		const result = setStepDone(content, { line: 1, raw: loaded, blockId: "s1" }, "2026-10-24");
 
-		expect(result).toEqual({ ok: true, content: ["# Tasks", "- [ ] Nouvelle", "- [x] Étape ^s1"].join("\n") });
+		expect(result).toEqual({ ok: true, content: ["# Tasks", "- [ ] Nouvelle", "- [x] 2026-10-24 Étape ^s1"].join("\n") });
 	});
 
-	it("refuses to toggle a step without ID whose line changed", () => {
+	it("refuses to tick a step without ID whose line changed", () => {
 		const content = ["# Tasks", "- [ ] Nouvelle", "- [ ] Étape"].join("\n");
 
-		const result = toggleCheckbox(content, { line: 1, raw: "- [ ] Étape" });
+		const result = setStepDone(content, { line: 1, raw: "- [ ] Étape" }, "2026-10-24");
 
 		expect(result).toEqual({ ok: false, reason: "changed" });
 	});
@@ -135,13 +135,6 @@ describe("rewriteStepToken", () => {
 	});
 });
 
-describe("toggleCheckbox on an Override", () => {
-	it("keeps the token and block ID", () => {
-		const raw = "- [ ] p1 Titre ^s1";
-		expect(toggleCheckbox(raw, { line: 0, raw, blockId: "s1" })).toEqual({ ok: true, content: "- [x] p1 Titre ^s1" });
-	});
-});
-
 describe("a typed Project step", () => {
 	const raw = "- [ ] #bug p2 Axe faux ^s1";
 	const ref = { line: 0, raw, blockId: "s1" };
@@ -153,12 +146,35 @@ describe("a typed Project step", () => {
 		expect(rewriteStepToken(inheriting, { line: 0, raw: inheriting }, "pr")).toEqual({ ok: true, content: "- [ ] #wait pr Retour JMJ" });
 	});
 
-	it("keeps the tag and token when ticked", () => {
-		expect(toggleCheckbox(raw, ref)).toEqual({ ok: true, content: "- [x] #bug p2 Axe faux ^s1" });
-	});
-
 	it("is not rewritten as a Tag task", () => {
 		expect(rewriteTaskTag(raw, ref, "#done 2026-10-20")).toEqual({ ok: false, reason: "changed" });
+	});
+});
+
+describe("setStepDone", () => {
+	it("ticks a step: token dropped, date after the type tag", () => {
+		const raw = "- [ ] #bug p2 Export Excel ^ab12c";
+		expect(setStepDone(raw, { line: 0, raw, blockId: "ab12c" }, "2026-10-24")).toEqual({
+			ok: true,
+			content: "- [x] #bug 2026-10-24 Export Excel ^ab12c",
+		});
+	});
+
+	it("ticks a step without type tag: date right after the checkbox", () => {
+		const raw = "- [ ] pr Relire";
+		expect(setStepDone(raw, { line: 0, raw }, "2026-10-24")).toEqual({ ok: true, content: "- [x] 2026-10-24 Relire" });
+	});
+
+	it("unticks a step: only the box and the date change", () => {
+		const raw = "- [x] #bug 2026-10-24 Export Excel ^ab12c";
+		expect(setStepDone(raw, { line: 0, raw }, null)).toEqual({ ok: true, content: "- [ ] #bug Export Excel ^ab12c" });
+		const untyped = "- [X] 2026-10-24 Relire";
+		expect(setStepDone(untyped, { line: 0, raw: untyped }, null)).toEqual({ ok: true, content: "- [ ] Relire" });
+	});
+
+	it("replaces the date of a step ticked again", () => {
+		const raw = "- [x] #quick 2026-10-01 Relire";
+		expect(setStepDone(raw, { line: 0, raw }, "2026-10-24")).toEqual({ ok: true, content: "- [x] #quick 2026-10-24 Relire" });
 	});
 });
 

@@ -1,5 +1,5 @@
 import { Notice, parseLinktext, Plugin, TFile, type App } from "obsidian";
-import { appendBlockId, processLine, type LineRef } from "../lineWriter";
+import { appendBlockId, processLine, processLineById, setStepDone, type LineRef } from "../lineWriter";
 import { UPLOAD_MAX_BYTES } from "../remote/api";
 import { obsidianTransport } from "../remote/obsidianTransport";
 import { createHttpRemote, RemoteError, type Remote } from "../remote/remote";
@@ -120,6 +120,8 @@ export function registerPush(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 						});
 					},
 					writeBlockId,
+					writeStepDate: (path, id, date) =>
+						processLineById(files.process, path, id, (content, ref) => setStepDone(content, ref, date)),
 					writePriority: (kind, id, path, priority) =>
 						writeRemotePriority(files, kind, id, path, priority),
 					writeAnswer: (write) => writeAnswer(files, write),

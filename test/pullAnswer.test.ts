@@ -92,6 +92,7 @@ function world(events: Omit<ApiEvent, "id">[]) {
 			save: async () => {},
 			writeSuiviId: async () => {},
 			writeBlockId: async () => {},
+			writeStepDate: async () => {},
 			writePriority: (kind, id, path, p) => writeRemotePriority(vault, kind, id, path, p),
 			writeAnswer: (conflict) => writeAnswer(vault, conflict),
 		});
@@ -126,10 +127,10 @@ describe("Pull: Answers on Tasks", () => {
 		expect(w.plan()).toEqual([]);
 	});
 
-	it("Validé on a Project step: the box is ticked and the token dropped, with nothing left to push", async () => {
+	it("Validé on a Project step: the box is ticked, the token dropped and the Answer's day written, with nothing left to push", async () => {
 		const w = world(answered("s9xyz", "valide", [["status", "a_valider", "termine"]]));
 		expect(await w.pull()).toEqual({ applied: 1, conflicts: 0, failed: [] });
-		expect(w.files.get(project)).toContain("- [x] #bug Export ^s9xyz");
+		expect(w.files.get(project)).toContain("- [x] #bug 2026-10-21 Export ^s9xyz");
 		expect(w.plan()).toEqual([]);
 	});
 
