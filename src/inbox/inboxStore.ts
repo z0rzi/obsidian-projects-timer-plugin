@@ -1,7 +1,8 @@
-import type { ActivityEntry, InboxTicket, TaskType } from "../remote/api";
+import type { ActivityEntry, InboxTicket, TaskType, TicketUrgency } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { Conflict } from "../sync/compareState";
 import { unplacedDetail, type UnplacedItem } from "../sync/unplaced";
+import { URGENCIES } from "./triage";
 
 /** A pinned line of the Inbox view: a Ticket À trier, an Unplaced item or a conflict. */
 export interface InboxEntry {
@@ -17,6 +18,10 @@ export interface InboxEntry {
 	at?: string;
 	/** `ticket`: the app type of the item to triage (bug, amelioration, idea). */
 	ticketType?: TaskType;
+	/** `ticket` (not an Idea): « Projet : <title> · <Urgency> », what the Client said it concerns. */
+	context?: string;
+	/** `ticket`: the Client's Urgency, which suggests the Priority at Triage. */
+	urgency?: TicketUrgency | null;
 	/** `conflict`: what its buttons settle. */
 	conflict?: Conflict;
 	/** `unplaced`: the Item « Insérer ici » and « Retirer de l'app » act on. */
@@ -54,11 +59,23 @@ const TICKET_LABELS: Partial<Record<TaskType, string>> = {
 	idea: "Idée",
 };
 
-function ticketEntry(t: InboxTicket): InboxEntry {
+/** Title of the vault's Project note with this `suivi_id:`, null when none has it. */
+export type ProjectTitle = (id: string) => string | null;
+
+/** « Projet : <title> · <Urgency> » for a Ticket, nothing for an Idea. */
+function ticketContext(t: InboxTicket, projectTitle: ProjectTitle): string | undefined {
+	if (t.type === "idea") return undefined;
+	const project = t.project_id === null ? "je ne sais pas" : (projectTitle(t.project_id) ?? "(hors du vault)");
+	return [`Projet : ${project}`, t.urgency && URGENCIES[t.urgency].label].filter(Boolean).join(" · ");
+}
+
+function ticketEntry(t: InboxTicket, projectTitle: ProjectTitle): InboxEntry {
 	return {
 		key: `t${t.id}`,
 		kind: "ticket",
 		ticketType: t.type,
+		context: ticketContext(t, projectTitle),
+		urgency: t.urgency,
 		item: { kind: "task", id: t.id, title: t.title },
 		title: `${TICKET_LABELS[t.type] ?? t.type}: ${t.title}`,
 		detail: t.description,
@@ -115,6 +132,7 @@ export class InboxStore {
 	constructor(
 		private readonly remote: Remote,
 		private readonly onChange: (state: InboxState) => void,
+		private readonly projectTitle: ProjectTitle = () => null,
 	) {}
 
 	get current(): InboxState {
@@ -227,7 +245,7 @@ export class InboxStore {
 		const bulk = fresh.length >= BULK_FROM;
 		return {
 			status: "ready",
-			toTriage: this.tickets.map(ticketEntry),
+			toTriage: this.tickets.map((t) => ticketEntry(t, this.projectTitle)),
 			unplaced: (bulk ? this.unplaced.filter((i) => this.kept.has(i.id)) : this.unplaced).map(unplacedEntry),
 			unplacedBulk: bulk ? fresh : [],
 			conflicts: this.conflicts.map(conflictEntry),

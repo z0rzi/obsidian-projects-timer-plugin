@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InboxStore } from "../src/inbox/inboxStore";
-import { placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
+import { defaultPriority, placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
 import type { InboxTicket, TaskFields, TriageRequest } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
 import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
@@ -47,6 +47,41 @@ describe("Inbox À trier", () => {
 		const store = new InboxStore(remote, () => {});
 		await store.refresh();
 		expect(store.current.toTriage).toEqual([]);
+	});
+
+	it("shows the Client's Project, by the vault's title, and Urgency under a Ticket", async () => {
+		const tickets: InboxTicket[] = [
+			{ ...ticket("t1"), project_id: "p1abc", urgency: "bloquant" },
+			{ ...ticket("t2"), project_id: null, urgency: "quand_possible" },
+			{ ...ticket("t3"), project_id: "p9out", urgency: null },
+			{ ...ticket("t4", "idea"), urgency: null },
+		];
+		const remote = {
+			inbox: async () => ({ notifications: [], to_triage: tickets }),
+			activity: async () => ({ entries: [], next: null }),
+		} as unknown as Remote;
+		const store = new InboxStore(remote, () => {}, (id) => (id === "p1abc" ? "Widget" : null));
+		await store.refresh();
+		expect(store.current.toTriage.map((e) => e.context)).toEqual([
+			"Projet : Widget · Bloquant",
+			"Projet : je ne sais pas · Quand vous pourrez",
+			"Projet : (hors du vault)",
+			undefined,
+		]);
+		expect(store.current.toTriage[0]!.urgency).toBe("bloquant");
+	});
+});
+
+describe("defaultPriority", () => {
+	it("suggests the Priority from the Client's Urgency, step or not", () => {
+		expect(defaultPriority(false, "bloquant")).toBe(1);
+		expect(defaultPriority(true, "genant")).toBe(2);
+		expect(defaultPriority(true, "quand_possible")).toBe(3);
+	});
+
+	it("without Urgency, p3 for a Tag task and the Project's for a step", () => {
+		expect(defaultPriority(false, undefined)).toBe(3);
+		expect(defaultPriority(true, null)).toBeNull();
 	});
 });
 

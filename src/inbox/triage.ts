@@ -1,4 +1,4 @@
-import type { TaskStateFields, TriageTaskType } from "../remote/api";
+import type { TaskStateFields, TicketUrgency, TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import { deindent } from "../sync/sharedTask";
 import { priorityToken } from "../lineWriter";
@@ -16,6 +16,22 @@ export const TRIAGE_TAGS: { type: TriageTaskType; label: string }[] = [
 /** Tag the dialog proposes first for an item of the app's `type`. */
 export function defaultTag(type: string): TriageTaskType {
 	return TRIAGE_TAGS.some((t) => t.type === type) ? (type as TriageTaskType) : "task";
+}
+
+/** The Urgency as the Client answered it, and the Priority it suggests at Triage (P0 stays the Developer's choice). */
+export const URGENCIES: Record<TicketUrgency, { label: string; priority: number }> = {
+	bloquant: { label: "Bloquant", priority: 1 },
+	genant: { label: "Gênant", priority: 2 },
+	quand_possible: { label: "Quand vous pourrez", priority: 3 },
+};
+
+/**
+ * Priority the dialog proposes first: the one the Client's Urgency suggests,
+ * else p3, or the Project's (null) for a Project step.
+ */
+export function defaultPriority(step: boolean, urgency: TicketUrgency | null | undefined): number | null {
+	if (urgency) return URGENCIES[urgency].priority;
+	return step ? null : 3;
 }
 
 export interface TriageChoice {

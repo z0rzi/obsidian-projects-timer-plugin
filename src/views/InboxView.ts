@@ -270,6 +270,7 @@ export class InboxView extends ItemView {
 	private renderPinned(parent: HTMLElement, entry: InboxEntry) {
 		const el = this.entryBox(parent, entry.kind);
 		this.link(el, entry.title, () => this.openItem(entry.item, entry.title, entry.kind !== "conflict"));
+		if (entry.context) el.createDiv({ text: entry.context, cls: "suivi-inbox-context" });
 		const meta = [entry.by, entry.at && DATE.format(new Date(entry.at))].filter(Boolean).join(" · ");
 		if (meta) el.createDiv({ text: meta, cls: "suivi-inbox-meta" }).style.color = "var(--text-faint)";
 		const detail = entry.detail.length > EXCERPT ? `${entry.detail.slice(0, EXCERPT)}…` : entry.detail;

@@ -319,8 +319,9 @@ export interface InboxTicket {
   author_email: string;
   /**
    * How much it gets in the Client's way, a Priority suggestion for Triage:
-   * bloquant → P0, genant → P1, quand_possible → P3. Null for an Idea and
-   * for Tickets sent before the question existed.
+   * bloquant → P1, genant → P2, quand_possible → P3 (P0 stays the
+   * Developer's choice). Null for an Idea and for Tickets sent before the
+   * question existed.
    */
   urgency: TicketUrgency | null;
   /** The Project the Client thinks it concerns (a suggestion; Triage decides). Null: « Je ne sais pas », or an Idea. */

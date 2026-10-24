@@ -37,7 +37,10 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	const { app } = plugin;
 	const remote = settingsRemote(data.settings);
 	const { emit, subscribe } = listeners<InboxState>();
-	const store = new InboxStore(remote, emit);
+	const store = new InboxStore(remote, emit, (id) => {
+		const note = app.vault.getMarkdownFiles().find((f) => suiviIdOf(app, f.path) === id);
+		return note?.basename ?? null;
+	});
 	/** The app's state at the last Pull: the base's note is where an item is looked for first. */
 	let lastState: AppItems | null = null;
 
@@ -123,7 +126,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 			new Notice(target.error);
 			return;
 		}
-		const item = { title: entry.item.title, type: entry.ticketType ?? "task", step: target.step };
+		const item = { title: entry.item.title, type: entry.ticketType ?? "task", step: target.step, context: entry.context, urgency: entry.urgency };
 		new TriageModal(app, item, (choice: TriageChoice) => {
 			void (async () => {
 				const result = await data.exclusive(() =>
