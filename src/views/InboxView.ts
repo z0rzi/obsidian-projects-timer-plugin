@@ -1,7 +1,7 @@
 import { Component, ItemView, MarkdownRenderer, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
-import type { InboxEntry, InboxFilter, InboxState, InboxStore } from "../inbox/inboxStore";
+import type { InboxEntry, InboxState, InboxStore } from "../inbox/inboxStore";
 import type { ActivityEntry, EventType } from "../remote/api";
 import type { Conflict } from "../sync/compareState";
 import type { UnplacedItem } from "../sync/unplaced";
@@ -14,12 +14,6 @@ const DAY = new Intl.DateTimeFormat(undefined, { dateStyle: "full" });
 const TIME = new Intl.DateTimeFormat(undefined, { timeStyle: "short" });
 const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle: "short" });
 const EXCERPT = 160;
-
-const FILTERS: { filter: InboxFilter; label: string }[] = [
-	{ filter: "all", label: "Tous" },
-	{ filter: "client", label: "JMJ" },
-	{ filter: "developer", label: "Moi" },
-];
 
 /** What the pane shows: what needs the Developer, or the whole log. */
 export type InboxMode = "inbox" | "activity";
@@ -103,6 +97,8 @@ export class InboxView extends ItemView {
 		/** A conflict's button. */
 		private readonly pick: (conflict: Conflict, choice: "mine" | "theirs") => void = () => {},
 		private readonly unplaced: UnplacedActions = { insert: () => {}, remove: () => {} },
+		/** The header's Push and Pull buttons, the same as the commands. */
+		private readonly sync: { push: () => void; pull: () => void } = { push: () => {}, pull: () => {} },
 	) {
 		super(leaf);
 		this.images = new AppImages(fetchImage);
@@ -224,7 +220,7 @@ export class InboxView extends ItemView {
 		this.render(this.store.current);
 	}
 
-	/** Title, Inbox / Activité toggle, filter, item filter (its button clears it), "Tout marquer comme lu" and the reload icon. */
+	/** Title, Inbox / Activité toggle, Push and Pull, item filter (its button clears it) and "Tout marquer comme lu". */
 	private drawHeader(root: HTMLElement, state: InboxState) {
 		const header = root.createDiv({ cls: "suivi-inbox-header" });
 		header.style.display = "flex";
@@ -237,18 +233,18 @@ export class InboxView extends ItemView {
 			if (mode === this.mode) button.addClass("mod-cta");
 			button.onclick = () => this.setMode(mode);
 		}
-		const reload = header.createEl("button", { cls: "clickable-icon", attr: { "aria-label": "Recharger" } });
-		setIcon(reload, "refresh-cw");
-		reload.onclick = () => void this.store.refresh();
+		for (const { label, icon, run } of [
+			{ label: "Push", icon: "upload", run: this.sync.push },
+			{ label: "Pull", icon: "download", run: this.sync.pull },
+		]) {
+			const button = header.createEl("button", { cls: "clickable-icon", attr: { "aria-label": label } });
+			setIcon(button, icon);
+			button.onclick = () => run();
+		}
 
 		const tools = root.createDiv({ cls: "suivi-inbox-tools" });
 		tools.style.display = "flex";
 		tools.style.gap = "4px";
-		for (const { filter, label } of FILTERS) {
-			const button = tools.createEl("button", { text: label });
-			if (filter === state.filter) button.addClass("mod-cta");
-			button.onclick = () => this.store.setFilter(filter);
-		}
 		if (state.item) {
 			const clear = tools.createEl("button", {
 				text: `${state.item.title} ✕`,

@@ -196,29 +196,7 @@ describe("Inbox feed: paging", () => {
 	});
 });
 
-describe("Inbox feed: filter", () => {
-	it("shows JMJ's entries under JMJ, the Developer's (Push lines included) under Moi, all under Tous", async () => {
-		const mine: ActivityEntry = { ...comment(6), actor: ME, origin: "api", unread: false };
-		const { store, ids } = storeOn(fakeApp([mine, priority(5), comment(4), push(3)]));
-		await store.refresh();
-		expect(store.current.filter).toBe("all");
-		expect(ids()).toEqual([6, 5, 4, 3]);
-
-		store.setFilter("client");
-		expect(ids()).toEqual([5, 4]);
-		store.setFilter("developer");
-		expect(ids()).toEqual([6, 3]);
-	});
-
-	it("keeps the filter across a reload", async () => {
-		const { store, ids } = storeOn(fakeApp([priority(5), push(3)]));
-		await store.refresh();
-		store.setFilter("developer");
-		await store.refresh();
-		expect(store.current.filter).toBe("developer");
-		expect(ids()).toEqual([3]);
-	});
-
+describe("Inbox feed: item filter", () => {
 	it("shows one item's entries from a kanban badge, until cleared", async () => {
 		const { store, ids } = storeOn(fakeApp([comment(6), priority(5), comment(4, "s2xyz"), push(3)]));
 		await store.refresh();
@@ -238,7 +216,6 @@ describe("Inbox feed: unread", () => {
 		const read: ActivityEntry = { ...comment(2, "s2xyz"), unread: false };
 		const { store } = storeOn(fakeApp([comment(6), priority(5), comment(4), push(3), read]));
 		await store.refresh();
-		store.setFilter("developer");
 
 		expect(store.current.unread).toBe(3);
 		const byItem = store.unreadByItem();

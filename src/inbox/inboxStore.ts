@@ -23,9 +23,6 @@ export interface InboxEntry {
 	unplaced?: UnplacedItem;
 }
 
-/** Whose entries the feed shows: everyone's, or those of the actors of one role. */
-export type InboxFilter = "all" | ActivityEntry["actor"]["role"];
-
 export interface InboxState {
 	status: "idle" | "loading" | "ready" | "error";
 	/** Tickets À trier, pinned on top with their buttons. */
@@ -36,12 +33,11 @@ export interface InboxState {
 	unplacedBulk: UnplacedItem[];
 	/** Conflicts the last Pull worked out, each settled by its buttons. */
 	conflicts: InboxEntry[];
-	/** The loaded Activity entries the filter shows, newest first. */
+	/** The loaded Activity entries the item filter shows, newest first. */
 	feed: ActivityEntry[];
-	filter: InboxFilter;
 	/** The item the feed is narrowed to (a kanban badge was clicked), null for all. */
 	item: InboxItemFilter | null;
-	/** The viewer's unread entries in the app, loaded or not, whatever the filter. */
+	/** The viewer's unread entries in the app, loaded or not, whatever the item filter. */
 	unread: number;
 	/** Older entries are left to load ("Charger plus"). */
 	more: boolean;
@@ -101,14 +97,13 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * putting the entry back on failure.
  */
 export class InboxStore {
-	private state: InboxState = { status: "idle", toTriage: [], unplaced: [], unplacedBulk: [], conflicts: [], feed: [], filter: "all", item: null, unread: 0, more: false };
+	private state: InboxState = { status: "idle", toTriage: [], unplaced: [], unplacedBulk: [], conflicts: [], feed: [], item: null, unread: 0, more: false };
 	private tickets: InboxTicket[] = [];
 	private entries: ActivityEntry[] = [];
 	/** `before` of the next page, null when nothing is older. */
 	private next: number | null = null;
 	/** The app's unread total, as last read and adjusted by the marks since. */
 	private unreadTotal = 0;
-	private filter: InboxFilter = "all";
 	private item: InboxItemFilter | null = null;
 	private conflicts: Conflict[] = [];
 	private unplaced: UnplacedItem[] = [];
@@ -193,13 +188,7 @@ export class InboxStore {
 		}
 	}
 
-	/** Shows only the entries of `filter`; kept across reloads. */
-	setFilter(filter: InboxFilter): void {
-		this.filter = filter;
-		this.set({ ...this.state, filter, feed: this.shown() });
-	}
-
-	/** Shows only the entries of `item` (null: all of them); kept across reloads, combined with the filter. */
+	/** Shows only the entries of `item` (null: all of them); kept across reloads. */
 	setItemFilter(item: InboxItemFilter | null): void {
 		this.item = item;
 		this.set({ ...this.state, item, feed: this.shown() });
@@ -243,7 +232,6 @@ export class InboxStore {
 			unplacedBulk: bulk ? fresh : [],
 			conflicts: this.conflicts.map(conflictEntry),
 			feed: this.shown(),
-			filter: this.filter,
 			item: this.item,
 			unread: this.unreadTotal,
 			more: this.next !== null,
@@ -273,11 +261,11 @@ export class InboxStore {
 		this.set(this.build());
 	}
 
-	/** The loaded entries the filter and the item filter keep. */
+	/** The loaded entries the item filter keeps. */
 	private shown(): ActivityEntry[] {
 		const itemId = this.item?.id;
 		return this.entries.filter(
-			(e) => (this.filter === "all" || e.actor.role === this.filter) && (!itemId || e.item?.id === itemId),
+			(e) => !itemId || e.item?.id === itemId,
 		);
 	}
 

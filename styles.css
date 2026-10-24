@@ -102,25 +102,6 @@
 	cursor: grabbing;
 }
 
-/* Board-specific header accents */
-.tasks-kanban-view-container .kanban-board-doing header {
-	background: var(--interactive-accent, #5c7cfa);
-	color: #fff;
-}
-
-.tasks-kanban-view-container .kanban-board-doing .kanban-title-board {
-	color: #fff;
-}
-
-.tasks-kanban-view-container .kanban-board-a-valider header {
-	background: var(--color-green, #2f9e44);
-	color: #fff;
-}
-
-.tasks-kanban-view-container .kanban-board-a-valider .kanban-title-board {
-	color: #fff;
-}
-
 /* Description text inside cards */
 .tasks-kanban-view-container .kanban-item small {
 	color: var(--text-faint, #999);

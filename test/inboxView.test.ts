@@ -32,7 +32,6 @@ const state = (patch: Partial<InboxState>): InboxState => ({
 	unplacedBulk: [],
 	conflicts: [],
 	feed: [],
-	filter: "all",
 	item: null,
 	unread: 0,
 	more: false,

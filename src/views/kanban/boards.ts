@@ -5,10 +5,10 @@ export const A_VALIDER_BOARD_ID = "pr";
 
 export type BoardDef = { id: string; title: string; class: string; items: unknown[] };
 
-/** The columns, left to right: À valider, doing (P0), P1 to P5. */
+/** The columns, left to right: to validate (À valider), doing (P0), P1 to P5. */
 export function emptyBoards(): BoardDef[] {
 	return [
-		{ id: A_VALIDER_BOARD_ID, title: "À valider", class: "kanban-board-a-valider", items: [] },
+		{ id: A_VALIDER_BOARD_ID, title: "to validate", class: "kanban-board-a-valider", items: [] },
 		{ id: "doing", title: "doing", class: "kanban-board-doing", items: [] },
 		...[1, 2, 3, 4, 5].map((p) => ({ id: `p${p}`, title: `P${p}`, class: "kanban-board-priority", items: [] })),
 	];

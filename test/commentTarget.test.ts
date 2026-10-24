@@ -35,6 +35,11 @@ describe("comment target under the cursor", () => {
 		expect(at(16)).toEqual({ kind: "project", id: "p1abc", title: "Widget" });
 	});
 
+	it("doesn't take a block id outside the app's format for an app id", () => {
+		expect(at(0, "#task p1 Fix heatmap ^abc123", "notes.md")).toBeNull();
+		expect(at(9, project.replace("^s9xyz", "^copied-link"))).toEqual({ kind: "project", id: "p1abc", title: "Widget" });
+	});
+
 	it("covers the whole body when it starts after a blank line", () => {
 		const note = "#task p1 Fix heatmap ^t7f3a\n\n  corps\n  fin\nTexte libre";
 		expect(at(3, note, "notes.md")).toEqual({ kind: "task", id: "t7f3a", title: "Fix heatmap" });

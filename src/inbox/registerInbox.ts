@@ -224,8 +224,16 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				newProject,
 				(conflict, choice) => void pick(conflict, choice),
 				{ insert: (item) => void insertUnplaced(item), remove: (items) => void removeUnplaced(items) },
+				{ push: () => runCommand("push-to-suivi"), pull: () => runCommand("pull-from-suivi") },
 			),
 	);
+
+	/** Runs one of this plugin's commands, as the command palette does (Push and Pull are registered after the Inbox). */
+	function runCommand(id: string) {
+		(app as unknown as { commands: { executeCommandById(id: string): boolean } }).commands.executeCommandById(
+			`${plugin.manifest.id}:${id}`,
+		);
+	}
 
 	const openInbox = () => void openView(app, INBOX_VIEW_TYPE, "Suivi inbox", { active: true }, InboxView);
 	plugin.addCommand({ id: "open-suivi-inbox", name: "Open Suivi inbox", callback: openInbox });
