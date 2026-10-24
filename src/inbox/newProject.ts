@@ -124,9 +124,8 @@ export const STATUS_WORDS: Record<ProjectStatus, string> = {
 /**
  * The template with `{{title}}`/`{{date}}` filled, `suivi_id:`, `priority:`,
  * `status:` and `due_date:` (when it has an Échéance) set in its frontmatter
- * (added if missing), and the
- * description under its `# Description` heading (added after the
- * frontmatter if missing).
+ * (added if missing), and the description under its `# Description` heading
+ * (added after the frontmatter if missing).
  */
 export function projectFile(
 	template: string,

@@ -52,9 +52,9 @@ export function appItems(items: ItemState[]): AppItems {
 		const common = { archived: item.archived, triaged: item.triaged, answer: item.answer, priorityBy: item.priority_by };
 		if (item.kind === "project") {
 			const current = withDueDate(item.fields);
-			const base = item.base as Base<ProjectFields> | null;
-			const fields = base ? { ...base, fields: withDueDate(base.fields) } : { path: "", fields: current };
-			out.projects[item.id] = { base: fields, current, ...common, dueDateBy: item.due_date_by ?? null };
+			const stored = item.base as Base<ProjectFields> | null;
+			const base = stored ? { ...stored, fields: withDueDate(stored.fields) } : { path: "", fields: current };
+			out.projects[item.id] = { base, current, ...common, dueDateBy: item.due_date_by ?? null };
 		} else {
 			const base = (item.base as Base<TaskFields> | null) ?? { path: "", fields: item.fields as TaskFields };
 			out.tasks[item.id] = { base, current: item.fields, ...common };
