@@ -287,7 +287,7 @@ export interface InboxNotification {
   at: string;
   actor_email: string;
   /**
-   * `comment.created`: a new comment; `item.updated`: a Client priority change (`from` → `to`);
+   * `comment.created`: a new comment; `item.updated`: a Client priority or Échéance change (`from` → `to`);
    * `item.answered`: the Client answered a Task or Project À valider (`answer`). The changes an answer causes are not
    * Notifications of their own.
    */
@@ -502,7 +502,15 @@ export type TaskStateFields = Omit<TaskFields, "type" | "status" | "done_on"> & 
 
 /** One Item of `GET /api/state`. A launched Idea is its Project; its Idea row is not listed. */
 export type ItemState =
-  | (ItemStateCommon & { kind: "project"; fields: ProjectFields })
+  | (ItemStateCommon & {
+      kind: "project";
+      fields: ProjectFields;
+      /**
+       * The `@handle` of whoever set the current `due_date` on the site (a clear included), for the
+       * conflict buttons; null when a Push set it, or no handle is set.
+       */
+      due_date_by: string | null;
+    })
   | (ItemStateCommon & { kind: "task"; fields: TaskStateFields });
 
 /** `GET /api/state` response (the Pull): every Project and Task, archived ones included. */
