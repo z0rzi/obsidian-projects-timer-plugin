@@ -26,7 +26,11 @@ export interface ProjectFields {
   description: string;
   status: ProjectStatus;
   priority: number;
-  /** Échéance: a month "YYYY-MM", or null for none. */
+  /**
+   * Échéance: a month "YYYY-MM", or null for none (vault: `due_date:`
+   * frontmatter). A Push may omit it on create (none); any other string is
+   * refused.
+   */
   due_date: string | null;
 }
 
