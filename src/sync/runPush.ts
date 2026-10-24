@@ -154,29 +154,22 @@ async function pushProjects(selected: PendingProjectChange[], deps: PushDeps, ou
 /**
  * Pushes Task changes: bodies (the Description) are shared just before
  * sending; the base keeps the vault's text. A Task sent as done without a
- * date is sent with today's, then written into its line.
+ * date gets today's written into its line first (a failed write leaves it out).
  */
 async function pushTasks(selected: PendingTaskChange[], deps: PushDeps, outcome: PushOutcome) {
 	const today = localDay();
-	const dated = new Set<PendingTaskChange>();
-	const applied = await sendItems(selected, deps, outcome, async (t) => {
+	await sendItems(selected, deps, outcome, async (t) => {
 		const identified = t.group === "new" ? await withId(t, (id) => deps.writeBlockId(t.path, t.ref, id), "^") : t;
 		const change = datedTask(identified, today);
-		if (change !== identified) dated.add(change);
-		return { change, sent: await withSharedBody(change, deps) };
-	});
-	for (const { change, id } of applied) {
-		if (dated.has(change)) {
+		if (change !== identified) {
 			try {
-				await deps.writeDoneDate(change.path, id, today, change.fields.step);
+				await deps.writeDoneDate(change.path, change.id!, today, change.fields.step);
 			} catch (e) {
-				outcome.failed.push({
-					title: change.title,
-					error: `sent as done on ${today} but the date could not be written (${(e as Error).message}); add it to the line by hand`,
-				});
+				throw new Error(`the date ${today} could not be written (${(e as Error).message}); not pushed`);
 			}
 		}
-	}
+		return { change, sent: await withSharedBody(change, deps) };
+	});
 }
 
 /** `t` with today as `done_on` when it sends a Task as done without a date; else `t` itself. */
