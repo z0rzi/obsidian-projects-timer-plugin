@@ -37,9 +37,13 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	const { app } = plugin;
 	const remote = settingsRemote(data.settings);
 	const { emit, subscribe } = listeners<InboxState>();
-	const store = new InboxStore(remote, emit, (id) => {
-		const note = app.vault.getMarkdownFiles().find((f) => suiviIdOf(app, f.path) === id);
-		return note?.basename ?? null;
+	const store = new InboxStore(remote, emit, () => {
+		const titles = new Map<string, string>();
+		for (const note of app.vault.getMarkdownFiles()) {
+			const id = suiviIdOf(app, note.path);
+			if (id) titles.set(id, note.basename);
+		}
+		return titles;
 	});
 	/** The app's state at the last Pull: the base's note is where an item is looked for first. */
 	let lastState: AppItems | null = null;

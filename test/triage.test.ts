@@ -60,8 +60,14 @@ describe("Inbox À trier", () => {
 			inbox: async () => ({ notifications: [], to_triage: tickets }),
 			activity: async () => ({ entries: [], next: null }),
 		} as unknown as Remote;
-		const store = new InboxStore(remote, () => {}, (id) => (id === "p1abc" ? "Widget" : null));
+		let scans = 0;
+		const titles = () => {
+			scans++;
+			return new Map([["p1abc", "Widget"]]);
+		};
+		const store = new InboxStore(remote, () => {}, titles);
 		await store.refresh();
+		expect(scans).toBe(1);
 		expect(store.current.toTriage.map((e) => e.context)).toEqual([
 			"Projet : Widget · Bloquant",
 			"Projet : je ne sais pas · Quand vous pourrez",

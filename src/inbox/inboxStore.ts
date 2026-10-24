@@ -59,22 +59,22 @@ const TICKET_LABELS: Partial<Record<TaskType, string>> = {
 	idea: "Idée",
 };
 
-/** Title of the vault's Project note with this `suivi_id:`, null when none has it. */
-export type ProjectTitle = (id: string) => string | null;
+/** Titles of the vault's Project notes by `suivi_id:`, read once per rebuild (one vault scan). */
+export type ProjectTitles = () => Map<string, string>;
 
 /** « Projet : <title> · <Urgency> » for a Ticket, nothing for an Idea. */
-function ticketContext(t: InboxTicket, projectTitle: ProjectTitle): string | undefined {
+function ticketContext(t: InboxTicket, projectTitles: Map<string, string>): string | undefined {
 	if (t.type === "idea") return undefined;
-	const project = t.project_id === null ? "je ne sais pas" : (projectTitle(t.project_id) ?? "(hors du vault)");
+	const project = t.project_id === null ? "je ne sais pas" : (projectTitles.get(t.project_id) ?? "(hors du vault)");
 	return [`Projet : ${project}`, t.urgency && URGENCIES[t.urgency].label].filter(Boolean).join(" · ");
 }
 
-function ticketEntry(t: InboxTicket, projectTitle: ProjectTitle): InboxEntry {
+function ticketEntry(t: InboxTicket, projectTitles: Map<string, string>): InboxEntry {
 	return {
 		key: `t${t.id}`,
 		kind: "ticket",
 		ticketType: t.type,
-		context: ticketContext(t, projectTitle),
+		context: ticketContext(t, projectTitles),
 		urgency: t.urgency,
 		item: { kind: "task", id: t.id, title: t.title },
 		title: `${TICKET_LABELS[t.type] ?? t.type}: ${t.title}`,
@@ -132,7 +132,7 @@ export class InboxStore {
 	constructor(
 		private readonly remote: Remote,
 		private readonly onChange: (state: InboxState) => void,
-		private readonly projectTitle: ProjectTitle = () => null,
+		private readonly projectTitles: ProjectTitles = () => new Map(),
 	) {}
 
 	get current(): InboxState {
@@ -243,9 +243,10 @@ export class InboxStore {
 	private build(): InboxState {
 		const fresh = this.unplaced.filter((i) => !this.kept.has(i.id));
 		const bulk = fresh.length >= BULK_FROM;
+		const titles = this.tickets.length > 0 ? this.projectTitles() : new Map<string, string>();
 		return {
 			status: "ready",
-			toTriage: this.tickets.map((t) => ticketEntry(t, this.projectTitle)),
+			toTriage: this.tickets.map((t) => ticketEntry(t, titles)),
 			unplaced: (bulk ? this.unplaced.filter((i) => this.kept.has(i.id)) : this.unplaced).map(unplacedEntry),
 			unplacedBulk: bulk ? fresh : [],
 			conflicts: this.conflicts.map(conflictEntry),
