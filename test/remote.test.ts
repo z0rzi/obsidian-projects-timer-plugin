@@ -28,19 +28,6 @@ describe("HTTP remote", () => {
 		]);
 	});
 
-	it("pulls the events after the cursor with a GET, from the start without one", async () => {
-		const body = { events: [], cursor: 7 };
-		const { sent, transport } = fakeTransport(200, body);
-		const remote = createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport);
-
-		expect(await remote.pull(7)).toEqual(body);
-		await remote.pull(null);
-		expect(sent.map((r) => [r.method, r.url, r.body])).toEqual([
-			["GET", "https://suivi.test/api/events?since=7", undefined],
-			["GET", "https://suivi.test/api/events?since=0", undefined],
-		]);
-	});
-
 	it("gets the state and posts acknowledged bases", async () => {
 		const items = [{ id: "t7f3a", kind: "task", base: null, archived: false, triaged: true, answer: null }];
 		const { sent, transport } = fakeTransport(200, { items, ok: true });

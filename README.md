@@ -47,9 +47,9 @@ Tasks appear in the Kanban board and are linked to their project if the note has
 - **Open Projects List** — Browse all project files.
 - **Open Activities** — View recent logged activities.
 - **Push to Suivi** — Review pending Project and Task changes (new / changed old → new / deleted) and send the ticked ones to the Client app.
-- **Pull from Suivi** — Fetch the Client's changes now (priorities, Answers on Tasks and Projects) and write them into the vault; a field you changed locally and haven't pushed becomes a conflict to settle in **Push to Suivi**. Also runs on startup and every 5 minutes.
+- **Pull from Suivi** — Compare every Item's state in the app with the vault now and write the Client's changes (priorities, Answers on Tasks and Projects) into the vault; a field changed on both sides since they last agreed becomes a conflict, settled at once by its buttons (`[ P0 (moi) ]  [ P1 (jmj) ]`) in the inbox or in **Push to Suivi**. Also runs on startup and every 5 minutes.
 - **Open Suivi comments** — Side panel with the Client app comment thread of the pushed Task or Project under the cursor; reply, edit or delete your own comments there.
-- **Open Suivi inbox** — Items to triage and Pull conflicts pinned on top, then the activity feed, newest first: every event of the app, your own Pushes as one line each, filtered Tous / JMJ / Moi, "Charger plus" for older pages; comments that mention you stand out. The Client's entries stay unread until you click "Lu" or "Tout marquer comme lu"; opening an entry jumps to its line (and its thread for a comment) without marking it read. After a Pull, each new Client event shows a toast; the status bar shows the unread count; kanban cards with unread entries get a badge ("💬 2 · P1→P2") that opens the inbox filtered to that item.
+- **Open Suivi inbox** — Items to triage and conflicts pinned on top, then the activity feed, newest first: every event of the app, your own Pushes as one line each, filtered Tous / JMJ / Moi, "Charger plus" for older pages; comments that mention you stand out. The Client's entries stay unread until you click "Lu" or "Tout marquer comme lu"; opening an entry jumps to its line (and its thread for a comment) without marking it read. After each Pull the inbox reloads and each Client entry new since the previous reload shows a toast (none at startup); the status bar shows the unread count; kanban cards with unread entries get a badge ("💬 2 · P1→P2") that opens the inbox filtered to that item.
 
 ## Settings
 
@@ -64,8 +64,8 @@ Tasks appear in the Kanban board and are linked to their project if the note has
 
 The plugin makes network requests only to the Suivi URL you set, once it and the API token are set:
 
-- **Pull**: on startup, every 5 minutes and with **Pull from Suivi**, it fetches the app's new events (`GET /api/events`) and writes the Client's priority changes and Answers into your notes.
-- **Inbox**: after the startup Pull, after each Pull that brought events, after a triage and with its reload button, it fetches the items to triage (`GET /api/inbox`) and the first page of the activity feed (`GET /api/activity`, 30 days); "Charger plus" fetches the page before. Marking entries read sends their event ids, or with "Tout marquer comme lu" the id of the newest loaded entry.
+- **Pull**: on startup, every 5 minutes and with **Pull from Suivi**, it fetches the state of every Item (`GET /api/state`), writes the Client's priority changes and Answers into your notes and acknowledges what it wrote (`POST /api/state/acknowledge`). A conflict's button pushes your value (`POST /api/push`) or writes the app's and acknowledges it.
+- **Inbox**: after each Pull, after a triage and with its reload button, it fetches the items to triage (`GET /api/inbox`) and the first page of the activity feed (`GET /api/activity`, 30 days); "Charger plus" fetches the page before. Marking entries read sends their event ids, or with "Tout marquer comme lu" the id of the newest loaded entry.
 - **Push to Suivi**: only when you run it: it fetches the state of every Item (`GET /api/state`), then sends the changes you ticked (details below).
 - **Comments panel**: only while it is open (details below).
 - **Triage** from the Inbox ("Insérer ici", "Nouveau projet"): sends the type, priority (or inherit, for a Project step) and Project you picked, and whether the line is a Project step.

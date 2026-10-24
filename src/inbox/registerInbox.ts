@@ -3,11 +3,13 @@ import type { CommentTarget } from "../comments/commentTarget";
 import { listeners, settingsRemote } from "../remote/settingsRemote";
 import { openView } from "../ui/openView";
 import type { ProjectsTimerSettings } from "../settings";
+import type { AppItems } from "../sync/appState";
+import type { Conflict } from "../sync/compareState";
+import { pickConflict } from "../sync/conflicts";
 import type { PluginData } from "../sync/pluginData";
-import type { PullHooks } from "../sync/registerPull";
+import type { PullOutcome } from "../sync/runPull";
 import { vaultFiles } from "../sync/vaultFiles";
 import { INBOX_VIEW_TYPE, InboxView } from "../views/InboxView";
-import { withInboxNotice } from "./inboxNotice";
 import { InboxStore, type InboxEntry, type InboxState } from "./inboxStore";
 import { itemLocation } from "./itemLocation";
 import { placeLine, runTriage, type TriageChoice, type TriageDeps } from "./triage";
@@ -25,15 +27,17 @@ export interface InboxDeps {
 
 /**
  * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici"), launched Ideas ("Nouveau projet"),
- * Pull conflicts and the Activity feed. Reloads from the app after a Pull that brought any event and toasts the
- * Client's new ones; a status bar item shows the unread count. Returns the store, `subscribe`, `badges` and
- * `openOnItem` (for the kanban) and the Pull hooks.
+ * the conflicts of the last Pull and the Activity feed. Reloads from the app after each Pull and toasts the
+ * Client's entries that are new since the previous reload; a status bar item shows the unread count. Returns
+ * the store, `subscribe`, `badges` and `openOnItem` (for the kanban), `pick` (a conflict's buttons) and `afterPull`.
  */
 export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, deps: InboxDeps) {
 	const { app } = plugin;
 	const remote = settingsRemote(data.settings);
 	const { emit, subscribe } = listeners<InboxState>();
-	const store = new InboxStore(remote, () => data.sync.conflicts, emit);
+	const store = new InboxStore(remote, emit);
+	/** The app's state at the last Pull: the base's note is where an item is looked for first. */
+	let lastState: AppItems | null = null;
 
 	/** Opens the file at the item's line; `thread` also opens its comment thread. Nothing is marked read. */
 	async function open(item: InboxEntry["item"] | undefined, title: string, thread: boolean) {
@@ -42,7 +46,8 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 			new Notice(`${title} : rien à ouvrir.`);
 			return;
 		}
-		const at = await itemLocation(data.sync, vaultFiles(app), item);
+		const base = item.kind === "project" ? lastState?.projects[item.id]?.base : lastState?.tasks[item.id]?.base;
+		const at = await itemLocation(vaultFiles(app), item, base?.path);
 		if (at) await openLine(at.path, at.line);
 		else if (!thread) new Notice(`${item.title} n'est pas dans ce coffre.`);
 		if (thread) await deps.openThread({ kind: item.kind, id: item.id, title: item.title });
@@ -176,6 +181,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				(path) => remote.image(path),
 				triage,
 				newProject,
+				(conflict, choice) => void pick(conflict, choice),
 			),
 	);
 
@@ -200,31 +206,29 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	plugin.register(subscribe(showUnread));
 	showUnread(store.current);
 
-	let noticed = false;
-	/** Ids of the events the running Pull brought, to toast once the feed has them. */
-	const pulled = new Set<number>();
-	const pullHooks: PullHooks = {
-		handlers: (base) =>
-			withInboxNotice(base, (event) => {
-				noticed = true;
-				// No cursor yet: the first Pull after install brings the whole history, not news.
-				// Events at or below the cursor are retries, toasted when they first came.
-				const cursor = data.sync.cursor;
-				if (cursor !== undefined && event.id > cursor) pulled.add(event.id);
-			}),
-		afterPull: () => {
-			if (!noticed && store.current.status === "ready") return store.rebuild();
-			noticed = false;
-			const toToast = new Set(pulled);
-			pulled.clear();
-			void store.refresh().then(() => {
-				// New Client events are unread; the Developer's own never are, so they get no toast.
-				const entries = [...store.unreadByItem().values()].flat().filter((e) => toToast.has(e.id));
-				for (const entry of entries.sort((a, b) => a.id - b.id)) new Notice(toastText(entry));
-			});
-		},
-	};
+	/** Settles a conflict at once (Inbox or Push review); false, with a Notice, when it failed. */
+	async function pick(conflict: Conflict, choice: "mine" | "theirs"): Promise<boolean> {
+		try {
+			await data.exclusive(() => pickConflict(conflict, choice, { remote, files: vaultFiles(app) }));
+			store.dropConflict(conflict.key);
+			return true;
+		} catch (e) {
+			new Notice(`Conflit sur ${conflict.title} : ${(e as Error).message}`, 10_000);
+			store.rebuild();
+			return false;
+		}
+	}
+
+	/** After each Pull: its conflicts and state, then the feed reloaded and the Client's new entries toasted. */
+	function afterPull(outcome: PullOutcome) {
+		lastState = outcome.app;
+		store.setConflicts(outcome.conflicts);
+		void store.refresh().then((fresh) => {
+			for (const entry of fresh) new Notice(toastText(entry));
+		});
+	}
+
 	/** Kanban badge text by app id of the items with unread Inbox entries. */
 	const badges = () => new Map([...store.unreadByItem()].map(([id, entries]) => [id, badgeText(entries)]));
-	return { store, subscribe, badges, pullHooks, openOnItem, afterPush: () => store.rebuild() };
+	return { store, subscribe, badges, pick, afterPull, openOnItem };
 }

@@ -24,7 +24,7 @@ describe("Inbox À trier", () => {
 			inbox: async () => ({ notifications: [], to_triage: [ticket()] }),
 			activity: async () => ({ entries: [], next: null }),
 		} as unknown as Remote;
-		const store = new InboxStore(remote, () => ({}), () => {});
+		const store = new InboxStore(remote, () => {});
 		await store.refresh();
 
 		expect(store.current.toTriage).toEqual([
@@ -44,7 +44,7 @@ describe("Inbox À trier", () => {
 			inbox: async () => ({ notifications: [] }),
 			activity: async () => ({ entries: [], next: null }),
 		} as unknown as Remote;
-		const store = new InboxStore(remote, () => ({}), () => {});
+		const store = new InboxStore(remote, () => {});
 		await store.refresh();
 		expect(store.current.toTriage).toEqual([]);
 	});

@@ -135,7 +135,7 @@ describe("Inbox À trier with a launched Idea", () => {
 			inbox: async () => ({ notifications: [], to_triage }),
 			activity: async () => ({ entries: [], next: null }),
 		} as unknown as Remote;
-		const store = new InboxStore(remote, () => ({}), () => {});
+		const store = new InboxStore(remote, () => {});
 		await store.refresh();
 		expect(store.current.toTriage).toEqual([
 			expect.objectContaining({ kind: "ticket", ticketType: "idea", title: "Idée: Carte des flux" }),

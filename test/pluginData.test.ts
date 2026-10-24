@@ -14,51 +14,31 @@ function disk(initial: unknown) {
 	};
 }
 
-const pushed = { t7f3a: { path: "2.projects/W.md", fields: { title: "W", description: "", status: "a_faire" as const, priority: 1 } } };
-
 describe("PluginData", () => {
-	it("reads settings and sync state from the same data.json without mixing them", async () => {
-		const io = disk({ projectsLocation: "2.projects", hourlyRate: 80, sync: { cursor: 7 } });
+	it("holds the settings, URL and token only: an older sync state (bases, cursor, retries, conflicts) is dropped on load", async () => {
+		const pushed = { t7f3a: { path: "2.projects/W.md", fields: { title: "W" } } };
+		const conflicts = { "t7f3a:priority": { kind: "task", id: "t7f3a", field: "priority", remote: 1 } };
+		const io = disk({
+			projectsLocation: "2.projects",
+			hourlyRate: 80,
+			suiviUrl: "https://suivi",
+			sync: { pushedProjects: pushed, pushedTasks: {}, cursor: 164, pullRetry: [{ id: 3 }], conflicts, appImages: {}, doneHistory: [] },
+		});
 		const data = await PluginData.load(defaults, io.load, io.save);
 
-		expect(data.settings).toEqual({ projectsLocation: "2.projects", hourlyRate: 80, suiviUrl: "" });
-		expect(data.sync.cursor).toBe(7);
-	});
-
-	it("saving settings keeps the sync state, and saving sync state keeps the settings", async () => {
-		const io = disk({ projectsLocation: "2.projects", hourlyRate: 80, sync: { cursor: 7 } });
-		const data = await PluginData.load(defaults, io.load, io.save);
-
+		expect(data.settings).toEqual({ projectsLocation: "2.projects", hourlyRate: 80, suiviUrl: "https://suivi" });
 		data.settings.hourlyRate = 90;
 		await data.save();
-		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { cursor: 7 } });
-
-		data.sync.cursor = 8;
-		await data.save();
-		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { cursor: 8 } });
+		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "https://suivi" });
 	});
 
-	it("drops the bases, done history, image URLs and pushedReviews of an older data.json, and never saves bases", async () => {
-		const review = { path: "2.projects/reviews/Démo.md", fields: { title: "Démo", body: "" }, answer: "valide" };
-		const appImages = { "capture.png": { url: "/uploads/u1.png", bytes: 3 } };
-		const io = disk({ sync: { pushedProjects: pushed, pushedTasks: {}, doneHistory: [], appImages, pushedReviews: { r1abc: review }, cursor: 3 } });
-		const data = await PluginData.load(defaults, io.load, io.save);
-
-		expect(data.sync).toEqual({ pushedProjects: {}, pushedTasks: {}, cursor: 3 });
-		data.sync.pushedProjects = pushed;
-		await data.save();
-		expect(io.d.data).toEqual({ ...defaults, sync: { cursor: 3 } });
-	});
-
-	it("starts empty when there is no data.json yet", async () => {
+	it("starts from the defaults when there is no data.json yet", async () => {
 		const io = disk(null);
 		const data = await PluginData.load(defaults, io.load, io.save);
-
 		expect(data.settings).toEqual(defaults);
-		expect(data.sync).toEqual({ pushedProjects: {}, pushedTasks: {} });
 	});
 
-	it("runs sync jobs (Pull, Push) one at a time, even when one fails", async () => {
+	it("runs sync jobs (Pull, Push, picks) one at a time, even when one fails", async () => {
 		const { load, save } = disk({});
 		const data = await PluginData.load(defaults, load, save);
 		const order: string[] = [];

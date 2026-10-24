@@ -5,9 +5,6 @@ import type { AppItems } from "./appState";
 import type { PushError } from "./pushPlan";
 import type { LocalTask } from "./sharedTask";
 
-/** Base of each Task, by app id (= its block ID). */
-export type PushedTasks = Record<string, { path: string; fields: TaskFields }>;
-
 /**
  * How Tasks reach their Project, by Project note path. No `id` = a Project
  * pushed for the first time in this Push. `hidden` = prive, or archived and

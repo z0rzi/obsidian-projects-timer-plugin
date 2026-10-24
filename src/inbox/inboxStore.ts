@@ -1,8 +1,8 @@
 import type { ActivityEntry, InboxTicket, TaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
-import type { PullConflict } from "../sync/pullPriority";
+import type { Conflict } from "../sync/compareState";
 
-/** A pinned line of the Inbox view: a Ticket À trier or a Pull conflict. */
+/** A pinned line of the Inbox view: a Ticket À trier or a conflict. */
 export interface InboxEntry {
 	/** Stable across reloads: `t<ticket id>` or `c<conflict key>`. */
 	key: string;
@@ -16,6 +16,8 @@ export interface InboxEntry {
 	at?: string;
 	/** `ticket`: the app type of the item to triage (bug, amelioration, idea). */
 	ticketType?: TaskType;
+	/** `conflict`: what its buttons settle. */
+	conflict?: Conflict;
 }
 
 /** Whose entries the feed shows: everyone's, or those of the actors of one role. */
@@ -25,7 +27,7 @@ export interface InboxState {
 	status: "idle" | "loading" | "ready" | "error";
 	/** Tickets À trier, pinned on top with their buttons. */
 	toTriage: InboxEntry[];
-	/** Pull conflicts, settled in Push. */
+	/** Conflicts the last Pull worked out, each settled by its buttons. */
 	conflicts: InboxEntry[];
 	/** The loaded Activity entries the filter shows, newest first. */
 	feed: ActivityEntry[];
@@ -42,10 +44,6 @@ export interface InboxState {
 
 /** An item of the feed, by app id, with its title for the view. */
 export type InboxItemFilter = { id: string; title: string };
-
-type Conflicts = () => Record<string, PullConflict> | undefined;
-
-const p = (v: unknown) => (typeof v === "number" ? `P${v}` : "héritée");
 
 const TICKET_LABELS: Partial<Record<TaskType, string>> = {
 	bug: "Bug",
@@ -66,20 +64,15 @@ function ticketEntry(t: InboxTicket): InboxEntry {
 	};
 }
 
-/** Suivi's value in a conflict: a priority, or where an Answer put the item. */
-function remoteValue(c: PullConflict): string {
-	if (c.field !== "status") return p(c.remote);
-	if (c.answer === "a_reprendre") return "En cours (À reprendre)";
-	return "Terminé (Validé)";
-}
-
-function conflictEntry(c: PullConflict): InboxEntry {
+function conflictEntry(c: Conflict): InboxEntry {
 	return {
-		key: `c${c.id}:${c.field}`,
+		key: `c${c.key}`,
 		kind: "conflict",
 		item: { kind: c.kind, id: c.id, title: c.title },
 		title: `Conflit sur ${c.title}`,
-		detail: `Suivi a ${remoteValue(c)}, vous l'avez changé aussi : choisissez dans Push to Suivi`,
+		detail: c.unit === "priority" ? "Priorité changée dans le coffre et dans l'app" : "Réponse du Client sur un élément changé dans le coffre",
+		...(c.theirs.by ? { by: `@${c.theirs.by}` } : {}),
+		conflict: c,
 	};
 }
 
@@ -88,7 +81,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /**
  * What the Inbox view and the kanban show: the Activity feed (`GET
  * /api/activity`, paged), the Tickets À trier (`GET /api/inbox`) and the
- * local Pull conflicts. Read state lives in the app, so it survives
+ * conflicts the last Pull worked out. Read state lives in the app, so it survives
  * restarts; marking read updates the view at once and the app right after,
  * putting the entry back on failure.
  */
@@ -102,10 +95,12 @@ export class InboxStore {
 	private unreadTotal = 0;
 	private filter: InboxFilter = "all";
 	private item: InboxItemFilter | null = null;
+	private conflicts: Conflict[] = [];
+	/** Newest entry id of the previous load, null before the first one. */
+	private newest: number | null = null;
 
 	constructor(
 		private readonly remote: Remote,
-		private readonly conflicts: Conflicts,
 		private readonly onChange: (state: InboxState) => void,
 	) {}
 
@@ -113,8 +108,12 @@ export class InboxStore {
 		return this.state;
 	}
 
-	/** Reloads the first page of the feed and the Tickets À trier from the app. */
-	async refresh(): Promise<void> {
+	/**
+	 * Reloads the first page of the feed and the Tickets À trier from the app.
+	 * Returns the Client's entries newer than the previous load, oldest first,
+	 * to toast (none at the first load, or when it fails).
+	 */
+	async refresh(): Promise<ActivityEntry[]> {
 		const ready = this.state.status === "ready";
 		this.set({ ...this.state, status: ready ? "ready" : "loading" });
 		try {
@@ -124,9 +123,25 @@ export class InboxStore {
 			this.next = page.next;
 			this.unreadTotal = page.unread;
 			this.set(this.build());
+			const previous = this.newest;
+			this.newest = page.entries[0]?.id ?? previous;
+			if (previous === null) return [];
+			return page.entries.filter((e) => e.id > previous && e.actor.role === "client").reverse();
 		} catch (e) {
 			this.set({ ...this.state, status: ready ? "ready" : "error", error: message(e) });
+			return [];
 		}
+	}
+
+	/** Shows the conflicts the last Pull worked out. */
+	setConflicts(conflicts: Conflict[]): void {
+		this.conflicts = conflicts;
+		this.rebuild();
+	}
+
+	/** Takes out a conflict just settled by its buttons (`Conflict.key`). */
+	dropConflict(key: string): void {
+		this.setConflicts(this.conflicts.filter((c) => c.key !== key));
 	}
 
 	/** Appends the page older than the loaded entries; nothing when none is older. */
@@ -177,7 +192,7 @@ export class InboxStore {
 		return byItem;
 	}
 
-	/** Re-reads the local conflicts (after a Pull or Push) without asking the app. */
+	/** Redraws from what is loaded, without asking the app. */
 	rebuild(): void {
 		if (this.state.status === "ready") this.set({ ...this.build(), error: this.state.error });
 	}
@@ -187,7 +202,7 @@ export class InboxStore {
 		return {
 			status: "ready",
 			toTriage: this.tickets.map(ticketEntry),
-			conflicts: Object.values(this.conflicts() ?? {}).map(conflictEntry),
+			conflicts: this.conflicts.map(conflictEntry),
 			feed: this.shown(),
 			filter: this.filter,
 			item: this.item,

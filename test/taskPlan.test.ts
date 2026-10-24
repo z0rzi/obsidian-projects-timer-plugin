@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TaskFields } from "../src/remote/api";
 import type { LocalTask } from "../src/sync/sharedTask";
-import { planTaskPush, type ProjectLinks, type PushedTasks } from "../src/sync/taskPlan";
+import { planTaskPush, type ProjectLinks } from "../src/sync/taskPlan";
 import { appWith } from "./fakeSuivi";
 
 const now = new Date("2026-10-20T10:00:00Z");
@@ -26,7 +26,7 @@ const task = (over: Partial<LocalTask> = {}): LocalTask => ({
 	...over,
 });
 const fields: TaskFields = { title: "Widget saison", type: "task", step: false, status: "a_faire", priority: 2, project_id: null, description: "" };
-const plan = (local: LocalTask[], pushed: PushedTasks = {}) => ({
+const plan = (local: LocalTask[], pushed: Record<string, { path: string; fields: TaskFields }> = {}) => ({
 	changes: planTaskPush(local, projects, appWith({}, pushed), { now }),
 });
 

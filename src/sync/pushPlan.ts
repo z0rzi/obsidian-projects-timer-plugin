@@ -4,9 +4,6 @@ import type { PendingConflict } from "./conflicts";
 import type { SharedProject } from "./sharedProject";
 import type { PendingTaskChange } from "./taskPlan";
 
-/** Base of each Project, by app id. */
-export type PushedProjects = Record<string, { path: string; fields: ProjectFields }>;
-
 export interface FieldDiff {
 	field: keyof ProjectFields;
 	from: string | number | null;

@@ -6,7 +6,6 @@ import type {
 	Comment,
 	CommentResponse,
 	CommentsResponse,
-	EventsResponse,
 	InboxResponse,
 	MarkReadResponse,
 	PushChange,
@@ -29,8 +28,6 @@ export interface Remote {
 	state(): Promise<ItemState[]>;
 	/** Sets the base of Items the vault now agrees on (all or nothing). */
 	acknowledge(items: AcknowledgedItem[]): Promise<void>;
-	/** Events after `cursor` (null = from the start) and the cursor to keep. */
-	pull(cursor: number | null): Promise<EventsResponse>;
 	/** Thread of a Project or Task, oldest first. */
 	comments(itemId: string): Promise<Comment[]>;
 	/** Adds a comment to an item's thread. */
@@ -147,9 +144,6 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		},
 		async acknowledge(items) {
 			await call<AcknowledgeResponse>("POST", "/state/acknowledge", { items });
-		},
-		async pull(cursor) {
-			return call<EventsResponse>("GET", `/events?since=${cursor ?? 0}`);
 		},
 		async comments(itemId) {
 			return (await call<CommentsResponse>("GET", `/items/${encodeURIComponent(itemId)}/comments`)).comments;

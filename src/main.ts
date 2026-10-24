@@ -56,10 +56,11 @@ export default class ProjectsTimerPlugin extends Plugin {
 	/** Suivi Inbox (its store, badges and item opener feed the kanban); set in onload. */
 	inbox: ReturnType<typeof registerInbox> | null = null;
 
-	/** App id of the Project last pushed from `path`. */
+	/** App id of the Project note at `path`: its `suivi_id:`. */
 	suiviIdOf(path: string): string | undefined {
-		const pushed = this.data.sync.pushedProjects;
-		return Object.keys(pushed).find((id) => pushed[id]!.path === path);
+		const file = this.app.vault.getFileByPath(path);
+		const id: unknown = file ? this.app.metadataCache.getFileCache(file)?.frontmatter?.suivi_id : undefined;
+		return typeof id === "string" && id ? id : undefined;
 	}
 
 	revenueSpan: HTMLElement;
@@ -619,8 +620,8 @@ export default class ProjectsTimerPlugin extends Plugin {
 
 		const comments = registerComments(this, this.data);
 		this.inbox = registerInbox(this, this.data, comments);
-		registerPush(this, this.data, this.inbox.afterPush);
-		registerPull(this, this.data, this.inbox.pullHooks);
+		registerPush(this, this.data, this.inbox.pick);
+		registerPull(this, this.data, this.inbox.afterPull);
 
 		this.addCommand({
 			id: "open-tasks-kanban",

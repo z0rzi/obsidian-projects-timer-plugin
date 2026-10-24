@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { InboxStore, type InboxState } from "../src/inbox/inboxStore";
 import type { ActivityEntry, ActivityResponse, InboxTicket } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
-import type { PullConflict } from "../src/sync/pullPriority";
+import type { Conflict } from "../src/sync/compareState";
 
 const JMJ: ActivityEntry["actor"] = { email: "jmj@edf.fr", handle: "jmj", role: "client" };
 const ME: ActivityEntry["actor"] = { email: "baptiste@example.fr", handle: "baptiste", role: "developer" };
@@ -95,24 +95,31 @@ function fakeApp(feed: ActivityEntry[], pageSize = 10) {
 	return { remote, marked, asked, failMarkRead: () => (failNext = true) };
 }
 
-function storeOn(app: ReturnType<typeof fakeApp>, conflicts: Record<string, PullConflict> = {}) {
+/** A conflict as the Pull works it out (only what the Inbox reads is filled). */
+const conflict = (unit: Conflict["unit"], mine: string, theirs: string): Conflict =>
+	({
+		key: `t7f3a:${unit}`,
+		kind: "task",
+		id: "t7f3a",
+		path: "1.meetings/m.md",
+		title: "Fix heatmap",
+		unit,
+		held: [],
+		mine: { label: mine },
+		theirs: { label: theirs, by: "jmj" },
+	}) as unknown as Conflict;
+
+function storeOn(app: ReturnType<typeof fakeApp>) {
 	const states: InboxState[] = [];
-	const store = new InboxStore(app.remote, () => conflicts, (s) => states.push(s));
+	const store = new InboxStore(app.remote, (s) => states.push(s));
 	const ids = () => store.current.feed.map((e) => e.id);
 	return { store, states, ids };
 }
 
 describe("Inbox feed", () => {
-	it("shows the feed newest first, À trier and Pull conflicts pinned apart", async () => {
-		const conflict: PullConflict = {
-			kind: "task",
-			id: "t7f3a",
-			field: "priority",
-			path: "2.projects/Widget.md",
-			title: "Fix heatmap",
-			remote: 1,
-		};
-		const { store, ids } = storeOn(fakeApp([priority(5), comment(4), push(3)]), { "t7f3a:priority": conflict });
+	it("shows the feed newest first, À trier and the Pull's conflicts pinned apart", async () => {
+		const { store, ids } = storeOn(fakeApp([priority(5), comment(4), push(3)]));
+		store.setConflicts([conflict("priority", "P2", "P1")]);
 		await store.refresh();
 
 		expect(store.current.status).toBe("ready");
@@ -129,23 +136,35 @@ describe("Inbox feed", () => {
 			expect.objectContaining({
 				kind: "conflict",
 				title: "Conflit sur Fix heatmap",
-				detail: "Suivi a P1, vous l'avez changé aussi : choisissez dans Push to Suivi",
+				detail: "Priorité changée dans le coffre et dans l'app",
+				by: "@jmj",
 				item: { kind: "task", id: "t7f3a", title: "Fix heatmap" },
 			}),
 		]);
 	});
 
-	it("names the Client's Answer in a conflict it caused", async () => {
-		const base = { field: "status" as const, path: "2.projects/Widget.md", title: "Widget", remote: null };
-		const { store } = storeOn(fakeApp([]), {
-			"p0002:status": { ...base, kind: "project", id: "p0002", answer: "a_reprendre" },
-			"t7f3a:status": { ...base, kind: "task", id: "t7f3a", answer: "valide", doneOn: "2026-10-21" },
-		});
+	it("names an Answer's conflict, and drops a conflict once picked", async () => {
+		const { store } = storeOn(fakeApp([]));
 		await store.refresh();
+		store.setConflicts([conflict("answer", "En cours", "Validé"), conflict("priority", "P2", "P1")]);
 		expect(store.current.conflicts.map((c) => c.detail)).toEqual([
-			"Suivi a En cours (À reprendre), vous l'avez changé aussi : choisissez dans Push to Suivi",
-			"Suivi a Terminé (Validé), vous l'avez changé aussi : choisissez dans Push to Suivi",
+			"Réponse du Client sur un élément changé dans le coffre",
+			"Priorité changée dans le coffre et dans l'app",
 		]);
+		store.dropConflict("t7f3a:answer");
+		expect(store.current.conflicts.map((c) => c.key)).toEqual(["ct7f3a:priority"]);
+	});
+});
+
+describe("Inbox feed: new Client entries", () => {
+	it("are none at the first load, then the Client's entries newer than the previous load", async () => {
+		const feed = [comment(4), push(3)];
+		const { store } = storeOn(fakeApp(feed));
+		expect(await store.refresh()).toEqual([]);
+		feed.unshift(push(6), priority(5));
+		feed.sort((a, b) => b.id - a.id);
+		expect((await store.refresh()).map((e) => e.id)).toEqual([5]);
+		expect(await store.refresh()).toEqual([]);
 	});
 });
 

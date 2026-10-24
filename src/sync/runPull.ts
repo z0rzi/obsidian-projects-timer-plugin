@@ -1,10 +1,10 @@
 import type { ProcessFile } from "../lineWriter";
-import type { ApiEvent, EventType } from "../remote/api";
 import type { Remote } from "../remote/remote";
-import type { SyncState } from "./pluginData";
-import { NotInVault } from "./locateItem";
-import { pullItemUpdated } from "./pullPriority";
-import { pullItemAnswered } from "./pullAnswer";
+import { fetchAppItems, type AppItems } from "./appState";
+import { acknowledgements, compareState, type BaseUpdate, type Conflict, type PullWrite } from "./compareState";
+import type { PushVault } from "./planPush";
+import { writeAnswer } from "./pullAnswer";
+import { writeRemotePriority } from "./pullPriority";
 
 /** The few vault operations a Pull needs (an in-memory map in tests). */
 export interface VaultFiles {
@@ -14,82 +14,55 @@ export interface VaultFiles {
 	process: ProcessFile;
 	/** Edits the frontmatter of the file as an object (Obsidian's `fileManager.processFrontMatter`). */
 	processFrontMatter(path: string, edit: (frontmatter: Record<string, unknown>) => void): Promise<void>;
-	/** Every Markdown note, to find an item that left the note it was pushed from. */
+	/** Every Markdown note, to find an item that left the note it was last seen in. */
 	paths(): string[];
 }
 
 export interface PullDeps {
 	remote: Remote;
-	sync: SyncState;
-	/** Persists `sync`. */
-	save: () => Promise<void>;
 	files: VaultFiles;
+	/** The vault as the Push reads it. */
+	vault: PushVault;
 }
 
 export interface PullOutcome {
 	/** Vault writes made. */
 	applied: number;
-	/** New conflicts, for the Push modal. */
-	conflicts: number;
-	/**
-	 * Events that couldn't be applied. One whose item is in no note is kept in
-	 * `SyncState.pullRetry` and retried at each Pull (reported once); others
-	 * (line refused, file unreadable) are dropped.
-	 */
+	/** The conflicts now, for the Inbox and the Push review. */
+	conflicts: Conflict[];
+	/** Writes that couldn't be made (line refused, file gone): found again at the next Pull. */
 	failed: { title: string; error: string }[];
+	/** The app's state the Pull compared against. */
+	app: AppItems;
 }
 
-/** What a handler gets: the deps and the outcome it reports into. */
-export interface PullContext extends PullDeps {
-	outcome: PullOutcome;
+/** Writes an app value into the vault: a priority, or the Client's Answer. */
+export function writePull(files: VaultFiles, pull: PullWrite): Promise<void> {
+	if ("priority" in pull.write) return writeRemotePriority(files, pull.kind, pull.id, pull.path, pull.write.priority);
+	return writeAnswer(files, { kind: pull.kind, id: pull.id, path: pull.path, answer: pull.write.answer, doneOn: pull.write.doneOn });
 }
 
-export type PullHandler = (event: ApiEvent, ctx: PullContext) => Promise<void>;
-
 /**
- * One handler per event type the vault cares about; the others (creations
- * echoing a Push, comments…) are skipped. Later tickets add theirs here.
+ * Fetches every Item's state and compares it with the vault (`compareState`):
+ * writes the Client's changes into the vault, then acknowledges them, with the
+ * bases the vault already agrees on, in one call. Nothing is kept between
+ * Pulls. A whole-call failure (app down, bad token) throws a RemoteError.
  */
-export const PULL_HANDLERS: Partial<Record<EventType, PullHandler>> = {
-	"item.updated": pullItemUpdated,
-	"item.answered": pullItemAnswered,
-};
-
-/**
- * Fetches the events after the saved cursor and hands each, oldest first, to
- * its handler. The cursor is saved once all are handled, so repeated Pulls
- * with no new events change nothing. A whole-call failure (app down, bad
- * token) throws a RemoteError and keeps the cursor.
- */
-export async function runPull(deps: PullDeps, handlers = PULL_HANDLERS): Promise<PullOutcome> {
-	const outcome: PullOutcome = { applied: 0, conflicts: 0, failed: [] };
-	const { events, cursor } = await deps.remote.pull(deps.sync.cursor ?? null);
-	const ctx: PullContext = { ...deps, outcome };
-	const kept = deps.sync.pullRetry ?? [];
-	const keptIds = new Set(kept.map((e) => e.id));
-	const retry: ApiEvent[] = [];
-	for (const event of [...kept, ...events.filter((e) => !keptIds.has(e.id))]) {
-		const handler = handlers[event.type];
-		if (!handler) continue;
+export async function runPull(deps: PullDeps): Promise<PullOutcome> {
+	const app = await fetchAppItems(deps.remote);
+	const { pulls, aligned, conflicts } = compareState(deps.vault, app);
+	const outcome: PullOutcome = { applied: 0, conflicts, failed: [], app };
+	const written: BaseUpdate[] = [];
+	for (const pull of pulls) {
 		try {
-			await handler(event, ctx);
+			await writePull(deps.files, pull);
+			written.push(pull);
+			outcome.applied++;
 		} catch (e) {
-			const title = event.item ?? event.type;
-			if (!(e instanceof NotInVault)) outcome.failed.push({ title, error: (e as Error).message });
-			else {
-				retry.push(event);
-				if (!keptIds.has(event.id)) outcome.failed.push({ title, error: `${e.message}; kept, retried at the next Pull` });
-			}
+			outcome.failed.push({ title: pull.title, error: (e as Error).message });
 		}
 	}
-	const retryChanged = retry.length !== kept.length || retry.some((e, i) => e.id !== kept[i]!.id);
-	if (retryChanged) {
-		if (retry.length) deps.sync.pullRetry = retry;
-		else delete deps.sync.pullRetry;
-	}
-	if (cursor !== deps.sync.cursor || retryChanged) {
-		deps.sync.cursor = cursor;
-		await deps.save();
-	}
+	const acks = acknowledgements([...aligned, ...written]);
+	if (acks.length > 0) await deps.remote.acknowledge(acks);
 	return outcome;
 }

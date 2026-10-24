@@ -2,13 +2,13 @@ import type { VaultFiles } from "./runPull";
 import { readSharedProject, type SharedProject } from "./sharedProject";
 import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
 
-/** The item a Pull event is about is in no note of the vault (yet): the event is kept and retried. */
+/** No note of the vault carries the item. */
 export class NotInVault extends Error {}
 
 type Finder<T> = (path: string, content: string) => T | null;
 
 /**
- * Finds an item by its app id: in the note it was last pushed from first,
+ * Finds an item by its app id: in `lastPath` (the note of its base) first,
  * then in any other note that mentions the id (a line moved, a note renamed).
  * Throws NotInVault if it is nowhere.
  */
@@ -28,7 +28,7 @@ export async function locateItem<T>(
 		const found = find(path, other);
 		if (found) return { path, found };
 	}
-	throw new NotInVault(`not in the vault (last pushed from ${lastPath})`);
+	throw new NotInVault("not in the vault");
 }
 
 /** The Task line with block ID `id`: a Tag task or a Project step. */

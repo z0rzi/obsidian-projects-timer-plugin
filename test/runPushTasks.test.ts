@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PushChange } from "../src/remote/api";
 import { localDay } from "../src/localDate";
+import { fetchAppItems } from "../src/sync/appState";
 import { runPush, vaultWriters } from "../src/sync/runPush";
 import { pushWorld } from "./fakeSuivi";
 
@@ -34,8 +35,7 @@ describe("runPush with Tasks", () => {
 		const pending = await w.plan();
 		const deps = {
 			remote: w.app.remote,
-			sync: w.sync,
-			save: async () => {},
+			app: await fetchAppItems(w.app.remote),
 			...vaultWriters(w.vault),
 			shareBody: async () => Promise.reject(new Error("image capture.png not found")),
 		};
