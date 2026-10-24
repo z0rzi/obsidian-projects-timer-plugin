@@ -88,4 +88,13 @@ describe("readProjectSteps", () => {
 		]);
 		expect(JSON.stringify(steps)).not.toMatch(/Secret|pas une étape/);
 	});
+
+	it("reads the date after a done step's type tag (or checkbox) as its done date", () => {
+		const note = "# Tasks\n- [x] #bug 2026-10-24 Export Excel ^ab12c\n- [x] 2026-10-20 Relire\n- [x] Ancien";
+		expect(readProjectSteps("2.projects/W.md", note).map((s) => [s.title, s.doneOn])).toEqual([
+			["Export Excel", "2026-10-24"],
+			["Relire", "2026-10-20"],
+			["Ancien", undefined],
+		]);
+	});
 });

@@ -6,6 +6,7 @@ import { planProjectPush } from "../src/sync/pushPlan";
 import { runPush } from "../src/sync/runPush";
 import type { SharedProject } from "../src/sync/sharedProject";
 import type { LocalTask } from "../src/sync/sharedTask";
+import { localDay } from "../src/localDate";
 import { planTaskPush, type ProjectLinks } from "../src/sync/taskPlan";
 
 const now = new Date("2026-10-20T10:00:00Z");
@@ -43,16 +44,23 @@ const line = (over: Partial<LocalTask>): LocalTask => ({
 function vault(tasks: LocalTask[], projects: SharedProject[] = []) {
 	const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
 	const blockIds: Record<string, string> = {};
+	const stepDates: Record<string, string> = {};
 	const suiviIds: Record<string, string> = {};
 	const links = (): ProjectLinks =>
 		Object.fromEntries(
 			projects.map((p) => [p.path, { title: p.fields.title, ...(suiviIds[p.path] ? { id: suiviIds[p.path] } : {}) }]),
 		);
-	const localTasks = () => tasks.map((t) => (blockIds[t.raw] ? { ...t, blockId: blockIds[t.raw] } : t));
+	const localTasks = () =>
+		tasks.map((t) => {
+			const blockId = blockIds[t.raw];
+			if (!blockId) return t;
+			return { ...t, blockId, ...(stepDates[blockId] ? { doneOn: stepDates[blockId] } : {}) };
+		});
 	const localProjects = () => projects.map((p) => ({ ...p, suiviId: suiviIds[p.path] }));
 	return {
 		sync,
 		blockIds,
+		stepDates,
 		plan: () => {
 			const t = planTaskPush(localTasks(), links(), sync.pushedTasks, { now, doneHistory: sync.doneHistory });
 			return { changes: [...planProjectPush(localProjects(), sync.pushedProjects), ...t.changes], history: t.history };
@@ -68,6 +76,9 @@ function vault(tasks: LocalTask[], projects: SharedProject[] = []) {
 			},
 			writeBlockId: async (_path: string, ref: { raw: string }, id: string) => {
 				blockIds[ref.raw] = id;
+			},
+			writeStepDate: async (_path: string, id: string, date: string) => {
+				stepDates[id] = date;
 			},
 		}),
 	};
@@ -149,6 +160,19 @@ describe("runPush with Tasks", () => {
 
 		expect(outcome).toEqual({ applied: 1, failed: [{ title: "Refusé", error: "Titre refusé" }] });
 		expect(v.plan().changes).toMatchObject([{ group: "new", title: "Refusé" }]);
+	});
+
+	it("dates a ticked step it sends as done without a date", async () => {
+		const app = fakeApp();
+		const ticked = line({ raw: "- [x] #bug Export", title: "Export", type: "bug", step: true, status: "termine", priority: null });
+		const v = vault([ticked]);
+		v.sync.doneHistory = [];
+
+		expect(await runPush(v.plan().changes, v.deps(app.remote))).toEqual({ applied: 1, failed: [] });
+
+		expect(app.received).toMatchObject([[{ op: "create", fields: { done_on: localDay() } }]]);
+		expect(v.stepDates).toEqual({ id0: localDay() });
+		expect(v.plan().changes).toEqual([]);
 	});
 
 	it("remembers the undated done items left out of the first Push", async () => {

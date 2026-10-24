@@ -58,6 +58,14 @@ describe("extractCheckboxItems", () => {
 		]);
 	});
 
+	it("reads the date of a done step after its type tag, not as text", () => {
+		const items = extractCheckboxItems(["- [x] #bug 2026-10-24 Export Excel ^ab12c", "- [ ] 2026-10-24 pas fait"], 0, 2);
+		expect(items.map((i) => [i.text, i.doneOn])).toEqual([
+			["Export Excel", "2026-10-24"],
+			["2026-10-24 pas fait", undefined],
+		]);
+	});
+
 	it.each(["P1 Titre", "p7 Titre", "pr1 Titre", "Étape2 du calcul"])(
 		"does not read a non-token first word as an Override: %s",
 		(text) => {

@@ -1,5 +1,5 @@
 import { localDay } from "../localDate";
-import { processLineById, rewriteStepToken, rewriteTaskTag, setTaskToken, toggleCheckbox } from "../lineWriter";
+import { processLineById, rewriteTaskTag, setStepDone, setTaskToken } from "../lineWriter";
 import type { ApiEvent, ItemAnswer, ItemAnsweredPayload, ProjectFields, TaskFields } from "../remote/api";
 import type { SyncState } from "./pluginData";
 import type { PullContext, VaultFiles } from "./runPull";
@@ -9,7 +9,8 @@ import type { LocalTask } from "./sharedTask";
 
 /**
  * `item.answered`: the Client answered a Task or Project À valider. Validé
- * makes a Tag task `#done <date>`, ticks a Project step, archives a Project
+ * makes a Tag task `#done <date>`, ticks a Project step with the date,
+ * archives a Project
  * (`archived: true`); À reprendre makes a Task `p0` and a Project
  * `status: en cours`. The app's own changes for the Answer follow as
  * `item.updated` events tagged `answer` and are echoes by then. If the vault
@@ -27,15 +28,14 @@ async function pullTaskAnswer(id: string, answer: ItemAnswer, date: string, ctx:
 	const task = ctx.sync.pushedTasks[id]!;
 	const { path, found: line } = await locateItem(ctx.files, id, task.path, taskLine(id));
 	task.path = path;
-	const doneOn = line.step ? null : date;
 	if (line.status !== task.fields.status || line.priority !== task.fields.priority) {
-		const conflict = { kind: "task" as const, id, field: "status" as const, path, title: task.fields.title, remote: null, answer, doneOn };
+		const conflict = { kind: "task" as const, id, field: "status" as const, path, title: task.fields.title, remote: null, answer, doneOn: date };
 		addConflict(ctx.sync, conflictKey(id, "status"), conflict);
 		ctx.outcome.conflicts++;
 		return;
 	}
 	await writeTaskAnswer(ctx.files, path, id, line, answer, date);
-	task.fields = answeredTask(task.fields, answer, doneOn);
+	task.fields = answeredTask(task.fields, answer, date);
 	ctx.outcome.applied++;
 }
 
@@ -54,7 +54,7 @@ async function pullProjectAnswer(id: string, answer: ItemAnswer, ctx: PullContex
 	ctx.outcome.applied++;
 }
 
-/** A Task's shared fields once the Answer is applied (`doneOn`: the date a Validé Tag task gets, null for a step). */
+/** A Task's shared fields once the Answer is applied (`doneOn`: the date a Validé Task gets). */
 export function answeredTask(fields: TaskFields, answer: ItemAnswer, doneOn: string | null): TaskFields {
 	const { done_on: _old, ...rest } = fields;
 	return answer === "valide"
@@ -88,7 +88,7 @@ export interface AnswerWrite {
 	/** Where the item was last seen. */
 	path: string;
 	answer: ItemAnswer;
-	/** Validé on a Tag task: its `#done` date (today if unset). */
+	/** Validé: the Task's done date (today if unset). */
 	doneOn?: string | null;
 }
 
@@ -115,13 +115,11 @@ async function writeTaskAnswer(files: VaultFiles, path: string, id: string, line
 	else await writeDone(files, path, id, line, date);
 }
 
-/** Validé on the Task line `^id`: `#done <date>` for a Tag task, ticked (token removed) for a Project step. */
+/** Validé on the Task line `^id`: `#done <date>` for a Tag task, ticked with the date (token removed) for a Project step. */
 async function writeDone(files: VaultFiles, path: string, id: string, line: LocalTask, date: string) {
-	await processLineById(files.process, path, id, (now, ref) => {
-		if (!line.step) return rewriteTaskTag(now, ref, `#done ${date}`);
-		const result = rewriteStepToken(now, ref, null);
-		return result.ok && line.status !== "termine" ? toggleCheckbox(result.content, ref) : result;
-	});
+	await processLineById(files.process, path, id, (now, ref) =>
+		line.step ? setStepDone(now, ref, date) : rewriteTaskTag(now, ref, `#done ${date}`),
+	);
 }
 
 /** Sets the `p0` token of the Task line `^id` (À reprendre). */

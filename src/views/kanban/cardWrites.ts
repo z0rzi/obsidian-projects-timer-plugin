@@ -3,12 +3,13 @@ import {
 	processLine,
 	rewriteStepToken,
 	rewriteTaskTag,
-	toggleCheckbox,
+	setStepDone,
 	type StatusToken,
 	type WriteResult,
 } from "../../lineWriter";
 import type { ProjectCard, ProjectCardItem, Task } from "../../types";
 import { vaultFiles } from "../../sync/vaultFiles";
+import { localDay } from "../../localDate";
 
 /**
  * The kanban's vault writes. Lines are found by identity (block ID, or the
@@ -26,10 +27,12 @@ export class CardWrites {
 		return this.line(file, "Failed to update project step", (content) => rewriteStepToken(content, item, token));
 	}
 
+	/** Ticks a step done today, or unticks it (its date removed). */
 	async toggleStep(card: ProjectCard, line: number): Promise<boolean> {
 		const item = [...card.items, ...card.overrides].find((i) => i.line === line);
 		if (!item) return false;
-		return this.line(card.file, "Failed to update task checkbox", (content) => toggleCheckbox(content, item));
+		const date = item.checked ? null : localDay();
+		return this.line(card.file, "Failed to update task checkbox", (content) => setStepDone(content, item, date));
 	}
 
 	async projectPriority(card: ProjectCard, priority: number): Promise<boolean> {

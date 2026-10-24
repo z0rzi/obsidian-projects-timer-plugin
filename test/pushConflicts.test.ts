@@ -54,6 +54,7 @@ function world() {
 		save: async () => {},
 		writeSuiviId: async () => {},
 		writeBlockId: async () => {},
+		writeStepDate: async () => {},
 		writePriority: (kind: "project" | "task", id: string, path: string, priority: number | null) =>
 			writeRemotePriority(
 				{
