@@ -1,4 +1,4 @@
-import { APP_ID } from "../blockId";
+import { APP_ID, splitBlockId } from "../blockId";
 import { parseFrontmatter } from "../projectCards";
 import type { PluginData } from "./pluginData";
 import type { VaultFiles } from "./runPull";
@@ -43,7 +43,7 @@ export async function removeAppIds(files: VaultFiles): Promise<void> {
 			await files.process(path, (current) => {
 				const lines = current.split("\n");
 				for (const line of appTaskLines(path, current)) {
-					lines[line] = lines[line]!.replace(/\s+\^[a-z0-9]{5}\s*$/, "");
+					lines[line] = splitBlockId(lines[line]!).text;
 				}
 				return lines.join("\n");
 			});

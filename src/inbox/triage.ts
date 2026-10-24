@@ -3,7 +3,8 @@ import type { TaskStateFields, TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import { rewriteOutsideCode } from "../sync/sharedBody";
 import { deindent } from "../sync/sharedTask";
-import { readIndentedBody } from "../taskParser";
+import { priorityToken } from "../lineWriter";
+import { A_VALIDER_TOKEN, readIndentedBody } from "../taskParser";
 
 /** Tags "Insérer ici" offers, as the vault writes them. */
 export const TRIAGE_TAGS: { type: TriageTaskType; label: string }[] = [
@@ -71,7 +72,7 @@ export async function runTriage(
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
 	if (response.as === "project") return { ok: false, error: "L'app en a fait un Projet, pas une Tâche." };
-	const tagAndToken = choice.priority === null ? `#${choice.type}` : `#${choice.type} p${choice.priority}`;
+	const tagAndToken = choice.priority === null ? `#${choice.type}` : `#${choice.type} ${priorityToken(choice.priority)}`;
 	return writeTask(item, `${target.step ? "- [ ] " : ""}${tagAndToken}`, response.fields, target.path, deps);
 }
 
@@ -95,7 +96,8 @@ export function insertUnplacedTask(
 	let head: string;
 	if (fields.status === "termine") head = target.step ? `- [x] ${tag}${date}` : `#done${date}`;
 	else {
-		const token = fields.status === "a_valider" ? "pr" : fields.status === "en_cours" ? "p0" : fields.priority === null ? "" : `p${fields.priority}`;
+		const priority = fields.status === "en_cours" ? 0 : fields.priority;
+		const token = fields.status === "a_valider" ? A_VALIDER_TOKEN : priority === null ? "" : priorityToken(priority);
 		head = `${target.step ? "- [ ] " : ""}${tag}${token ? ` ${token}` : ""}`;
 	}
 	return writeTask({ id: item.id, title: fields.title, answer: item.answer }, head, fields, target.path, deps);
