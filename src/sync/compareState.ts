@@ -2,7 +2,7 @@ import { STATUS_WORDS } from "../inbox/newProject";
 import { localDay } from "../localDate";
 import type { AcknowledgedItem, ItemAnswer, PushChange } from "../remote/api";
 import type { AppItems, AppProject, AppTask, Base } from "./appState";
-import type { PushVault } from "./planPush";
+import type { VaultItems } from "./planPush";
 import { answeredProject, answeredTask, holdsAnswer } from "./pullAnswer";
 import type { SharedProject } from "./sharedProject";
 import type { LocalTask } from "./sharedTask";
@@ -87,7 +87,7 @@ function priorityLabel(priority: number | null, status?: string): string {
  * changed alone: left to the Push; both: a conflict. App Items in no readable
  * note are left out (unreadable notes are not in `vault`).
  */
-export function compareState(vault: PushVault, app: AppItems): StateComparison {
+export function compareState(vault: VaultItems, app: AppItems): StateComparison {
 	const out: StateComparison = { pulls: [], aligned: [], conflicts: [] };
 	const seen = new Set<string>();
 	/** The live, Triaged app Item of `id`, the first time the vault carries it. */

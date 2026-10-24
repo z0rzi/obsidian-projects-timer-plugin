@@ -18,7 +18,7 @@ import { memoryVault } from "./fakeSuivi";
 import { commentTargetAt } from "../src/comments/commentTarget";
 import { ThreadSession, type ThreadState } from "../src/comments/threadSession";
 import { pickConflict } from "../src/sync/conflicts";
-import { planPush, readPushVault } from "../src/sync/planPush";
+import { planPush, readVaultItems } from "../src/sync/planPush";
 import { runPull } from "../src/sync/runPull";
 import { InboxStore } from "../src/inbox/inboxStore";
 import { placeLine, runTriage } from "../src/inbox/triage";
@@ -182,7 +182,7 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const read = () => {
 			const notes = [...files].map(([path, content]) => ({ path, content }));
-			return readPushVault(notes.filter((n) => n.path === projectPath), notes, () => null);
+			return readVaultItems(notes.filter((n) => n.path === projectPath), notes, () => null);
 		};
 		const plan = async () => planPush(read(), await fetchAppItems(remote), new Date());
 		const pull = () => runPull({ remote, files: vault, vault: read() });

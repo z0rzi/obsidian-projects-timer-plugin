@@ -2,7 +2,7 @@ import type { ProcessFile } from "../lineWriter";
 import type { Remote } from "../remote/remote";
 import { fetchAppItems, type AppItems } from "./appState";
 import { acknowledgements, compareState, type BaseUpdate, type Conflict, type PullWrite } from "./compareState";
-import type { PushVault } from "./planPush";
+import type { VaultItems } from "./planPush";
 import { writeAnswer } from "./pullAnswer";
 import { writeRemotePriority } from "./pullPriority";
 import { unplacedItems, type UnplacedItem } from "./unplaced";
@@ -23,7 +23,7 @@ export interface PullDeps {
 	remote: Remote;
 	files: VaultFiles;
 	/** The vault as the Push reads it. */
-	vault: PushVault;
+	vault: VaultItems;
 }
 
 export interface PullOutcome {

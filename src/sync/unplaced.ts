@@ -1,7 +1,7 @@
 import type { ProjectFields, TaskStateFields } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import type { AppItems } from "./appState";
-import type { PushVault } from "./planPush";
+import type { VaultItems } from "./planPush";
 
 /**
  * An app Item, Triaged or pushed and not archived, that no readable note
@@ -17,7 +17,7 @@ export type UnplacedItem =
  * Project note or Task line of `vault` carries. Items of an unreadable Project
  * note (the Project, and the steps based in it or listed under it) are left out.
  */
-export function unplacedItems(vault: PushVault, app: AppItems): UnplacedItem[] {
+export function unplacedItems(vault: VaultItems, app: AppItems): UnplacedItem[] {
 	const carried = new Set<string | undefined>([...vault.projects.map((p) => p.suiviId), ...vault.tasks.map((t) => t.blockId)]);
 	const unreadable = Object.entries(vault.links).filter(([, link]) => link.unreadable);
 	const unreadablePaths = new Set(unreadable.map(([path]) => path));

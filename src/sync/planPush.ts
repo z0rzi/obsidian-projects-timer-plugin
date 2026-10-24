@@ -12,8 +12,8 @@ export interface Note {
 	content: string;
 }
 
-/** What the Push reads from the vault. */
-export interface PushVault {
+/** What the Push, the Pull and the Unplaced items read from the vault. */
+export interface VaultItems {
 	projects: SharedProject[];
 	links: ProjectLinks;
 	/** Tag tasks, then Project steps. */
@@ -27,8 +27,8 @@ export interface PushVault {
  * projects folder), their steps, and the Tag tasks of `notes`, linked to the
  * Project note `projectOf` gives (null = standalone).
  */
-export function readPushVault(projectNotes: Note[], notes: Note[], projectOf: (note: Note) => string | null): PushVault {
-	const vault: PushVault = { projects: [], links: {}, tasks: [], skipped: [] };
+export function readVaultItems(projectNotes: Note[], notes: Note[], projectOf: (note: Note) => string | null): VaultItems {
+	const vault: VaultItems = { projects: [], links: {}, tasks: [], skipped: [] };
 	const steps: LocalTask[] = [];
 	for (const { path, content } of projectNotes) {
 		const result = readSharedProject(path, content);
@@ -57,7 +57,7 @@ export function readPushVault(projectNotes: Note[], notes: Note[], projectOf: (n
 }
 
 /** The Push review: the vault's changes against the app's state, with the conflicts worked out from it. */
-export function planPush(vault: PushVault, app: AppItems, now: Date): PendingChange[] {
+export function planPush(vault: VaultItems, app: AppItems, now: Date): PendingChange[] {
 	return withConflicts(
 		[...planProjectPush(vault.projects, app), ...planTaskPush(vault.tasks, vault.links, app, { now })],
 		compareState(vault, app).conflicts,
