@@ -1,5 +1,6 @@
 import type { ItemState, ProjectFields, StateAnswer, TaskFields, TaskStateFields } from "../remote/api";
 import type { Remote } from "../remote/remote";
+import { dueMonthOf } from "../dueDate";
 
 /**
  * An Item's base as the plugin writes it (`ItemBase` on the wire): its shared
@@ -24,6 +25,8 @@ interface AppItem {
 export interface AppProject extends AppItem {
 	base: Base<ProjectFields>;
 	current: ProjectFields;
+	/** Handle of whoever set the current Échéance on the site. */
+	dueDateBy: string | null;
 }
 
 export interface AppTask extends AppItem {
@@ -49,14 +52,27 @@ export function appItems(items: ItemState[]): AppItems {
 	for (const item of items) {
 		const common = { archived: item.archived, triaged: item.triaged, answer: item.answer, priorityBy: item.priority_by };
 		if (item.kind === "project") {
-			const base = (item.base as Base<ProjectFields> | null) ?? { path: "", fields: item.fields };
-			out.projects[item.id] = { base, current: item.fields, ...common };
+			const current = withDueDate(item.fields);
+			const stored = item.base as Base<ProjectFields> | null;
+			const base = stored ? { ...stored, fields: baseFields(stored.fields) } : { path: "", fields: current };
+			out.projects[item.id] = { base, current, ...common, dueDateBy: item.due_date_by ?? null };
 		} else {
 			const base = (item.base as Base<TaskFields> | null) ?? { path: "", fields: item.fields as TaskFields };
 			out.tasks[item.id] = { base, current: item.fields, ...common };
 		}
 	}
 	return out;
+}
+
+/** Project fields with `due_date` null when absent: a Base written (or an app) from before the Échéance has none. */
+function withDueDate(fields: ProjectFields): ProjectFields {
+	return { ...fields, due_date: fields.due_date ?? null };
+}
+
+/** A stored Base's fields: `due_date` null when absent, and a day (written before the Échéance was a month) read as its month. */
+function baseFields(fields: ProjectFields): ProjectFields {
+	const { due_date } = withDueDate(fields);
+	return { ...fields, due_date: due_date === null ? null : dueMonthOf(due_date) };
 }
 
 /** Fetches the app's state (`GET /api/state`) by id. */

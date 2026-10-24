@@ -1,3 +1,4 @@
+import { isDueMonth } from "../dueDate";
 import type { ProjectFields, ProjectStatus } from "../remote/api";
 
 /** What the Client app sees of a Project file. Everything else stays in the vault. */
@@ -22,30 +23,35 @@ const STATUSES: Record<string, ProjectStatus> = {
 	termine: "termine",
 };
 
+/** The YAML spellings of null, read by `readFrontmatter` as plain strings. */
+const YAML_NULL = new Set(["null", "Null", "NULL", "~"]);
+
 /** Priority pushed for a Project without a numeric `priority:`. */
 export const DEFAULT_PRIORITY = 5;
 
 /**
  * Reads the shared fields of a Project note: title (file name), the
- * `# Description` section, `status:` and `priority:` frontmatter. Returns
- * null for `prive: true` Projects, which never leave the vault.
+ * `# Description` section, `status:`, `priority:` and `due_date:`
+ * frontmatter. Returns null for `prive: true` Projects, which never leave the
+ * vault. An unknown status or a due_date that isn't a month (`YYYY-MM`) is an
+ * error naming the note.
  */
 export function readSharedProject(path: string, content: string): ReadResult | null {
 	const lines = content.split("\n");
 	const fm = readFrontmatter(lines);
 	if (fm.prive === "true") return null;
 
+	const refuse = (error: string): ReadResult => ({ ok: false, path, ...(fm.suivi_id ? { suiviId: fm.suivi_id } : {}), error });
 	const archived = fm.archived === "true";
 	let status: ProjectStatus = "a_faire";
 	if (archived) status = "termine";
 	else if (fm.status) {
 		const known = STATUSES[normalize(fm.status)];
-		if (!known) {
-			const error = `Unknown status "${fm.status}" in ${path}`;
-			return { ok: false, path, ...(fm.suivi_id ? { suiviId: fm.suivi_id } : {}), error };
-		}
+		if (!known) return refuse(`Unknown status "${fm.status}" in ${path}`);
 		status = known;
 	}
+	const dueDate = !fm.due_date || YAML_NULL.has(fm.due_date) ? null : fm.due_date;
+	if (dueDate !== null && !isDueMonth(dueDate)) return refuse(`Invalid due_date "${dueDate}" in ${path}`);
 
 	const priority = /^\d+$/.test(fm.priority ?? "") ? Math.min(Number(fm.priority), 5) : DEFAULT_PRIORITY;
 
@@ -60,6 +66,7 @@ export function readSharedProject(path: string, content: string): ReadResult | n
 				description: descriptionSection(lines, fm.end),
 				status,
 				priority,
+				due_date: dueDate,
 			},
 		},
 	};

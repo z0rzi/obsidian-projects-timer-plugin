@@ -132,22 +132,19 @@ export function parseProjectCard(params: {
 	};
 }
 
-/** Sets `priority:` in the frontmatter, adding the key (or the frontmatter) when missing. */
-export function setFrontmatterPriority(
-	content: string,
-	newPriority: number,
-): string {
+/**
+ * Sets `key:` in the frontmatter, adding the key (or the frontmatter) when
+ * missing; null removes the key.
+ */
+export function setFrontmatterKey(content: string, key: string, value: string | number | null): string {
 	const lines = content.split("\n");
-	if (lines[0]?.trim() !== "---") return `---\npriority: ${newPriority}\n---\n${content}`;
+	if (lines[0]?.trim() !== "---") return value === null ? content : `---\n${key}: ${value}\n---\n${content}`;
 	const closingIdx = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
 	if (closingIdx < 0) return content;
-
-	for (let i = 1; i < closingIdx; i++) {
-		if (lines[i]?.match(/^priority\s*:/)) {
-			lines[i] = `priority: ${newPriority}`;
-			return lines.join("\n");
-		}
-	}
-	lines.splice(closingIdx, 0, `priority: ${newPriority}`);
+	const at = lines.findIndex((l, i) => i > 0 && i < closingIdx && l.match(/^(\w+)\s*:/)?.[1] === key);
+	if (value === null) {
+		if (at >= 0) lines.splice(at, 1);
+	} else if (at >= 0) lines[at] = `${key}: ${value}`;
+	else lines.splice(closingIdx, 0, `${key}: ${value}`);
 	return lines.join("\n");
 }

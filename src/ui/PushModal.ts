@@ -24,6 +24,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 function show(field: string, value: string | number | null): string {
+	if (field === "due_date") return value === null ? "(none)" : String(value);
 	if (value === null) return "?";
 	if (field === "status") return STATUS_LABELS[value] ?? String(value);
 	if (field === "priority") return `P${value}`;

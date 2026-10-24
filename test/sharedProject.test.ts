@@ -40,6 +40,7 @@ describe("readSharedProject", () => {
 					description: "Un **widget** pour la saison.\n\n- carte",
 					status: "en_cours",
 					priority: 2,
+					due_date: null,
 				},
 			},
 		});
@@ -90,5 +91,27 @@ describe("readSharedProject", () => {
 		const r = readSharedProject("p/X.md", note('suivi_id: "00123"', ""));
 
 		expect(r?.ok && r.project.suiviId).toBe("00123");
+	});
+
+	it("reads due_date as the Échéance; absent, empty or YAML null is none", () => {
+		const dueDate = (fm: string) => {
+			const r = readSharedProject("p/X.md", note(fm, ""));
+			return r?.ok ? r.project.fields.due_date : r;
+		};
+
+		expect(dueDate("due_date: 2027-01")).toBe("2027-01");
+		expect(dueDate('due_date: "2027-01"')).toBe("2027-01");
+		expect(dueDate("due_date:")).toBeNull();
+		expect(dueDate("due_date: null")).toBeNull();
+		expect(dueDate("due_date: ~")).toBeNull();
+		expect(dueDate("priority: 3")).toBeNull();
+	});
+
+	it("reports a due_date that isn't a month, a full day included, naming the note", () => {
+		for (const value of ["fin janvier", "2027-01-15", "2027-13", "2027-1", "01/2027"]) {
+			const r = readSharedProject("p/X.md", note(`due_date: ${value}\nsuivi_id: t7f3a`, ""));
+
+			expect(r).toEqual({ ok: false, path: "p/X.md", suiviId: "t7f3a", error: `Invalid due_date "${value}" in p/X.md` });
+		}
 	});
 });

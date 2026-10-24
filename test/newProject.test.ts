@@ -62,7 +62,7 @@ describe("runNewProject (Nouveau projet)", () => {
 				path: "2.projects/Carte des flux.md",
 				suiviId: "i4k2z",
 				archived: false,
-				fields: { title: "Carte des flux", description: IN_VAULT, status: "a_faire", priority: 2 },
+				fields: { title: "Carte des flux", description: IN_VAULT, status: "a_faire", priority: 2, due_date: null },
 			},
 		});
 		expect(bases.i4k2z).toEqual({

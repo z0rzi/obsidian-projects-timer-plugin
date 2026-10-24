@@ -8,7 +8,7 @@ import type { PendingTaskChange } from "./taskPlan";
 export interface FieldDiff {
 	field: keyof ProjectFields;
 	from: string | number | null;
-	to: string | number;
+	to: string | number | null;
 }
 
 type ProjectChange = Extract<PushChange, { kind: "project" }>;
@@ -44,7 +44,8 @@ export interface PushError {
 /** One line of the Push modal, Project or Task (tell them apart by `change.kind`), a Pull conflict or an error. */
 export type PendingChange = PendingProjectChange | PendingTaskChange | PendingConflict | PushError;
 
-const FIELDS = ["title", "description", "status", "priority"] as const;
+/** The shared Project fields the Push compares with the Base and sends when they changed. */
+const FIELDS = ["title", "description", "status", "priority", "due_date"] as const;
 
 /**
  * Compares the vault's shared Projects with their base in the app. Projects

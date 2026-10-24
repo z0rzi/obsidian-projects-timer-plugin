@@ -1,5 +1,5 @@
 import { priorityToken, processLineById, setTaskToken } from "../lineWriter";
-import { setFrontmatterPriority } from "../projectCards";
+import { setFrontmatterKey } from "../projectCards";
 import type { VaultFiles } from "./runPull";
 
 /**
@@ -15,7 +15,7 @@ export async function writeRemotePriority(
 	priority: number | null,
 ): Promise<void> {
 	if (kind === "project") {
-		if (priority !== null) await files.process(path, (content) => setFrontmatterPriority(content, priority));
+		if (priority !== null) await files.process(path, (content) => setFrontmatterKey(content, "priority", priority));
 		return;
 	}
 	const token = priority === null ? null : priorityToken(priority);

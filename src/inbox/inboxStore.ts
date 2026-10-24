@@ -118,13 +118,19 @@ function ticketEntry(t: InboxTicket, projects: Map<string, VaultProject>): Inbox
 	};
 }
 
+const CONFLICT_DETAILS: Record<Conflict["unit"], string> = {
+	priority: "Priorité changée dans le coffre et dans l'app",
+	due_date: "Échéance changée dans le coffre et dans l'app",
+	answer: "Réponse du Client sur un élément changé dans le coffre",
+};
+
 function conflictEntry(c: Conflict): InboxEntry {
 	return {
 		key: `c${c.key}`,
 		kind: "conflict",
 		item: { kind: c.kind, id: c.id, title: c.title },
 		title: `Conflit sur ${c.title}`,
-		detail: c.unit === "priority" ? "Priorité changée dans le coffre et dans l'app" : "Réponse du Client sur un élément changé dans le coffre",
+		detail: CONFLICT_DETAILS[c.unit],
 		...(c.theirs.by ? { by: `@${c.theirs.by}` } : {}),
 		conflict: c,
 	};

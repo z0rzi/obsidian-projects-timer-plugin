@@ -18,6 +18,7 @@ type Held = {
 	triaged: boolean;
 	answer: StateAnswer | null;
 	priority_by: string | null;
+	due_date_by?: string | null;
 };
 
 /**
@@ -31,7 +32,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 	const held = new Map<string, Held>(
 		items.map((i) => [
 			i.id,
-			{ kind: i.kind, fields: { ...i.fields }, base: i.base, archived: i.archived, triaged: i.triaged, answer: i.answer, priority_by: i.priority_by },
+			{ kind: i.kind, fields: { ...i.fields }, base: i.base, archived: i.archived, triaged: i.triaged, answer: i.answer, priority_by: i.priority_by, ...(i.kind === "project" ? { due_date_by: i.due_date_by } : {}) },
 		]),
 	);
 	const received: PushChange[][] = [];
@@ -63,6 +64,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 		if (c.op === "restore") now.archived = false;
 		if ("status" in c.fields && c.fields.status !== now.fields.status) now.answer = null;
 		if ("priority" in c.fields) now.priority_by = null;
+		if ("due_date" in c.fields) now.due_date_by = null;
 		Object.assign(now.fields, c.fields);
 		if (c.base) now.base = c.base;
 		return { ok: true, id: c.id };
@@ -94,7 +96,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 			item.triaged = true;
 			if (as.as === "project") {
 				item.kind = "project";
-				item.fields = { title: item.fields.title, description: item.fields.description, status: as.priority === 0 ? "en_cours" : "a_faire", priority: as.priority };
+				item.fields = { title: item.fields.title, description: item.fields.description, status: as.priority === 0 ? "en_cours" : "a_faire", priority: as.priority, due_date: null };
 				return { id, as: "project", fields: item.fields as unknown as ProjectFields };
 			}
 			const { base: _base, as: _as, ...set } = as;
@@ -131,7 +133,8 @@ export function appProject(id: string, fields: Partial<ProjectFields>, more: Par
 		triaged: true,
 		answer: null,
 		priority_by: null,
-		fields: { title: "", description: "", status: "a_faire", priority: 5, ...fields },
+		due_date_by: null,
+		fields: { title: "", description: "", status: "a_faire", priority: 5, due_date: null, ...fields },
 		...more,
 	} as ItemState;
 }

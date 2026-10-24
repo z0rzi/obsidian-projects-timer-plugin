@@ -122,10 +122,10 @@ export const STATUS_WORDS: Record<ProjectStatus, string> = {
 };
 
 /**
- * The template with `{{title}}`/`{{date}}` filled, `suivi_id:`, `priority:`
- * and `status:` set in its frontmatter (added if missing), and the
- * description under its `# Description` heading (added after the
- * frontmatter if missing).
+ * The template with `{{title}}`/`{{date}}` filled, `suivi_id:`, `priority:`,
+ * `status:` and `due_date:` (when it has an Échéance) set in its frontmatter
+ * (added if missing), and the description under its `# Description` heading
+ * (added after the frontmatter if missing).
  */
 export function projectFile(
 	template: string,
@@ -146,6 +146,7 @@ export function projectFile(
 		["suivi_id", id],
 		["priority", String(fields.priority)],
 		["status", STATUS_WORDS[fields.status]],
+		...(fields.due_date ? [["due_date", fields.due_date] as [string, string]] : []),
 	];
 	for (const [key, value] of keys) {
 		const at = lines.findIndex((l, i) => i > 0 && i < end && new RegExp(`^${key}\\s*:`).test(l));
