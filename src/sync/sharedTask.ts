@@ -25,7 +25,7 @@ export interface LocalTask {
 	status: PushedTaskStatus;
 	/** null = inherit the Project's (Project step without token), or no priority (À valider, Terminé). */
 	priority: number | null;
-	/** Date of `#done <date>`, or of a done Project step (`- [x] #bug <date> …`). */
+	/** Date of `#done <date>`, or of a done Project step (first word once its type tag is out: `- [x] #bug <date> …`). */
 	doneOn?: string;
 	/** The body with the first body line's indentation removed from every line; "" without body. */
 	description: string;

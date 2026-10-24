@@ -291,13 +291,14 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 		const result = await runTriage(entry.item, { type: "bug", priority: 2 }, {
 			remote,
 			target: () => ({ path: "1.meetings/r.md", projectId: null, step: false }),
+			appUrl: url,
 			insert: (line) => {
 				const at = placeLine(note, 1, line);
 				note.splice(1, 1, ...at.text.split("\n"));
 			},
 		});
 		expect(result).toEqual({ ok: true, line: `#bug p2 ${title} ^${id}`, missingImages: 1 });
-		expect(note).toEqual(["# Réunion", `#bug p2 ${title} ^${id}`, "\tRien ne s'affiche ![](/uploads/x.png)", "", "suite"]);
+		expect(note).toEqual(["# Réunion", `#bug p2 ${title} ^${id}`, `\tRien ne s'affiche ![](${url.replace(/\/+$/, "")}/uploads/x.png)`, "", "suite"]);
 
 		await store.refresh();
 		expect(store.current.toTriage.some((e) => e.item.id === id)).toBe(false);
@@ -346,6 +347,7 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 			template: async () => "---\npriority: 5\n---\n\n# Time usage\n---\n```project\n```\n\n# Tasks\n---",
 			exists: (p) => vault.has(p),
 			create: async (p, c) => void vault.set(p, c),
+			appUrl: url,
 		});
 		const path = `2.projects/${title}.md`;
 		expect(result).toEqual({ ok: true, path });
@@ -368,6 +370,7 @@ function noopDeps(remote: ReturnType<typeof createHttpRemote>) {
 	return {
 		remote,
 		target: () => ({ path: "x.md", projectId: null, step: false }),
+		appUrl: url,
 		insert: () => {
 			throw new Error("must not write");
 		},

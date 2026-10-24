@@ -1,10 +1,10 @@
-import { UPLOADED_IMAGE } from "../comments/commentMarkdown";
-import type { TaskStateFields, TriageTaskType } from "../remote/api";
+import type { TaskStateFields, TicketUrgency, TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
-import { rewriteOutsideCode } from "../sync/sharedBody";
 import { deindent } from "../sync/sharedTask";
 import { priorityToken } from "../lineWriter";
 import { A_VALIDER_TOKEN, readIndentedBody } from "../taskParser";
+import { descriptionForVault, type AppDescriptionDeps } from "./appDescription";
+import { findTasksHeadingSection } from "../projectCards";
 
 /** Tags "Insérer ici" offers, as the vault writes them. */
 export const TRIAGE_TAGS: { type: TriageTaskType; label: string }[] = [
@@ -19,26 +19,37 @@ export function defaultTag(type: string): TriageTaskType {
 	return TRIAGE_TAGS.some((t) => t.type === type) ? (type as TriageTaskType) : "task";
 }
 
+/** The Urgency as the Client answered it, and the Priority it suggests at Triage (P0 stays the Developer's choice). */
+export const URGENCIES: Record<TicketUrgency, { label: string; priority: number }> = {
+	bloquant: { label: "Bloquant", priority: 1 },
+	genant: { label: "Gênant", priority: 2 },
+	quand_possible: { label: "Quand vous pourrez", priority: 3 },
+};
+
+/**
+ * Priority the dialog proposes first: the one the Client's Urgency suggests,
+ * else p3, or the Project's (null) for a Project step.
+ */
+export function defaultPriority(step: boolean, urgency: TicketUrgency | null | undefined): number | null {
+	if (urgency) return URGENCIES[urgency].priority;
+	return step ? null : 3;
+}
+
 export interface TriageChoice {
 	type: TriageTaskType;
 	/** 0 (En cours) to 5; null = inherit the Project's (Project step only). */
 	priority: number | null;
 }
 
-export interface TriageDeps {
+export interface TriageDeps extends AppDescriptionDeps {
 	remote: Pick<Remote, "triage" | "acknowledge">;
 	/**
 	 * The note the line goes into, its Project's app id (null = standalone) and whether the
 	 * line is a Project step (cursor in a Project note's Tasks section), or why there is none.
 	 */
 	target(): { path: string; projectId: string | null; step: boolean } | { error: string };
-	/** Writes the line (and its body lines) at the cursor of that note. */
-	insert(text: string): void;
-	/**
-	 * Copies an image the Client uploaded (`/uploads/…`) into the vault; returns
-	 * its link text for `![[…]]`, or null if it failed.
-	 */
-	localImage?(url: string): Promise<string | null>;
+	/** Writes the line (and its body lines) at the cursor of that note; throws when it can't. */
+	insert(text: string): void | Promise<void>;
 }
 
 /** `missingImages`: app images left as app links because they couldn't be copied into the vault. */
@@ -114,13 +125,18 @@ async function writeTask(
 	head: string,
 	fields: { description: string },
 	path: string,
-	deps: Pick<TriageDeps, "insert" | "localImage"> & { remote: Pick<Remote, "acknowledge"> },
+	deps: Pick<TriageDeps, "insert" | "localImage" | "appUrl"> & { remote: Pick<Remote, "acknowledge"> },
 ): Promise<TriageResult> {
 	const title = item.title.replace(/\s+/g, " ").trim();
 	const line = `${head} ${title} ^${item.id}`;
-	const { text: body, missing } = await withVaultImages(fields.description, deps);
+	const { text: body, missing } = await descriptionForVault(fields.description, deps);
 	const written = [line, ...taskBody(body)];
-	deps.insert(written.join("\n"));
+	try {
+		await deps.insert(written.join("\n"));
+	} catch (e) {
+		const error = e instanceof Error ? e.message : String(e);
+		return { ok: false, error: `triée dans l'app, mais pas écrite (${error}) : le prochain Pull la proposera à insérer` };
+	}
 	// The base as the next Push reads it back from the vault, so it compares equal.
 	const description = deindent(readIndentedBody(written, 0).join("\n"));
 	try {
@@ -131,37 +147,6 @@ async function writeTask(
 		return { ok: false, error: `insérée, mais sa base n'a pas été envoyée (${error}) : le prochain Push proposera sa description` };
 	}
 	return { ok: true, line, missingImages: missing };
-}
-
-/**
- * The Description with each app image (`![alt](/uploads/…)`, outside code)
- * copied into the vault and embedded as `![[…]]`, so Obsidian shows it (a
- * later Push uploads it again: the app answers with the same URL). An image
- * that couldn't be copied keeps its app link and is counted in `missing`.
- */
-async function withVaultImages(description: string, deps: Pick<TriageDeps, "localImage">): Promise<{ text: string; missing: number }> {
-	let missing = 0;
-	const copies = new Map<string, Promise<string | null>>();
-	const text = await rewriteOutsideCode(description, async (piece) => {
-		const parts: string[] = [];
-		let last = 0;
-		for (const m of piece.matchAll(UPLOADED_IMAGE)) {
-			parts.push(piece.slice(last, m.index));
-			last = m.index! + m[0].length;
-			const url = m[2]!;
-			if (!copies.has(url)) copies.set(url, deps.localImage ? deps.localImage(url).catch(() => null) : Promise.resolve(null));
-			const link = await copies.get(url)!;
-			if (link) {
-				parts.push(`![[${link}]]`);
-			} else {
-				missing++;
-				parts.push(m[0]);
-			}
-		}
-		parts.push(piece.slice(last));
-		return parts.join("");
-	});
-	return { text, missing };
 }
 
 /** The Description as Task body lines: one tab in, blank lines empty, none at the edges. */
@@ -188,4 +173,36 @@ export function placeLine(lines: string[], cursor: number, newLine: string): { f
 	}
 	const end = { line: cursor, ch: current.length };
 	return { from: end, to: end, text: `\n${newLine}${tail}` };
+}
+
+/**
+ * « Insérer dans <Projet> »'s target: a step of the Project note whose `lines` will be
+ * edited, or why not when they have no Tasks heading (checked before the app is called).
+ */
+export function firstStepTarget(lines: string[], project: { id: string; path: string; title: string }): ReturnType<TriageDeps["target"]> {
+	if (!findTasksHeadingSection(lines)) return { error: `${project.title} n'a pas de titre « Tasks » : ajoutez-le, puis réessayez.` };
+	return { path: project.path, projectId: project.id, step: true };
+}
+
+/**
+ * Where « Insérer dans <Projet> » writes a step (`newLine` and its body lines)
+ * as the first of the Project note's Tasks section: before its first non-blank
+ * line (a blank line right under the heading is kept), on its blank line when
+ * the section holds nothing, after the heading when it ends the note. `line`
+ * is where the step's line lands. Null without a Tasks heading.
+ */
+export function placeFirstStep(lines: string[], newLine: string): { from: Pos; to: Pos; text: string; line: number } | null {
+	const section = findTasksHeadingSection(lines);
+	if (!section) return null;
+	const { start, end } = section;
+	if (start >= lines.length) {
+		const at = { line: start - 1, ch: lines[start - 1]!.length };
+		return { from: at, to: at, text: `\n${newLine}`, line: start };
+	}
+	const first = lines.slice(start, end).findIndex((l) => l.trim());
+	if (first === -1 && start < end) {
+		return { from: { line: start, ch: 0 }, to: { line: start, ch: lines[start]!.length }, text: newLine, line: start };
+	}
+	const at = { line: first === -1 ? start : start + first, ch: 0 };
+	return { from: at, to: at, text: `${newLine}\n`, line: at.line };
 }

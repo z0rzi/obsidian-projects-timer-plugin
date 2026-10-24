@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TFile } from "obsidian";
-import { parseTasks } from "../src/taskParser";
+import { parseTasks, readTypeTag } from "../src/taskParser";
 
 const file = { path: "1.meetings/2026-10-13.md", basename: "2026-10-13" } as TFile;
 
@@ -66,6 +66,10 @@ describe("parseTasks types", () => {
 		expect(parseTasks([`#${tag} p2 Titre`], file, null)).toEqual([]);
 	});
 
+	it("does not treat a line whose type tag is not in front as a Tag task", () => {
+		expect(parseTasks(["p2 #bug Titre", "Titre #task"], file, null)).toEqual([]);
+	});
+
 	it("ends a Task's body at the first line of indent zero, tag or not", () => {
 		const tasks = parseTasks(["#task p1 A", "  corps", "#project p2 B", "suite", "#bug p2 C"], file, null);
 		expect(tasks.map((t) => [t.title, t.description])).toEqual([
@@ -98,5 +102,13 @@ describe("parseTasks block ID", () => {
 		expect(task.blockId).toBe("t04be");
 		expect(task.status).toBe("a_valider");
 		expect(task.raw).toBe("#task pr Export CSV ^t04be");
+	});
+});
+
+describe("readTypeTag", () => {
+	it("leaves one space where a tag surrounded by extra spaces was", () => {
+		expect(readTypeTag("Do  #bug  x")).toEqual({ type: "bug", rest: "Do x" });
+		expect(readTypeTag("#bug  x")).toEqual({ type: "bug", rest: "x" });
+		expect(readTypeTag("Do  #bug")).toEqual({ type: "bug", rest: "Do" });
 	});
 });

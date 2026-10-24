@@ -1,13 +1,14 @@
 import { localDay } from "../localDate";
 import type { ProjectFields, ProjectStatus } from "../remote/api";
 import type { Remote } from "../remote/remote";
+import { descriptionForVault, type AppDescriptionDeps } from "./appDescription";
 
 export interface NewProjectChoice {
 	/** 0 (En cours) to 5. */
 	priority: number;
 }
 
-export interface NewProjectDeps {
+export interface NewProjectDeps extends Pick<AppDescriptionDeps, "appUrl"> {
 	remote: Pick<Remote, "triage" | "acknowledge">;
 	/** Projects folder (setting), where the file goes. */
 	folder: string;
@@ -15,6 +16,8 @@ export interface NewProjectDeps {
 	template(): Promise<string>;
 	exists(path: string): boolean;
 	create(path: string, content: string): Promise<void>;
+	/** As {@link AppDescriptionDeps.localImage}, for the note at `notePath`. */
+	localImage?(url: string, notePath: string): Promise<string | null>;
 }
 
 export type NewProjectResult = { ok: true; path: string } | { ok: false; error: string };
@@ -71,15 +74,25 @@ function projectPath(title: string, deps: Pick<NewProjectDeps, "folder" | "exist
 	return { path, name };
 }
 
-/** Creates the Project file at `at` from the template, then sends `fields` as its base, acknowledging `answer` if any. */
+/**
+ * Creates the Project file at `at` from the template, its description as the
+ * vault writes it (images copied in, other app links absolute), then sends
+ * `fields` with that description as its base, acknowledging `answer` if any.
+ */
 async function writeProjectNote(
 	at: { path: string; name: string },
 	id: string,
-	fields: ProjectFields,
-	deps: Pick<NewProjectDeps, "template" | "create"> & { remote: Pick<Remote, "acknowledge"> },
+	appFields: ProjectFields,
+	deps: Pick<NewProjectDeps, "template" | "create" | "appUrl" | "localImage"> & { remote: Pick<Remote, "acknowledge"> },
 	answer?: number,
 ): Promise<NewProjectResult> {
 	const { path } = at;
+	const { localImage } = deps;
+	const vaultDescription = await descriptionForVault(appFields.description, {
+		appUrl: deps.appUrl,
+		localImage: localImage && ((url) => localImage(url, path)),
+	});
+	const fields = { ...appFields, description: vaultDescription.text };
 	await deps.create(path, projectFile(await deps.template(), at.name, id, fields));
 	try {
 		await deps.remote.acknowledge([{ id, base: { path, fields }, ...(answer !== undefined ? { answer } : {}) }]);

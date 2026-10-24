@@ -130,19 +130,21 @@ describe("Push planned against the app's state", () => {
 		expect(await w.plan()).toEqual([]);
 	});
 
-	it("triages a Ticket with an image, then finds nothing to push", async () => {
-		const ticket = appTask("t7f3a", { title: "Heatmap vide", type: "bug", status: "a_trier", priority: null, description: "Voir ![](/uploads/u1.png)" }, { triaged: false });
+	it("triages a Ticket with an image and a PDF, then finds nothing to push", async () => {
+		const description = "Voir ![](/uploads/u1.png) [doc.pdf](/uploads/d.pdf)";
+		const ticket = appTask("t7f3a", { title: "Heatmap vide", type: "bug", status: "a_trier", priority: null, description }, { triaged: false });
 		const w = world({ "m.md": "" }, [ticket]);
 
 		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, {
 			remote: w.app.remote,
 			target: () => ({ path: "m.md", projectId: null, step: false }),
 			insert: (text) => w.files.set("m.md", `${text}\n`),
+			appUrl: "https://suivi.test",
 			localImage: async () => "u1.png",
 		});
 
 		expect(result).toMatchObject({ ok: true });
-		expect(w.files.get("m.md")).toBe("#bug p2 Heatmap vide ^t7f3a\n\tVoir ![[u1.png]]\n");
+		expect(w.files.get("m.md")).toBe("#bug p2 Heatmap vide ^t7f3a\n\tVoir ![[u1.png]] [doc.pdf](https://suivi.test/uploads/d.pdf)\n");
 		expect(await w.plan()).toEqual([]);
 	});
 

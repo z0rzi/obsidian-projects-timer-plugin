@@ -151,6 +151,28 @@ describe("a typed Project step", () => {
 	});
 });
 
+describe("a Project step with its type tag further on the line", () => {
+	it("sets, adds or removes its token, the tag moved in front", () => {
+		const afterToken = "- [ ] pr #bug Do this ^s1";
+		expect(setTaskToken(afterToken, { line: 0, raw: afterToken }, "p0")).toEqual({ ok: true, content: "- [ ] #bug p0 Do this ^s1" });
+		expect(rewriteStepToken(afterToken, { line: 0, raw: afterToken }, null)).toEqual({ ok: true, content: "- [ ] #bug Do this ^s1" });
+		const atEnd = "- [ ] Do this #wait";
+		expect(rewriteStepToken(atEnd, { line: 0, raw: atEnd }, "p2")).toEqual({ ok: true, content: "- [ ] #wait p2 Do this" });
+	});
+
+	it("ticks and unticks it, its token and date found around the tag", () => {
+		const open = "- [ ] p2 #bug Export ^ab12c";
+		expect(setStepDone(open, { line: 0, raw: open }, "2026-10-24")).toEqual({ ok: true, content: "- [x] #bug 2026-10-24 Export ^ab12c" });
+		const done = "- [x] p2 #bug 2026-10-24 Export";
+		expect(setStepDone(done, { line: 0, raw: done }, null)).toEqual({ ok: true, content: "- [ ] #bug Export" });
+	});
+
+	it("leaves a step with its tag alone in front unchanged but for the token", () => {
+		const raw = "- [ ] #quick";
+		expect(rewriteStepToken(raw, { line: 0, raw }, null)).toEqual({ ok: true, content: "- [ ] #quick" });
+	});
+});
+
 describe("setStepDone", () => {
 	it("ticks a step: token dropped, date after the type tag", () => {
 		const raw = "- [ ] #bug p2 Export Excel ^ab12c";

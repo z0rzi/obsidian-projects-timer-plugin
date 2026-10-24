@@ -9,6 +9,8 @@ import {
 	Notice,
 } from "obsidian";
 import ProjectsTimerPlugin from "./main";
+import { connectionStatus } from "./remote/connectionStatus";
+import { settingsRemote } from "./remote/settingsRemote";
 import { countAppIds, disconnect, disconnectMessage } from "./sync/disconnect";
 import { vaultFiles } from "./sync/vaultFiles";
 import { DisconnectModal } from "./ui/DisconnectModal";
@@ -232,6 +234,17 @@ export class ProjectsTimerSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+
+		const connectionTest = new Setting(this.containerEl)
+			.setName("Test connection")
+			.setDesc("Checks the Suivi URL and API token above.");
+		connectionTest.addButton((button) =>
+			button.setButtonText("Test connection").onClick(async () => {
+				button.setDisabled(true).setButtonText("Testing…");
+				connectionTest.setDesc(await connectionStatus(settingsRemote(this.plugin.settings)));
+				button.setDisabled(false).setButtonText("Test connection");
+			}),
+		);
 
 		new Setting(this.containerEl)
 			.setName("Se déconnecter de l'app Client")

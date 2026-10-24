@@ -58,6 +58,30 @@ describe("extractCheckboxItems", () => {
 		]);
 	});
 
+	it("reads a type tag anywhere on the step, the first one winning, before the token", () => {
+		const items = extractCheckboxItems(
+			["- [ ] #bug pr Do this", "- [ ] pr #bug Do this", "- [ ] Do this #bug p2", "- [ ] p1 Do #wait this #bug ^t1", "- [ ] Do this#bug"],
+			0,
+			5,
+		);
+
+		expect(items.map((i) => [i.type, i.override?.priority ?? null, i.override?.status ?? null, i.text])).toEqual([
+			["bug", 1, "a_valider", "Do this"],
+			["bug", 1, "a_valider", "Do this"],
+			["bug", null, null, "Do this p2"],
+			["wait", 1, "priority", "Do this #bug"],
+			["task", null, null, "Do this#bug"],
+		]);
+	});
+
+	it("reads the done date of a step whose type tag is not in front", () => {
+		const items = extractCheckboxItems(["- [x] 2026-10-24 #bug Export ^ab12c", "- [x] Export 2026-10-24 #quick"], 0, 2);
+		expect(items.map((i) => [i.type, i.text, i.doneOn])).toEqual([
+			["bug", "Export", "2026-10-24"],
+			["quick", "Export 2026-10-24", undefined],
+		]);
+	});
+
 	it("reads the date of a done step after its type tag, not as text", () => {
 		const items = extractCheckboxItems(["- [x] #bug 2026-10-24 Export Excel ^ab12c", "- [ ] 2026-10-24 pas fait"], 0, 2);
 		expect(items.map((i) => [i.text, i.doneOn])).toEqual([

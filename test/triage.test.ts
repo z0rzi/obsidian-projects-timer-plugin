@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { InboxStore } from "../src/inbox/inboxStore";
-import { placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
+import { contextText, InboxStore } from "../src/inbox/inboxStore";
+import { defaultPriority, firstStepTarget, placeFirstStep, placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
 import type { InboxTicket, TaskFields, TriageRequest } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
 import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
@@ -48,6 +48,54 @@ describe("Inbox À trier", () => {
 		await store.refresh();
 		expect(store.current.toTriage).toEqual([]);
 	});
+
+	it("shows the Client's Project, by the vault's title, and Urgency under a Ticket", async () => {
+		const tickets: InboxTicket[] = [
+			{ ...ticket("t1"), project_id: "p1abc", urgency: "bloquant" },
+			{ ...ticket("t2"), project_id: null, urgency: "quand_possible" },
+			{ ...ticket("t3"), project_id: "p9out", urgency: null },
+			{ ...ticket("t4", "idea"), urgency: null },
+		];
+		const remote = {
+			inbox: async () => ({ notifications: [], to_triage: tickets }),
+			activity: async () => ({ entries: [], next: null }),
+		} as unknown as Remote;
+		let scans = 0;
+		const widget = { id: "p1abc", path: "2.projects/Widget.md", title: "Widget", private: false };
+		const projects = () => {
+			scans++;
+			return new Map([["p1abc", widget]]);
+		};
+		const store = new InboxStore(remote, () => {}, projects);
+		await store.refresh();
+		expect(scans).toBe(1);
+		expect(store.current.toTriage.map((e) => e.context)).toEqual([
+			{ project: widget, projectLabel: "Widget", urgencyLabel: "Bloquant" },
+			{ projectLabel: "je ne sais pas", urgencyLabel: "Quand vous pourrez" },
+			{ projectLabel: "(introuvable dans le vault)" },
+			undefined,
+		]);
+		expect(store.current.toTriage.map((e) => e.context && contextText(e.context))).toEqual([
+			"Projet : Widget · Bloquant",
+			"Projet : je ne sais pas · Quand vous pourrez",
+			"Projet : (introuvable dans le vault)",
+			undefined,
+		]);
+		expect(store.current.toTriage[0]!.urgency).toBe("bloquant");
+	});
+});
+
+describe("defaultPriority", () => {
+	it("suggests the Priority from the Client's Urgency, step or not", () => {
+		expect(defaultPriority(false, "bloquant")).toBe(1);
+		expect(defaultPriority(true, "genant")).toBe(2);
+		expect(defaultPriority(true, "quand_possible")).toBe(3);
+	});
+
+	it("without Urgency, p3 for a Tag task and the Project's for a step", () => {
+		expect(defaultPriority(false, undefined)).toBe(3);
+		expect(defaultPriority(true, null)).toBeNull();
+	});
 });
 
 describe("placeLine", () => {
@@ -77,6 +125,49 @@ describe("placeLine", () => {
 	});
 });
 
+describe("placeFirstStep (Insérer dans <Projet>)", () => {
+	const line = "- [ ] #bug p2 X ^t7f3a\n\tcorps";
+
+	it("goes right below the Tasks heading, before the existing steps", () => {
+		expect(placeFirstStep(["# Widget", "## Tasks", "- [ ] a", "## Notes"], line)).toEqual({
+			from: { line: 2, ch: 0 },
+			to: { line: 2, ch: 0 },
+			text: `${line}\n`,
+			line: 2,
+		});
+	});
+
+	it("keeps the blank line under the heading, the line goes before the first step", () => {
+		expect(placeFirstStep(["## Tasks", "", "- [ ] a"], line)).toMatchObject({ from: { line: 2, ch: 0 }, text: `${line}\n`, line: 2 });
+	});
+
+	it("fills the first blank line of an empty section", () => {
+		expect(placeFirstStep(["## Tasks", "", "", "## Notes"], line)).toEqual({
+			from: { line: 1, ch: 0 },
+			to: { line: 1, ch: 0 },
+			text: line,
+			line: 1,
+		});
+	});
+
+	it("goes before a heading that follows at once", () => {
+		expect(placeFirstStep(["## Tasks", "## Notes"], line)).toMatchObject({ from: { line: 1, ch: 0 }, text: `${line}\n`, line: 1 });
+	});
+
+	it("goes after a Tasks heading that ends the note", () => {
+		expect(placeFirstStep(["# Widget", "## Tasks"], line)).toEqual({
+			from: { line: 1, ch: 8 },
+			to: { line: 1, ch: 8 },
+			text: `\n${line}`,
+			line: 2,
+		});
+	});
+
+	it("finds no place without a Tasks heading", () => {
+		expect(placeFirstStep(["# Widget", "- [ ] a"], line)).toBeNull();
+	});
+});
+
 function deps(overrides: Partial<TriageDeps> = {}, description = "Rien ne s'affiche") {
 	const sent: [string, TriageRequest][] = [];
 	const inserted: string[] = [];
@@ -103,6 +194,7 @@ function deps(overrides: Partial<TriageDeps> = {}, description = "Rien ne s'affi
 		},
 		target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step: false }),
 		insert: (line) => inserted.push(line),
+		appUrl: "https://suivi.test/",
 		...overrides,
 	};
 	return { d, sent, inserted, bases };
@@ -125,8 +217,8 @@ describe("runTriage (Insérer ici)", () => {
 	it("writes the Description under the line, one tab in, blank lines kept empty", async () => {
 		const { d, inserted, bases } = deps({}, "Rien ne s'affiche\r\n\r\n  - sur Chrome\n![](/uploads/u1.png)\n\n");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
-		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n\t  - sur Chrome\n\t![](/uploads/u1.png)"]);
-		expect(bases.t7f3a!.fields.description).toBe("Rien ne s'affiche\n\n  - sur Chrome\n![](/uploads/u1.png)");
+		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n\t  - sur Chrome\n\t![](https://suivi.test/uploads/u1.png)"]);
+		expect(bases.t7f3a!.fields.description).toBe("Rien ne s'affiche\n\n  - sur Chrome\n![](https://suivi.test/uploads/u1.png)");
 	});
 
 	it("brings the Client's app images into the vault as embeds", async () => {
@@ -148,11 +240,18 @@ describe("runTriage (Insérer ici)", () => {
 		expect(bases.t7f3a!.fields.description).toBe("Voir :\n![[u1.png]]\n`![](/uploads/u2.png)` reste du code");
 	});
 
-	it("keeps the app link of an image it could not bring in, and says how many", async () => {
+	it("keeps the app link of an image it could not bring in, made absolute, and says how many", async () => {
 		const { d, inserted } = deps({ localImage: async () => null }, "![](/uploads/u1.png)");
 		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
 		expect(result).toEqual({ ok: true, line: "#bug p2 Heatmap vide ^t7f3a", missingImages: 1 });
-		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\t![](/uploads/u1.png)"]);
+		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\t![](https://suivi.test/uploads/u1.png)"]);
+	});
+
+	it("points the Client's other uploads at the app, so they open in the browser, code aside", async () => {
+		const { d, inserted, bases } = deps({}, "Voir [document.pdf](/uploads/abc.pdf)\n`[x](/uploads/c.pdf)`");
+		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
+		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tVoir [document.pdf](https://suivi.test/uploads/abc.pdf)\n\t`[x](/uploads/c.pdf)`"]);
+		expect(bases.t7f3a!.fields.description).toBe("Voir [document.pdf](https://suivi.test/uploads/abc.pdf)\n`[x](/uploads/c.pdf)`");
 	});
 
 	it("writes only the line for an empty Description", async () => {
@@ -211,6 +310,40 @@ describe("runTriage (Insérer ici)", () => {
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "task", priority: null }, d);
 		expect(sent).toEqual([["t7f3a", { as: "task", type: "task", step: true, priority: null, project_id: "p1abc" }]]);
 		expect(inserted).toEqual(["- [ ] #task Heatmap vide ^t7f3a"]);
+	});
+});
+
+describe("runTriage (Insérer dans <Projet>)", () => {
+	const widget = { id: "p1abc", path: "2.projects/Widget.md", title: "Widget" };
+
+	it("calls the app and writes nothing when the note to edit has no Tasks heading", async () => {
+		const { d, sent, inserted } = deps({ target: () => firstStepTarget(["# Widget", "- [ ] a"], widget) });
+		const result = await runTriage({ id: "t7f3a", title: "X" }, { type: "bug", priority: 2 }, d);
+		expect(result).toEqual({ ok: false, error: "Widget n'a pas de titre « Tasks » : ajoutez-le, puis réessayez." });
+		expect(sent).toEqual([]);
+		expect(inserted).toEqual([]);
+	});
+
+	it("targets the Project note as a step when it has a Tasks heading", () => {
+		expect(firstStepTarget(["# Widget", "## Tasks"], widget)).toEqual({ path: "2.projects/Widget.md", projectId: "p1abc", step: true });
+	});
+
+	it("reports no success and sends no base when the line could not be written", async () => {
+		const { d, bases } = deps({
+			insert: () => {
+				throw new Error("plus de titre « Tasks »");
+			},
+		});
+		const result = await runTriage({ id: "t7f3a", title: "X" }, { type: "bug", priority: 2 }, d);
+		expect(result).toEqual({ ok: false, error: expect.stringContaining("triée dans l'app, mais pas écrite (plus de titre « Tasks »)") });
+		expect(bases).toEqual({});
+	});
+
+	it("waits for an insert that first opens the note, and fails with it", async () => {
+		const { d, bases } = deps({ insert: async () => Promise.reject(new Error("note introuvable")) });
+		const result = await runTriage({ id: "t7f3a", title: "X" }, { type: "bug", priority: 2 }, d);
+		expect(result).toEqual({ ok: false, error: expect.stringContaining("pas écrite (note introuvable)") });
+		expect(bases).toEqual({});
 	});
 });
 
