@@ -41,7 +41,7 @@ export async function runNewProject(
 	} catch (e) {
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
-	if (response.as !== "project") return { ok: false, error: "The app did not make it a Project." };
+	if (response.as !== "project") return { ok: false, error: "L'app n'en a pas fait un Projet." };
 	return writeProjectNote(at, item.id, response.fields, deps);
 }
 
@@ -63,11 +63,11 @@ export function insertUnplacedProject(
 /** Where the Project file of `title` goes, or why it can't. */
 function projectPath(title: string, deps: Pick<NewProjectDeps, "folder" | "exists">): { path: string; name: string } | { error: string } {
 	const folder = deps.folder.replace(/\/+$/, "");
-	if (!folder) return { error: "Set the Projects folder in the plugin settings first." };
+	if (!folder) return { error: "Indiquez d'abord le dossier des Projets dans les réglages du plugin." };
 	const name = fileName(title);
-	if (!name) return { error: "The title is not usable as a file name." };
+	if (!name) return { error: "Le titre n'est pas utilisable comme nom de fichier." };
 	const path = `${folder}/${name}.md`;
-	if (deps.exists(path)) return { error: `${path} already exists.` };
+	if (deps.exists(path)) return { error: `${path} existe déjà.` };
 	return { path, name };
 }
 
@@ -85,7 +85,7 @@ async function writeProjectNote(
 		await deps.remote.acknowledge([{ id, base: { path, fields }, ...(answer !== undefined ? { answer } : {}) }]);
 	} catch (e) {
 		const error = e instanceof Error ? e.message : String(e);
-		return { ok: false, error: `${path} created, but its base was not sent (${error})` };
+		return { ok: false, error: `${path} créé, mais sa base n'a pas été envoyée (${error})` };
 	}
 	return { ok: true, path };
 }

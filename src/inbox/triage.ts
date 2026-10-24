@@ -70,7 +70,7 @@ export async function runTriage(
 	} catch (e) {
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
-	if (response.as === "project") return { ok: false, error: "The app made it a Project, not a Task." };
+	if (response.as === "project") return { ok: false, error: "L'app en a fait un Projet, pas une Tâche." };
 	const tagAndToken = choice.priority === null ? `#${choice.type}` : `#${choice.type} p${choice.priority}`;
 	return writeTask(item, `${target.step ? "- [ ] " : ""}${tagAndToken}`, response.fields, target.path, deps);
 }
@@ -126,7 +126,7 @@ async function writeTask(
 		await deps.remote.acknowledge([{ id: item.id, base: { path, fields: { ...fields, title, description } }, ...answer }]);
 	} catch (e) {
 		const error = e instanceof Error ? e.message : String(e);
-		return { ok: false, error: `inserted, but its base was not sent (${error}); the next Push offers its description` };
+		return { ok: false, error: `insérée, mais sa base n'a pas été envoyée (${error}) : le prochain Push proposera sa description` };
 	}
 	return { ok: true, line, missingImages: missing };
 }

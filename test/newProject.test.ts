@@ -104,7 +104,7 @@ describe("runNewProject (Nouveau projet)", () => {
 		taken.files.set("2.projects/Carte des flux.md", "mine");
 		expect(await runNewProject(IDEA, { priority: 2 }, taken.d)).toEqual({
 			ok: false,
-			error: "2.projects/Carte des flux.md already exists.",
+			error: "2.projects/Carte des flux.md existe déjà.",
 		});
 		expect(taken.sent).toEqual([]);
 		expect(taken.files.get("2.projects/Carte des flux.md")).toBe("mine");
