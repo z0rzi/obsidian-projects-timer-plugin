@@ -40,11 +40,11 @@ describe("toastText", () => {
 			type: "item.updated",
 			item,
 			field: "due_date",
-			from: "2027-01-15",
-			to: "2027-03-01",
-			label: "Échéance repoussée au 1 mars 2027",
+			from: "2027-01",
+			to: "2027-03",
+			label: "Échéance repoussée à mars 2027",
 		});
-		expect(toastText(change)).toBe("Échéance repoussée au 1 mars 2027 sur Prix SPOTS");
+		expect(toastText(change)).toBe("Échéance repoussée à mars 2027 sur Prix SPOTS");
 	});
 
 	it("announces a new ticket", () => {
@@ -81,10 +81,10 @@ describe("badgeText", () => {
 	it("shows the newest Échéance, or that it was removed, without counting it as other", () => {
 		const dueDate = (id: number, from: string | null, to: string | null) =>
 			entry({ id, type: "item.updated", field: "due_date", from, to });
-		expect(badgeText([dueDate(3, "2027-01-15", "2027-03-01"), comment(2), dueDate(1, null, "2027-01-15")])).toBe(
-			"💬 1 · 📅 1 mars 2027",
+		expect(badgeText([dueDate(3, "2027-01", "2027-03"), comment(2), dueDate(1, null, "2027-01")])).toBe(
+			"💬 1 · 📅 mars 2027",
 		);
-		expect(badgeText([dueDate(2, "2027-03-01", null), priority(1, 1, 2)])).toBe("P1→P2 · 📅 retirée");
+		expect(badgeText([dueDate(2, "2027-03", null), priority(1, 1, 2)])).toBe("P1→P2 · 📅 retirée");
 	});
 
 	it("shows the latest Answer and counts the other entries", () => {

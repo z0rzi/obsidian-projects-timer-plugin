@@ -6,7 +6,7 @@ const ANSWERS: Record<NonNullable<ActivityEntry["answer"]>, string> = { valide: 
 /** `P2`, or "hérité" for a Project step that had no priority of its own. */
 const priorityLabel = (value: unknown) => (typeof value === "number" ? `P${value}` : "hérité");
 
-/** An Échéance as the app words it, « 1 mars 2027 »; « retirée » for none. */
+/** An Échéance as the app words it, « mars 2027 »; « retirée » for none. */
 const dueDateBadge = (value: unknown) => (typeof value === "string" ? dueDateLabel(value) : "retirée");
 
 /** How a toast names a user: a short handle upper-cased ("JMJ"), a longer one capitalised, else the email's local part. */
@@ -23,7 +23,7 @@ export function toastText(entry: ActivityEntry): string {
 			return `${actorName(entry.actor)} a commenté ${title}`;
 		case "item.updated":
 			if (entry.field === "priority") return `${priorityLabel(entry.from)} → ${priorityLabel(entry.to)} sur ${title}`;
-			// The app words it: « Échéance repoussée au 1 mars 2027 ».
+			// The app words it: « Échéance repoussée à mars 2027 ».
 			if (entry.field === "due_date") return `${entry.label} sur ${title}`;
 			break;
 		case "ticket.created":

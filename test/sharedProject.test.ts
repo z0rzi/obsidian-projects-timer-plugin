@@ -99,16 +99,16 @@ describe("readSharedProject", () => {
 			return r?.ok ? r.project.fields.due_date : r;
 		};
 
-		expect(dueDate("due_date: 2027-01-15")).toBe("2027-01-15");
-		expect(dueDate('due_date: "2027-01-15"')).toBe("2027-01-15");
+		expect(dueDate("due_date: 2027-01")).toBe("2027-01");
+		expect(dueDate('due_date: "2027-01"')).toBe("2027-01");
 		expect(dueDate("due_date:")).toBeNull();
 		expect(dueDate("due_date: null")).toBeNull();
 		expect(dueDate("due_date: ~")).toBeNull();
 		expect(dueDate("priority: 3")).toBeNull();
 	});
 
-	it("reports a due_date that isn't a real day, naming the note", () => {
-		for (const value of ["fin janvier", "2027-02-30", "15/01/2027"]) {
+	it("reports a due_date that isn't a month, a full day included, naming the note", () => {
+		for (const value of ["fin janvier", "2027-01-15", "2027-13", "2027-1", "01/2027"]) {
 			const r = readSharedProject("p/X.md", note(`due_date: ${value}\nsuivi_id: t7f3a`, ""));
 
 			expect(r).toEqual({ ok: false, path: "p/X.md", suiviId: "t7f3a", error: `Invalid due_date "${value}" in p/X.md` });

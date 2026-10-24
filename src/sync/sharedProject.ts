@@ -1,3 +1,4 @@
+import { isDueMonth } from "../dueDate";
 import type { ProjectFields, ProjectStatus } from "../remote/api";
 
 /** What the Client app sees of a Project file. Everything else stays in the vault. */
@@ -32,8 +33,8 @@ export const DEFAULT_PRIORITY = 5;
  * Reads the shared fields of a Project note: title (file name), the
  * `# Description` section, `status:`, `priority:` and `due_date:`
  * frontmatter. Returns null for `prive: true` Projects, which never leave the
- * vault. An unknown status or a due_date that isn't a real day is an error
- * naming the note.
+ * vault. An unknown status or a due_date that isn't a month (`YYYY-MM`) is an
+ * error naming the note.
  */
 export function readSharedProject(path: string, content: string): ReadResult | null {
 	const lines = content.split("\n");
@@ -51,7 +52,7 @@ export function readSharedProject(path: string, content: string): ReadResult | n
 	}
 	// `due_date: null` and `due_date: ~` are YAML's none, as an empty value.
 	const dueDate = !fm.due_date || YAML_NULL.has(fm.due_date) ? null : fm.due_date;
-	if (dueDate !== null && !isDay(dueDate)) return refuse(`Invalid due_date "${dueDate}" in ${path}`);
+	if (dueDate !== null && !isDueMonth(dueDate)) return refuse(`Invalid due_date "${dueDate}" in ${path}`);
 
 	const priority = /^\d+$/.test(fm.priority ?? "") ? Math.min(Number(fm.priority), 5) : DEFAULT_PRIORITY;
 
@@ -109,12 +110,6 @@ function trimSection(lines: string[]): string {
 	// The vault's template puts a `---` rule under each heading.
 	const body = lines[0]?.trim() === "---" ? lines.slice(1) : lines;
 	return body.join("\n").trim();
-}
-
-/** A real day written `YYYY-MM-DD` (not `2027-02-30`). */
-function isDay(value: string): boolean {
-	const day = new Date(`${value}T00:00:00Z`);
-	return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === value;
 }
 
 function normalize(label: string): string {

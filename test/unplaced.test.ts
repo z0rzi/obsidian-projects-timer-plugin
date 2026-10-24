@@ -127,7 +127,7 @@ describe("Unplaced items", () => {
 	});
 
 	it("Insérer ici on a Project with an Échéance writes its due_date, and the Push then has nothing", async () => {
-		const fields = { ...widget, due_date: "2027-01-15" };
+		const fields = { ...widget, due_date: "2027-01" };
 		const w = pushWorld({}, [appProject("p0002", fields, { base: { path: "old/Widget.md", fields } })]);
 		const [item] = (await w.pull()).unplaced;
 		await insertUnplacedProject(item as Extract<UnplacedItem, { kind: "project" }>, {
@@ -138,7 +138,7 @@ describe("Unplaced items", () => {
 			create: async (path, content) => void w.files.set(path, content),
 			appUrl: "https://suivi.test",
 		});
-		expect(w.files.get(project)).toContain("due_date: 2027-01-15");
+		expect(w.files.get(project)).toContain("due_date: 2027-01");
 		expect(await w.plan()).toEqual([]);
 	});
 

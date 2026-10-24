@@ -100,12 +100,12 @@ describe("runPush: due_date", () => {
 	const held = (w: ReturnType<typeof pushWorld>) => [...w.app.held.values()][0]!;
 
 	it("creates the Project with its Échéance and stores it in the Base", async () => {
-		const w = pushWorld({ "2.projects/Widget.md": dated("2027-01-15") });
+		const w = pushWorld({ "2.projects/Widget.md": dated("2027-01") });
 
 		await w.push();
 
-		expect(w.app.received[0]).toMatchObject([{ op: "create", fields: { due_date: "2027-01-15" } }]);
-		expect(held(w).base).toMatchObject({ fields: { due_date: "2027-01-15" } });
+		expect(w.app.received[0]).toMatchObject([{ op: "create", fields: { due_date: "2027-01" } }]);
+		expect(held(w).base).toMatchObject({ fields: { due_date: "2027-01" } });
 		expect(await w.plan()).toEqual([]);
 	});
 
@@ -116,35 +116,35 @@ describe("runPush: due_date", () => {
 		const edit = (from: string, to: string) =>
 			w.files.set("2.projects/Widget.md", w.files.get("2.projects/Widget.md")!.replace(from, to));
 
-		edit("priority: 2", "priority: 2\ndue_date: 2027-01-15");
-		expect(await w.plan()).toMatchObject([{ group: "changed", diffs: [{ field: "due_date", from: null, to: "2027-01-15" }] }]);
+		edit("priority: 2", "priority: 2\ndue_date: 2027-01");
+		expect(await w.plan()).toMatchObject([{ group: "changed", diffs: [{ field: "due_date", from: null, to: "2027-01" }] }]);
 		await w.push();
-		edit("due_date: 2027-01-15", "due_date: 2027-02-01");
+		edit("due_date: 2027-01", "due_date: 2027-02");
 		await w.push();
-		edit("due_date: 2027-02-01", "due_date:");
+		edit("due_date: 2027-02", "due_date:");
 		await w.push();
 
 		expect(w.app.received.slice(1)).toEqual([
-			[expect.objectContaining({ id, fields: { due_date: "2027-01-15" }, expected: { due_date: null } })],
-			[expect.objectContaining({ id, fields: { due_date: "2027-02-01" }, expected: { due_date: "2027-01-15" } })],
-			[expect.objectContaining({ id, fields: { due_date: null }, expected: { due_date: "2027-02-01" } })],
+			[expect.objectContaining({ id, fields: { due_date: "2027-01" }, expected: { due_date: null } })],
+			[expect.objectContaining({ id, fields: { due_date: "2027-02" }, expected: { due_date: "2027-01" } })],
+			[expect.objectContaining({ id, fields: { due_date: null }, expected: { due_date: "2027-02" } })],
 		]);
 		expect(held(w).base).toMatchObject({ fields: { due_date: null } });
 		expect(await w.plan()).toEqual([]);
 	});
 
-	it("skips the Project while its due_date isn't a real day, saying why and naming the note", async () => {
-		const note = { path: "2.projects/Widget.md", content: dated("fin janvier") };
+	it("skips the Project while its due_date is a day, not a month, saying why and naming the note", async () => {
+		const note = { path: "2.projects/Widget.md", content: dated("2027-01-15") };
 		const w = pushWorld({ [note.path]: note.content });
 
 		expect(readVaultItems([note], [note], () => null).skipped).toEqual([
-			'Push skips Widget: Invalid due_date "fin janvier" in 2.projects/Widget.md',
+			'Push skips Widget: Invalid due_date "2027-01-15" in 2.projects/Widget.md',
 		]);
 		expect(await w.plan()).toEqual([]);
 	});
 
 	it("never sends a prive Project's Échéance", async () => {
-		const w = pushWorld({ "2.projects/Widget.md": "---\nprive: true\ndue_date: 2027-01-15\n---\n" });
+		const w = pushWorld({ "2.projects/Widget.md": "---\nprive: true\ndue_date: 2027-01\n---\n" });
 
 		expect(await w.plan()).toEqual([]);
 	});
