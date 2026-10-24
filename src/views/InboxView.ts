@@ -1,7 +1,7 @@
 import { Component, ItemView, MarkdownRenderer, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
-import type { InboxEntry, InboxState, InboxStore } from "../inbox/inboxStore";
+import { contextText, type InboxEntry, type InboxState, type InboxStore } from "../inbox/inboxStore";
 import type { ActivityEntry, EventType } from "../remote/api";
 import type { Conflict } from "../sync/compareState";
 import type { UnplacedItem } from "../sync/unplaced";
@@ -68,7 +68,7 @@ export type OpenInboxItem = (item: InboxEntry["item"] | undefined, title: string
 
 /**
  * The Developer's pane, two views toggled in its header (kept in the view
- * state). The Inbox: Tickets À trier ("Insérer ici", launched Ideas "Nouveau
+ * state). The Inbox: Tickets À trier ("Insérer ici", « Insérer dans <Projet> », launched Ideas "Nouveau
  * projet"), Unplaced items (« Insérer ici », « Retirer de l'app », from 5 one
  * entry opening a modal) and conflicts (each button settles one at once), then the unread feed entries; « Lu » or opening
  * one takes it out. The Activity: the whole feed, read entries dimmed. Both
@@ -92,6 +92,8 @@ export class InboxView extends ItemView {
 		fetchImage: ConstructorParameters<typeof AppImages>[0],
 		/** "Insérer ici" on an entry À trier. */
 		private readonly triage: (entry: InboxEntry) => void = () => {},
+		/** « Insérer dans <Projet> » on a Ticket À trier. */
+		private readonly insertInto: (entry: InboxEntry) => void = () => {},
 		/** "Nouveau projet" on a launched Idea À trier. */
 		private readonly newProject: (entry: InboxEntry) => void = () => {},
 		/** A conflict's button. */
@@ -270,12 +272,25 @@ export class InboxView extends ItemView {
 	private renderPinned(parent: HTMLElement, entry: InboxEntry) {
 		const el = this.entryBox(parent, entry.kind);
 		this.link(el, entry.title, () => this.openItem(entry.item, entry.title, entry.kind !== "conflict"));
-		if (entry.context) el.createDiv({ text: entry.context, cls: "suivi-inbox-context" });
+		if (entry.context) this.renderContext(el, entry.context);
 		const meta = [entry.by, entry.at && DATE.format(new Date(entry.at))].filter(Boolean).join(" · ");
 		if (meta) el.createDiv({ text: meta, cls: "suivi-inbox-meta" }).style.color = "var(--text-faint)";
 		const detail = entry.detail.length > EXCERPT ? `${entry.detail.slice(0, EXCERPT)}…` : entry.detail;
 		el.createDiv({ text: detail, cls: "suivi-inbox-detail" }).style.whiteSpace = "pre-wrap";
-		drawPinnedButtons(el, entry, { triage: this.triage, newProject: this.newProject, pick: this.pick, unplaced: this.unplaced });
+		drawPinnedButtons(el, entry, { triage: this.triage, insertInto: this.insertInto, newProject: this.newProject, pick: this.pick, unplaced: this.unplaced });
+	}
+
+	/** « Projet : <title> · <Urgency> », the title a link to the Project note when it is in the vault. */
+	private renderContext(el: HTMLElement, context: NonNullable<InboxEntry["context"]>) {
+		const line = el.createDiv({ cls: "suivi-inbox-context" });
+		const { project } = context;
+		if (!project) {
+			line.setText(contextText(context));
+			return;
+		}
+		line.appendText("Projet : ");
+		this.link(line, project.title, () => this.openItem({ kind: "project", id: project.id, title: project.title }, project.title, false));
+		if (context.urgencyLabel) line.appendText(` · ${context.urgencyLabel}`);
 	}
 
 	/**

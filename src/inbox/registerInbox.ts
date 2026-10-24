@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, type Plugin, type WorkspaceLeaf } from "obsidian";
+import { type EditorPosition, MarkdownView, Notice, type Plugin, type WorkspaceLeaf } from "obsidian";
 import type { CommentTarget } from "../comments/commentTarget";
 import { listeners, settingsRemote } from "../remote/settingsRemote";
 import { openView } from "../ui/openView";
@@ -10,9 +10,9 @@ import type { PluginData } from "../sync/pluginData";
 import type { PullOutcome } from "../sync/runPull";
 import { vaultFiles } from "../sync/vaultFiles";
 import { INBOX_VIEW_TYPE, InboxView } from "../views/InboxView";
-import { InboxStore, type InboxEntry, type InboxState } from "./inboxStore";
+import { InboxStore, type InboxEntry, type InboxState, type VaultProject } from "./inboxStore";
 import { itemLocation } from "./itemLocation";
-import { insertUnplacedTask, placeLine, runTriage, type TriageChoice, type TriageDeps } from "./triage";
+import { insertUnplacedTask, placeFirstStep, placeLine, runTriage, type TriageChoice, type TriageDeps } from "./triage";
 import { removeFromApp, type UnplacedItem } from "../sync/unplaced";
 import { tagTaskProject } from "../sync/taskProject";
 import { findTasksHeadingSection } from "../projectCards";
@@ -28,7 +28,7 @@ export interface InboxDeps {
 }
 
 /**
- * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici"), launched Ideas ("Nouveau projet"),
+ * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici", « Insérer dans <Projet> »), launched Ideas ("Nouveau projet"),
  * the Unplaced items and conflicts of the last Pull and the Activity feed. Reloads from the app after each Pull and toasts the
  * Client's entries that are new since the previous reload; a status bar item shows the unread count. Returns
  * the store, `subscribe`, `badges` and `openOnItem` (for the kanban), `pick` (a conflict's buttons) and `afterPull`.
@@ -38,12 +38,14 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	const remote = settingsRemote(data.settings);
 	const { emit, subscribe } = listeners<InboxState>();
 	const store = new InboxStore(remote, emit, () => {
-		const titles = new Map<string, string>();
+		const projects = new Map<string, VaultProject>();
 		for (const note of app.vault.getMarkdownFiles()) {
 			const id = suiviIdOf(app, note.path);
-			if (id) titles.set(id, note.basename);
+			if (!id) continue;
+			const fm = app.metadataCache.getFileCache(note)?.frontmatter as Record<string, unknown> | undefined;
+			projects.set(id, { id, path: note.path, title: note.basename, private: fm?.prive === true });
 		}
-		return titles;
+		return projects;
 	});
 	/** The app's state at the last Pull: the base's note is where an item is looked for first. */
 	let lastState: AppItems | null = null;
@@ -63,16 +65,21 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	}
 
 	async function openLine(path: string, line: number) {
+		const view = await openNote(path, line);
+		view?.editor.setCursor({ line, ch: 0 });
+	}
+
+	/** Opens the note at `path` (in its tab if open) at `line` and focuses it; its view, null when not a note. */
+	async function openNote(path: string, line: number): Promise<MarkdownView | null> {
 		const file = app.vault.getFileByPath(path);
-		if (!file) return;
+		if (!file) return null;
 		const existing = app.workspace
 			.getLeavesOfType("markdown")
 			.find((leaf) => (leaf.view as MarkdownView).file?.path === path);
 		const leaf = existing ?? app.workspace.getLeaf(false);
 		await leaf.openFile(file, { eState: { line } });
 		app.workspace.setActiveLeaf(leaf, { focus: true });
-		const view = leaf.view instanceof MarkdownView ? leaf.view : null;
-		view?.editor.setCursor({ line, ch: 0 });
+		return leaf.view instanceof MarkdownView ? leaf.view : null;
 	}
 
 	/** The note last edited (the Inbox has focus when its button is clicked). */
@@ -133,21 +140,68 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		const item = { title: entry.item.title, type: entry.ticketType ?? "task", step: target.step, context: entry.context, urgency: entry.urgency };
 		new TriageModal(app, item, (choice: TriageChoice) => {
 			void (async () => {
-				const result = await data.exclusive(() =>
-					runTriage(entry.item, choice, {
-						remote,
-						target: () => target,
-						insert: (line) => insertAtCursor(view, line),
-						appUrl: data.settings.suiviUrl,
-						localImage: (url) => copyAppImage(url, target.path),
-					}),
-				);
-				if (!result.ok) new Notice(`Échec du tri : ${result.error}`, 10_000);
-				else {
-					new Notice(`Insérée : ${result.line}`);
-					if (result.missingImages > 0) {
-						new Notice(`${result.missingImages} image(s) du ticket non copiée(s) dans le coffre : le lien vers l'app est gardé.`, 10_000);
-					}
+				await triageWith(entry, choice, target.path, {
+					target: () => target,
+					insert: (line) => insertAtCursor(view, line),
+				});
+				await store.refresh();
+			})();
+		}).open();
+	}
+
+	/** Runs the Triage of `entry` into the note at `path` and tells how it went. */
+	async function triageWith(entry: InboxEntry, choice: TriageChoice, path: string, where: Pick<TriageDeps, "target" | "insert">) {
+		const result = await data.exclusive(() =>
+			runTriage(entry.item, choice, {
+				remote,
+				...where,
+				appUrl: data.settings.suiviUrl,
+				localImage: (url) => copyAppImage(url, path),
+			}),
+		);
+		if (!result.ok) new Notice(`Échec du tri : ${result.error}`, 10_000);
+		else {
+			new Notice(`Insérée : ${result.line}`);
+			if (result.missingImages > 0) {
+				new Notice(`${result.missingImages} image(s) du ticket non copiée(s) dans le coffre : le lien vers l'app est gardé.`, 10_000);
+			}
+		}
+	}
+
+	/**
+	 * « Insérer dans <Projet> »: the Ticket triaged as a step of the Client's Project, written
+	 * first under its Tasks heading, then the note shown with the cursor at the end of that line.
+	 * A Project note without a Tasks heading gets a Notice and nothing is triaged.
+	 */
+	async function insertInto(entry: InboxEntry) {
+		const project = entry.context?.project;
+		const file = project && app.vault.getFileByPath(project.path);
+		if (!project || !file) return;
+		if (!findTasksHeadingSection((await app.vault.cachedRead(file)).split("\n"))) {
+			new Notice(`${project.title} n'a pas de titre « Tasks » : ajoutez-le, puis réessayez.`, 10_000);
+			return;
+		}
+		const item = { title: entry.item.title, type: entry.ticketType ?? "task", step: true, context: entry.context, into: project.title, urgency: entry.urgency };
+		new TriageModal(app, item, (choice: TriageChoice) => {
+			void (async () => {
+				const view = await openNote(project.path, 0);
+				if (!view) return;
+				const { editor } = view;
+				/** End of the step's line once written. */
+				const written: EditorPosition[] = [];
+				await triageWith(entry, choice, project.path, {
+					target: () => ({ path: project.path, projectId: project.id, step: true }),
+					insert: (text) => {
+						const at = placeFirstStep(editor.getValue().split("\n"), text);
+						if (!at) return;
+						editor.replaceRange(at.text, at.from, at.to);
+						written.push({ line: at.line, ch: editor.getLine(at.line).length });
+					},
+				});
+				const end = written[0];
+				if (end) {
+					editor.setCursor(end);
+					editor.scrollIntoView({ from: end, to: end }, true);
 				}
 				await store.refresh();
 			})();
@@ -238,6 +292,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				() => data.settings.suiviUrl,
 				(path) => remote.image(path),
 				triage,
+				(entry) => void insertInto(entry),
 				newProject,
 				(conflict, choice) => void pick(conflict, choice),
 				{ insert: (item) => void insertUnplaced(item), remove: (items) => void removeUnplaced(items) },

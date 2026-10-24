@@ -4,6 +4,7 @@ import { deindent } from "../sync/sharedTask";
 import { priorityToken } from "../lineWriter";
 import { A_VALIDER_TOKEN, readIndentedBody } from "../taskParser";
 import { descriptionForVault, type AppDescriptionDeps } from "./appDescription";
+import { findTasksHeadingSection } from "../projectCards";
 
 /** Tags "Insérer ici" offers, as the vault writes them. */
 export const TRIAGE_TAGS: { type: TriageTaskType; label: string }[] = [
@@ -167,4 +168,27 @@ export function placeLine(lines: string[], cursor: number, newLine: string): { f
 	}
 	const end = { line: cursor, ch: current.length };
 	return { from: end, to: end, text: `\n${newLine}${tail}` };
+}
+
+/**
+ * Where « Insérer dans <Projet> » writes a step (`newLine` and its body lines)
+ * as the first of the Project note's Tasks section: before its first non-blank
+ * line (a blank line right under the heading is kept), on its blank line when
+ * the section holds nothing, after the heading when it ends the note. `line`
+ * is where the step's line lands. Null without a Tasks heading.
+ */
+export function placeFirstStep(lines: string[], newLine: string): { from: Pos; to: Pos; text: string; line: number } | null {
+	const section = findTasksHeadingSection(lines);
+	if (!section) return null;
+	const { start, end } = section;
+	if (start >= lines.length) {
+		const at = { line: start - 1, ch: lines[start - 1]!.length };
+		return { from: at, to: at, text: `\n${newLine}`, line: start };
+	}
+	const first = lines.slice(start, end).findIndex((l) => l.trim());
+	if (first === -1 && start < end) {
+		return { from: { line: start, ch: 0 }, to: { line: start, ch: lines[start]!.length }, text: newLine, line: start };
+	}
+	const at = { line: first === -1 ? start : start + first, ch: 0 };
+	return { from: at, to: at, text: `${newLine}\n`, line: at.line };
 }

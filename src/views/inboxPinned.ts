@@ -20,6 +20,8 @@ export interface UnplacedActions {
 export interface PinnedActions {
 	/** "Insérer ici" on an entry À trier. */
 	triage: (entry: InboxEntry) => void;
+	/** « Insérer dans <Projet> » on a Ticket À trier whose Project is in the vault. */
+	insertInto: (entry: InboxEntry) => void;
 	/** "Nouveau projet" on a launched Idea À trier. */
 	newProject: (entry: InboxEntry) => void;
 	/** A conflict's button. */
@@ -56,5 +58,11 @@ export function drawPinnedButtons(el: HTMLElement, entry: InboxEntry, actions: P
 		el.createEl("button", { text: "Nouveau projet", attr: { "aria-label": fromTemplate } }).onclick = () => actions.newProject(entry);
 	} else if (entry.kind === "ticket") {
 		insertButton(el, toCursor, () => actions.triage(entry));
+		const project = entry.context?.project;
+		// A private Project is refused, as at the cursor.
+		if (project && !project.private) {
+			el.createEl("button", { text: `Insérer dans ${project.title}`, attr: { "aria-label": "Écrire cette Tâche en première étape du Projet" } }).onclick =
+				() => actions.insertInto(entry);
+		}
 	}
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { InboxStore } from "../src/inbox/inboxStore";
-import { defaultPriority, placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
+import { contextText, InboxStore } from "../src/inbox/inboxStore";
+import { defaultPriority, placeFirstStep, placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
 import type { InboxTicket, TaskFields, TriageRequest } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
 import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
@@ -61,14 +61,21 @@ describe("Inbox À trier", () => {
 			activity: async () => ({ entries: [], next: null }),
 		} as unknown as Remote;
 		let scans = 0;
-		const titles = () => {
+		const widget = { id: "p1abc", path: "2.projects/Widget.md", title: "Widget", private: false };
+		const projects = () => {
 			scans++;
-			return new Map([["p1abc", "Widget"]]);
+			return new Map([["p1abc", widget]]);
 		};
-		const store = new InboxStore(remote, () => {}, titles);
+		const store = new InboxStore(remote, () => {}, projects);
 		await store.refresh();
 		expect(scans).toBe(1);
 		expect(store.current.toTriage.map((e) => e.context)).toEqual([
+			{ project: widget, projectLabel: "Widget", urgencyLabel: "Bloquant" },
+			{ projectLabel: "je ne sais pas", urgencyLabel: "Quand vous pourrez" },
+			{ projectLabel: "(introuvable dans le vault)" },
+			undefined,
+		]);
+		expect(store.current.toTriage.map((e) => e.context && contextText(e.context))).toEqual([
 			"Projet : Widget · Bloquant",
 			"Projet : je ne sais pas · Quand vous pourrez",
 			"Projet : (introuvable dans le vault)",
@@ -115,6 +122,49 @@ describe("placeLine", () => {
 
 	it("keeps that blank line after the body too", () => {
 		expect(placeLine(["intro", "suite"], 0, "#bug p2 X\n\tcorps").text).toBe("\n#bug p2 X\n\tcorps\n");
+	});
+});
+
+describe("placeFirstStep (Insérer dans <Projet>)", () => {
+	const line = "- [ ] #bug p2 X ^t7f3a\n\tcorps";
+
+	it("goes right below the Tasks heading, before the existing steps", () => {
+		expect(placeFirstStep(["# Widget", "## Tasks", "- [ ] a", "## Notes"], line)).toEqual({
+			from: { line: 2, ch: 0 },
+			to: { line: 2, ch: 0 },
+			text: `${line}\n`,
+			line: 2,
+		});
+	});
+
+	it("keeps the blank line under the heading, the line goes before the first step", () => {
+		expect(placeFirstStep(["## Tasks", "", "- [ ] a"], line)).toMatchObject({ from: { line: 2, ch: 0 }, text: `${line}\n`, line: 2 });
+	});
+
+	it("fills the first blank line of an empty section", () => {
+		expect(placeFirstStep(["## Tasks", "", "", "## Notes"], line)).toEqual({
+			from: { line: 1, ch: 0 },
+			to: { line: 1, ch: 0 },
+			text: line,
+			line: 1,
+		});
+	});
+
+	it("goes before a heading that follows at once", () => {
+		expect(placeFirstStep(["## Tasks", "## Notes"], line)).toMatchObject({ from: { line: 1, ch: 0 }, text: `${line}\n`, line: 1 });
+	});
+
+	it("goes after a Tasks heading that ends the note", () => {
+		expect(placeFirstStep(["# Widget", "## Tasks"], line)).toEqual({
+			from: { line: 1, ch: 8 },
+			to: { line: 1, ch: 8 },
+			text: `\n${line}`,
+			line: 2,
+		});
+	});
+
+	it("finds no place without a Tasks heading", () => {
+		expect(placeFirstStep(["# Widget", "- [ ] a"], line)).toBeNull();
 	});
 });
 
