@@ -18,7 +18,7 @@ export interface LocalTask {
 	/** Project note the Task belongs to (the file itself, or its `project:` frontmatter); null = standalone. */
 	projectPath: string | null;
 	title: string;
-	/** null for a `#done` line: its tag is gone, the type is the one last pushed. */
+	/** null for a `#done` line: its tag is gone, the type is its base's in the app. */
 	type: PushedTaskType | null;
 	/** A Project step (a checkbox under a Project note's Tasks heading); false for a Tag task. */
 	step: boolean;

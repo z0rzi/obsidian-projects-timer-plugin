@@ -42,7 +42,7 @@ export interface Remote {
 	activity(before?: number, days?: number): Promise<ActivityResponse>;
 	/** Marks every Client event up to `id` included read. */
 	markReadUpTo(id: number): Promise<void>;
-	/** Uploads an image (PNG, JPEG, GIF, WebP); returns its path in the app (`/uploads/<name>`). */
+	/** Uploads an image (PNG, JPEG, GIF, WebP); returns its path in the app (`/uploads/<name>`), the existing one when the app already has that content. */
 	upload(data: ArrayBuffer, name: string): Promise<string>;
 	/**
 	 * An uploaded image (`/uploads/<name>`, as comment bodies hold it), fetched
