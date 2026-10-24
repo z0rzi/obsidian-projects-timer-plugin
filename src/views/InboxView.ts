@@ -4,6 +4,8 @@ import { highlightMentions, uploadedImages, withAppUrls } from "../comments/comm
 import type { InboxEntry, InboxFilter, InboxState, InboxStore } from "../inbox/inboxStore";
 import type { ActivityEntry, EventType } from "../remote/api";
 import type { Conflict } from "../sync/compareState";
+import type { UnplacedItem } from "../sync/unplaced";
+import { UnplacedModal } from "../ui/UnplacedModal";
 
 export const INBOX_VIEW_TYPE = "suivi-inbox-view";
 
@@ -43,6 +45,8 @@ export function nothingToHandle(state: InboxState): boolean {
 	return (
 		state.status === "ready" &&
 		state.toTriage.length === 0 &&
+		state.unplaced.length === 0 &&
+		state.unplacedBulk.length === 0 &&
 		state.conflicts.length === 0 &&
 		!state.feed.some((entry) => entry.unread)
 	);
@@ -72,13 +76,20 @@ export function conflictButtons(c: Conflict): { choice: "mine" | "theirs"; text:
 	];
 }
 
+/** The buttons of « Hors du vault »: « Insérer ici » and « Retirer de l'app » (several at once from the bulk modal). */
+export interface UnplacedActions {
+	insert(item: UnplacedItem): void;
+	remove(items: UnplacedItem[]): void;
+}
+
 /** What opening something in the Inbox goes to; `thread` also opens its comment thread. */
 export type OpenInboxItem = (item: InboxEntry["item"] | undefined, title: string, thread: boolean) => void;
 
 /**
  * The Developer's pane, two views toggled in its header (kept in the view
  * state). The Inbox: Tickets À trier ("Insérer ici", launched Ideas "Nouveau
- * projet") and conflicts (each button settles one at once), then the unread feed entries; « Lu » or opening
+ * projet"), Unplaced items (« Insérer ici », « Retirer de l'app », from 5 one
+ * entry opening a modal) and conflicts (each button settles one at once), then the unread feed entries; « Lu » or opening
  * one takes it out. The Activity: the whole feed, read entries dimmed. Both
  * newest first, grouped by day. Opening is delegated (`openItem`); filtering,
  * paging and marking read go through the store, so the app keeps the read state.
@@ -104,6 +115,7 @@ export class InboxView extends ItemView {
 		private readonly newProject: (entry: InboxEntry) => void = () => {},
 		/** A conflict's button. */
 		private readonly pick: (conflict: Conflict, choice: "mine" | "theirs") => void = () => {},
+		private readonly unplaced: UnplacedActions = { insert: () => {}, remove: () => {} },
 	) {
 		super(leaf);
 		this.images = new AppImages(fetchImage);
@@ -191,17 +203,31 @@ export class InboxView extends ItemView {
 		if (state.more) feed.createEl("button", { text: "Charger plus" }).onclick = () => void this.store.loadMore();
 	}
 
-	/** The Inbox's pinned sections, each drawn only when it has entries (ticket 10 adds « Hors du vault » after À trier). */
+	/** The Inbox's pinned sections, each drawn only when it has entries; « Hors du vault » counts the Items of its bulk entry. */
 	private drawPinned(root: HTMLElement, state: InboxState) {
 		const sections = [
-			{ id: "to-triage", title: "À trier", entries: state.toTriage },
-			{ id: "conflicts", title: "Conflits", entries: state.conflicts },
+			{ id: "to-triage", title: "À trier", entries: state.toTriage, bulk: [] },
+			{ id: "unplaced", title: "Hors du vault", entries: state.unplaced, bulk: state.unplacedBulk },
+			{ id: "conflicts", title: "Conflits", entries: state.conflicts, bulk: [] },
 		];
-		for (const { id, title, entries } of sections) {
-			if (entries.length === 0) continue;
-			const section = this.section(root, id, `${title} (${entries.length})`);
+		for (const { id, title, entries, bulk } of sections) {
+			const count = entries.length + bulk.length;
+			if (count === 0) continue;
+			const section = this.section(root, id, `${title} (${count})`);
+			if (bulk.length > 0) this.renderUnplacedBulk(section, bulk);
 			for (const entry of entries) this.renderPinned(section, entry);
 		}
+	}
+
+	/** « n éléments hors du vault »: its button opens the modal; the Items it keeps get one entry each. */
+	private renderUnplacedBulk(parent: HTMLElement, items: UnplacedItem[]) {
+		const el = this.entryBox(parent, "unplaced-bulk");
+		el.createDiv({ text: `${items.length} éléments hors du vault` });
+		el.createEl("button", { text: "Examiner" }).onclick = () =>
+			new UnplacedModal(this.app, items, (removed) => {
+				this.store.keepUnplaced(items.filter((i) => !removed.includes(i)).map((i) => i.id));
+				if (removed.length > 0) this.unplaced.remove(removed);
+			}).open();
 	}
 
 	/** Switches between the Inbox and the Activity; Obsidian saves the choice with the view state. */
@@ -257,10 +283,10 @@ export class InboxView extends ItemView {
 		return el;
 	}
 
-	/** A Ticket À trier or a conflict, with its buttons. */
+	/** A Ticket À trier, an Unplaced item or a conflict, with its buttons. */
 	private renderPinned(parent: HTMLElement, entry: InboxEntry) {
 		const el = this.entryBox(parent, entry.kind);
-		this.link(el, entry.title, () => this.openItem(entry.item, entry.title, entry.kind === "ticket"));
+		this.link(el, entry.title, () => this.openItem(entry.item, entry.title, entry.kind !== "conflict"));
 		const meta = [entry.by, entry.at && DATE.format(new Date(entry.at))].filter(Boolean).join(" · ");
 		if (meta) el.createDiv({ text: meta, cls: "suivi-inbox-meta" }).style.color = "var(--text-faint)";
 		const detail = entry.detail.length > EXCERPT ? `${entry.detail.slice(0, EXCERPT)}…` : entry.detail;
@@ -274,6 +300,18 @@ export class InboxView extends ItemView {
 					this.pick(conflict, choice);
 				};
 			}
+		} else if (entry.unplaced) {
+			const item = entry.unplaced;
+			const insert = el.createEl("button", {
+				text: "Insérer ici",
+				attr: {
+					"aria-label": item.kind === "project" ? "Créer la note du Projet depuis le modèle" : "Écrire cette Tâche au curseur de la note ouverte",
+				},
+			});
+			insert.onmousedown = (e) => e.preventDefault();
+			insert.onclick = () => this.unplaced.insert(item);
+			el.createEl("button", { text: "Retirer de l'app", attr: { "aria-label": "Archiver dans l'app : le Client ne le voit plus" } }).onclick =
+				() => this.unplaced.remove([item]);
 		} else if (entry.kind === "ticket" && entry.ticketType === "idea") {
 			el.createEl("button", {
 				text: "Nouveau projet",

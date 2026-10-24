@@ -1,5 +1,5 @@
 import { UPLOADED_IMAGE } from "../comments/commentMarkdown";
-import type { TriageTaskType } from "../remote/api";
+import type { TaskStateFields, TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import { rewriteOutsideCode } from "../sync/sharedBody";
 import { deindent } from "../sync/sharedTask";
@@ -71,17 +71,56 @@ export async function runTriage(
 		return { ok: false, error: e instanceof Error ? e.message : String(e) };
 	}
 	if (response.as === "project") return { ok: false, error: "The app made it a Project, not a Task." };
-	const { fields } = response;
-	const title = item.title.replace(/\s+/g, " ").trim();
 	const tagAndToken = choice.priority === null ? `#${choice.type}` : `#${choice.type} p${choice.priority}`;
-	const line = `${target.step ? "- [ ] " : ""}${tagAndToken} ${title} ^${item.id}`;
+	return writeTask(item, `${target.step ? "- [ ] " : ""}${tagAndToken}`, response.fields, target.path, deps);
+}
+
+/**
+ * « Insérer ici » on an Unplaced Task: its line, written from the app's fields
+ * now (type, status token or done date, title, `^id`) as a Tag task or a
+ * Project step after the cursor's place, with its Description as body; then
+ * its base is sent. The app isn't otherwise changed: a Project or step the
+ * placement changes is offered by the next Push.
+ */
+export function insertUnplacedTask(
+	item: { id: string; fields: TaskStateFields },
+	deps: Omit<TriageDeps, "remote"> & { remote: Pick<Remote, "acknowledge"> },
+): Promise<TriageResult> {
+	const target = deps.target();
+	if ("error" in target) return Promise.resolve({ ok: false, error: target.error });
+	const { fields } = item;
+	const tag = `#${defaultTag(fields.type)}`;
+	const date = fields.done_on ? ` ${fields.done_on}` : "";
+	let head: string;
+	if (fields.status === "termine") head = target.step ? `- [x] ${tag}${date}` : `#done${date}`;
+	else {
+		const token = fields.status === "a_valider" ? "pr" : fields.status === "en_cours" ? "p0" : fields.priority === null ? "" : `p${fields.priority}`;
+		head = `${target.step ? "- [ ] " : ""}${tag}${token ? ` ${token}` : ""}`;
+	}
+	return writeTask({ id: item.id, title: fields.title }, head, fields, target.path, deps);
+}
+
+/**
+ * Writes the Task line `<head> <title> ^<id>` with the Description of `fields`
+ * as its body at the cursor of `path`, then sends `fields` as its base, with
+ * the title and description as the vault reads them back, so the next Push sees no change.
+ */
+async function writeTask(
+	item: { id: string; title: string },
+	head: string,
+	fields: { description: string },
+	path: string,
+	deps: Pick<TriageDeps, "insert" | "localImage"> & { remote: Pick<Remote, "acknowledge"> },
+): Promise<TriageResult> {
+	const title = item.title.replace(/\s+/g, " ").trim();
+	const line = `${head} ${title} ^${item.id}`;
 	const { text: body, missing } = await withVaultImages(fields.description, deps);
 	const written = [line, ...taskBody(body)];
 	deps.insert(written.join("\n"));
 	// The base as the next Push reads it back from the vault, so it compares equal.
 	const description = deindent(readIndentedBody(written, 0).join("\n"));
 	try {
-		await deps.remote.acknowledge([{ id: item.id, base: { path: target.path, fields: { ...fields, description } } }]);
+		await deps.remote.acknowledge([{ id: item.id, base: { path, fields: { ...fields, title, description } } }]);
 	} catch (e) {
 		const error = e instanceof Error ? e.message : String(e);
 		return { ok: false, error: `inserted, but its base was not sent (${error}); the next Push offers its description` };
@@ -95,7 +134,7 @@ export async function runTriage(
  * later Push uploads it again: the app answers with the same URL). An image
  * that couldn't be copied keeps its app link and is counted in `missing`.
  */
-async function withVaultImages(description: string, deps: TriageDeps): Promise<{ text: string; missing: number }> {
+async function withVaultImages(description: string, deps: Pick<TriageDeps, "localImage">): Promise<{ text: string; missing: number }> {
 	let missing = 0;
 	const copies = new Map<string, Promise<string | null>>();
 	const text = await rewriteOutsideCode(description, async (piece) => {
