@@ -1,6 +1,6 @@
 import { type App, Modal, Setting } from "obsidian";
 import type { TicketUrgency } from "../remote/api";
-import { contextText, type TicketContext } from "../inbox/inboxStore";
+import { contextText, insertIntoText, type TicketContext } from "../inbox/inboxStore";
 import { defaultPriority, defaultTag, TRIAGE_TAGS, URGENCIES, type TriageChoice } from "../inbox/triage";
 
 const PRIORITIES = [0, 1, 2, 3, 4, 5];
@@ -56,7 +56,7 @@ export class TriageModal extends Modal {
 
 	/** « Insérer ici », or « Insérer dans <Projet> ». */
 	private action(): string {
-		return this.item.into ? `Insérer dans ${this.item.into}` : "Insérer ici";
+		return this.item.into ? insertIntoText(this.item.into) : "Insérer ici";
 	}
 
 	private submit() {

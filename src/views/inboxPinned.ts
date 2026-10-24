@@ -1,4 +1,4 @@
-import type { InboxEntry } from "../inbox/inboxStore";
+import { insertIntoText, type InboxEntry } from "../inbox/inboxStore";
 import type { Conflict } from "../sync/compareState";
 import type { UnplacedItem } from "../sync/unplaced";
 
@@ -61,7 +61,7 @@ export function drawPinnedButtons(el: HTMLElement, entry: InboxEntry, actions: P
 		const project = entry.context?.project;
 		// A private Project is refused, as at the cursor.
 		if (project && !project.private) {
-			el.createEl("button", { text: `Insérer dans ${project.title}`, attr: { "aria-label": "Écrire cette Tâche en première étape du Projet" } }).onclick =
+			el.createEl("button", { text: insertIntoText(project.title), attr: { "aria-label": "Écrire cette Tâche en première étape du Projet" } }).onclick =
 				() => actions.insertInto(entry);
 		}
 	}

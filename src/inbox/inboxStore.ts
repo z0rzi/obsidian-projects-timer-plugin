@@ -87,9 +87,20 @@ function ticketContext(t: InboxTicket, projects: Map<string, VaultProject>): Tic
 	return { ...(project ? { project } : {}), projectLabel, ...(t.urgency ? { urgencyLabel: URGENCIES[t.urgency].label } : {}) };
 }
 
+/** « Projet : <title> · <Urgency> » in three parts, so the view can make the Project's label a link. */
+export function contextParts(context: TicketContext): { before: string; label: string; after: string } {
+	return { before: "Projet : ", label: context.projectLabel, after: context.urgencyLabel ? ` · ${context.urgencyLabel}` : "" };
+}
+
 /** « Projet : <title> · <Urgency> », as a Ticket's context reads. */
 export function contextText(context: TicketContext): string {
-	return [`Projet : ${context.projectLabel}`, context.urgencyLabel].filter(Boolean).join(" · ");
+	const { before, label, after } = contextParts(context);
+	return before + label + after;
+}
+
+/** « Insérer dans <Projet> », the button and dialog that write a Ticket as the first step of that Project. */
+export function insertIntoText(projectTitle: string): string {
+	return `Insérer dans ${projectTitle}`;
 }
 
 function ticketEntry(t: InboxTicket, projects: Map<string, VaultProject>): InboxEntry {

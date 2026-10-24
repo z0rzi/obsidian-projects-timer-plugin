@@ -147,8 +147,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 			new Notice(target.error);
 			return;
 		}
-		const item = { title: entry.item.title, type: entry.ticketType ?? "task", step: target.step, context: entry.context, urgency: entry.urgency };
-		new TriageModal(app, item, (choice: TriageChoice) => {
+		new TriageModal(app, modalItem(entry, target.step), (choice: TriageChoice) => {
 			void (async () => {
 				await triageWith(entry, choice, target.path, {
 					target: () => target,
@@ -157,6 +156,11 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				await store.refresh();
 			})();
 		}).open();
+	}
+
+	/** What the Triage dialog shows of `entry`; `into`, the Project's title, for « Insérer dans <Projet> ». */
+	function modalItem(entry: InboxEntry, step: boolean, into?: string): ConstructorParameters<typeof TriageModal>[1] {
+		return { title: entry.item.title, type: entry.ticketType ?? "task", step, context: entry.context, into, urgency: entry.urgency };
 	}
 
 	/** Runs the Triage of `entry` into the note at `path` and tells how it went. */
@@ -186,8 +190,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	function insertInto(entry: InboxEntry) {
 		const project = entry.context?.project;
 		if (!project) return;
-		const item = { title: entry.item.title, type: entry.ticketType ?? "task", step: true, context: entry.context, into: project.title, urgency: entry.urgency };
-		new TriageModal(app, item, (choice: TriageChoice) => {
+		new TriageModal(app, modalItem(entry, true, project.title), (choice: TriageChoice) => {
 			void (async () => {
 				const text = await noteText(project.path);
 				if (text === null) return;

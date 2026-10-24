@@ -1,7 +1,7 @@
 import { Component, ItemView, MarkdownRenderer, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
-import { contextText, type InboxEntry, type InboxState, type InboxStore } from "../inbox/inboxStore";
+import { contextParts, type InboxEntry, type InboxState, type InboxStore } from "../inbox/inboxStore";
 import type { ActivityEntry, EventType } from "../remote/api";
 import type { Conflict } from "../sync/compareState";
 import type { UnplacedItem } from "../sync/unplaced";
@@ -284,13 +284,11 @@ export class InboxView extends ItemView {
 	private renderContext(el: HTMLElement, context: NonNullable<InboxEntry["context"]>) {
 		const line = el.createDiv({ cls: "suivi-inbox-context" });
 		const { project } = context;
-		if (!project) {
-			line.setText(contextText(context));
-			return;
-		}
-		line.appendText("Projet : ");
-		this.link(line, project.title, () => this.openItem({ kind: "project", id: project.id, title: project.title }, project.title, false));
-		if (context.urgencyLabel) line.appendText(` · ${context.urgencyLabel}`);
+		const { before, label, after } = contextParts(context);
+		line.appendText(before);
+		if (project) this.link(line, label, () => this.openItem({ kind: "project", id: project.id, title: project.title }, project.title, false));
+		else line.appendText(label);
+		line.appendText(after);
 	}
 
 	/**
