@@ -338,6 +338,13 @@ describe("runTriage (Insérer dans <Projet>)", () => {
 		expect(result).toEqual({ ok: false, error: expect.stringContaining("triée dans l'app, mais pas écrite (plus de titre « Tasks »)") });
 		expect(bases).toEqual({});
 	});
+
+	it("waits for an insert that first opens the note, and fails with it", async () => {
+		const { d, bases } = deps({ insert: async () => Promise.reject(new Error("note introuvable")) });
+		const result = await runTriage({ id: "t7f3a", title: "X" }, { type: "bug", priority: 2 }, d);
+		expect(result).toEqual({ ok: false, error: expect.stringContaining("pas écrite (note introuvable)") });
+		expect(bases).toEqual({});
+	});
 });
 
 describe("Triage then Push", () => {

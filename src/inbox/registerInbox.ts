@@ -73,13 +73,23 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	async function openNote(path: string, line: number): Promise<MarkdownView | null> {
 		const file = app.vault.getFileByPath(path);
 		if (!file) return null;
-		const existing = app.workspace
-			.getLeavesOfType("markdown")
-			.find((leaf) => (leaf.view as MarkdownView).file?.path === path);
-		const leaf = existing ?? app.workspace.getLeaf(false);
+		const leaf = openLeaf(path) ?? app.workspace.getLeaf(false);
 		await leaf.openFile(file, { eState: { line } });
 		app.workspace.setActiveLeaf(leaf, { focus: true });
 		return leaf.view instanceof MarkdownView ? leaf.view : null;
+	}
+
+	/** The tab showing the note at `path`, if any. */
+	function openLeaf(path: string): WorkspaceLeaf | undefined {
+		return app.workspace.getLeavesOfType("markdown").find((leaf) => (leaf.view as MarkdownView).file?.path === path);
+	}
+
+	/** Text of the note at `path` as its editor holds it when open (unsaved edits included), else as saved; null when gone. */
+	async function noteText(path: string): Promise<string | null> {
+		const view = openLeaf(path)?.view;
+		if (view instanceof MarkdownView) return view.editor.getValue();
+		const file = app.vault.getFileByPath(path);
+		return file ? app.vault.read(file) : null;
 	}
 
 	/** The note last edited (the Inbox has focus when its button is clicked). */
@@ -179,15 +189,16 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		const item = { title: entry.item.title, type: entry.ticketType ?? "task", step: true, context: entry.context, into: project.title, urgency: entry.urgency };
 		new TriageModal(app, item, (choice: TriageChoice) => {
 			void (async () => {
-				const view = await openNote(project.path, 0);
-				if (!view) return;
-				const { editor } = view;
+				const text = await noteText(project.path);
+				if (text === null) return;
 				await triageWith(entry, choice, project.path, {
-					// Checked on the buffer the step is written into, before the app is called.
-					target: () => firstStepTarget(editor.getValue().split("\n"), project),
-					insert: (text) => {
-						const at = placeFirstStep(editor.getValue().split("\n"), text);
-						if (!at) throw new Error(`${project.title} n'a plus de titre « Tasks »`);
+					// Checked before the app is called, on the text the note opens with.
+					target: () => firstStepTarget(text.split("\n"), project),
+					// The note is opened only once the app has triaged.
+					insert: async (line) => {
+						const editor = (await openNote(project.path, 0))?.editor;
+						const at = editor && placeFirstStep(editor.getValue().split("\n"), line);
+						if (!editor || !at) throw new Error(`plus de titre « Tasks » dans ${project.title}`);
 						editor.replaceRange(at.text, at.from, at.to);
 						const end = { line: at.line, ch: editor.getLine(at.line).length };
 						editor.setCursor(end);
