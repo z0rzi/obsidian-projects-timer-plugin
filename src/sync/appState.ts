@@ -24,6 +24,8 @@ interface AppItem {
 export interface AppProject extends AppItem {
 	base: Base<ProjectFields>;
 	current: ProjectFields;
+	/** Handle of whoever set the current Échéance on the site. */
+	dueDateBy: string | null;
 }
 
 export interface AppTask extends AppItem {
@@ -51,7 +53,8 @@ export function appItems(items: ItemState[]): AppItems {
 		if (item.kind === "project") {
 			const current = withDueDate(item.fields);
 			const base = item.base as Base<ProjectFields> | null;
-			out.projects[item.id] = { base: base ? { ...base, fields: withDueDate(base.fields) } : { path: "", fields: current }, current, ...common };
+			const fields = base ? { ...base, fields: withDueDate(base.fields) } : { path: "", fields: current };
+			out.projects[item.id] = { base: fields, current, ...common, dueDateBy: item.due_date_by ?? null };
 		} else {
 			const base = (item.base as Base<TaskFields> | null) ?? { path: "", fields: item.fields as TaskFields };
 			out.tasks[item.id] = { base, current: item.fields, ...common };

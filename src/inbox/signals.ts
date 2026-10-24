@@ -1,3 +1,4 @@
+import { dueDateLabel } from "../dueDate";
 import type { ActivityEntry } from "../remote/api";
 
 const ANSWERS: Record<NonNullable<ActivityEntry["answer"]>, string> = { valide: "Validé", a_reprendre: "À reprendre" };
@@ -5,11 +6,8 @@ const ANSWERS: Record<NonNullable<ActivityEntry["answer"]>, string> = { valide: 
 /** `P2`, or "hérité" for a Project step that had no priority of its own. */
 const priorityLabel = (value: unknown) => (typeof value === "number" ? `P${value}` : "hérité");
 
-const DUE_DATE_FORMAT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-
-/** An Échéance (`YYYY-MM-DD`) as the app words it, « 1 mars 2027 »; « retirée » for none. */
-const dueDateLabel = (value: unknown) =>
-	typeof value === "string" ? DUE_DATE_FORMAT.format(new Date(`${value}T00:00:00Z`)) : "retirée";
+/** An Échéance as the app words it, « 1 mars 2027 »; « retirée » for none. */
+const dueDateBadge = (value: unknown) => (typeof value === "string" ? dueDateLabel(value) : "retirée");
 
 /** How a toast names a user: a short handle upper-cased ("JMJ"), a longer one capitalised, else the email's local part. */
 function actorName(actor: ActivityEntry["actor"]): string {
@@ -57,7 +55,7 @@ export function badgeText(entries: ActivityEntry[]): string {
 	const oldest = priorities.at(-1);
 	if (newest && oldest) parts.push(`${priorityLabel(oldest.from)}→${priorityLabel(newest.to)}`);
 	const dueDate = dueDates[0];
-	if (dueDate) parts.push(`📅 ${dueDateLabel(dueDate.to)}`);
+	if (dueDate) parts.push(`📅 ${dueDateBadge(dueDate.to)}`);
 	if (answer) parts.push(ANSWERS[answer]);
 	if (others > 0) parts.push(`🔔 ${others}`);
 	return parts.join(" · ");

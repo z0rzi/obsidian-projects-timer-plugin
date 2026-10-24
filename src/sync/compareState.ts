@@ -1,4 +1,5 @@
 import { STATUS_WORDS } from "../inbox/newProject";
+import { dueDateLabel } from "../dueDate";
 import { localDay } from "../localDate";
 import type { AcknowledgedItem, ItemAnswer, PushChange } from "../remote/api";
 import type { AppItems, AppProject, AppTask, Base } from "./appState";
@@ -7,8 +8,11 @@ import { answeredProject, answeredTask, holdsAnswer } from "./pullAnswer";
 import type { SharedProject } from "./sharedProject";
 import type { LocalTask } from "./sharedTask";
 
-/** An app value the vault gets: a priority (null removes a step's token), or the Client's Answer with its local day. */
-export type VaultWrite = { priority: number | null } | { answer: ItemAnswer; doneOn: string };
+/**
+ * An app value the vault gets: a priority (null removes a step's token), a
+ * Project's Échéance (null removes it), or the Client's Answer with its local day.
+ */
+export type VaultWrite = { priority: number | null } | { due_date: string | null } | { answer: ItemAnswer; doneOn: string };
 
 /** A change of an Item's base: its fields in `patch` take the vault's value now, `answer` is the Answer acknowledged. */
 export interface BaseUpdate {
@@ -37,8 +41,8 @@ export interface Conflict {
 	id: string;
 	path: string;
 	title: string;
-	/** A priority, or an Answer's effects (status, priority, done date) as one unit. */
-	unit: "priority" | "answer";
+	/** A priority, a Project's Échéance, or an Answer's effects (status, priority, done date) as one unit. */
+	unit: "priority" | "due_date" | "answer";
 	/** Fields the Push holds out of its plain changes until the Developer picks. */
 	held: string[];
 	/** (moi): the vault's value, pushed with the app value it expects and the base it makes. */
@@ -82,7 +86,7 @@ function priorityLabel(priority: number | null, status?: string): string {
 
 /**
  * Compares every Item the vault carries with the app's state, for the fields
- * the site can change: priorities and Answers' effects. vault = app: the base
+ * the site can change: priorities, Échéances and Answers' effects. vault = app: the base
  * is aligned if behind; app changed alone: written into the vault; vault
  * changed alone: left to the Push; both: a conflict. App Items in no readable
  * note are left out (unreadable notes are not in `vault`).
@@ -128,7 +132,12 @@ function mineChange(common: { kind: Conflict["kind"]; id: string; path: string }
 	return { op: "update", kind, id, fields, expected, base: { path, fields: { ...base, ...fields } } };
 }
 
-/** A Project's priority, and its status when it comes from an Answer. */
+/** An Échéance as a conflict button shows it. */
+function dueDateChoice(dueDate: string | null): string {
+	return dueDate === null ? "Aucune" : dueDateLabel(dueDate);
+}
+
+/** A Project's priority, its Échéance, and its status when it comes from an Answer. */
 function projectUnits(p: SharedProject, item: AppProject): Unit[] {
 	const id = p.suiviId!;
 	const base = item.base.fields;
@@ -171,6 +180,23 @@ function projectUnits(p: SharedProject, item: AppProject): Unit[] {
 			held: ["priority"],
 			mine: { label: `P${vault}`, change: mine({ priority: vault }, { priority: now }) },
 			theirs: { label: `P${now}`, by: item.priorityBy },
+		}),
+	});
+	const [vaultDue, nowDue, beforeDue] = [p.fields.due_date, item.current.due_date, base.due_date];
+	units.push({
+		same: vaultDue === nowDue,
+		alignNeeded: vaultDue !== beforeDue,
+		vaultAtBase: vaultDue === beforeDue,
+		appAtBase: nowDue === beforeDue,
+		pulled: { due_date: nowDue },
+		write: { due_date: nowDue },
+		conflict: () => ({
+			...common,
+			key: `${id}:due_date`,
+			unit: "due_date",
+			held: ["due_date"],
+			mine: { label: dueDateChoice(vaultDue), change: mine({ due_date: vaultDue }, { due_date: nowDue }) },
+			theirs: { label: dueDateChoice(nowDue), by: item.dueDateBy },
 		}),
 	});
 	return units;

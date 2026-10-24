@@ -1,4 +1,5 @@
 import type { ProcessFile } from "../lineWriter";
+import { setFrontmatterDueDate } from "../projectCards";
 import type { Remote } from "../remote/remote";
 import { fetchAppItems, type AppItems } from "./appState";
 import { acknowledgements, compareState, type BaseUpdate, type Conflict, type PullWrite } from "./compareState";
@@ -39,9 +40,13 @@ export interface PullOutcome {
 	app: AppItems;
 }
 
-/** Writes an app value into the vault: a priority, or the Client's Answer. */
+/** Writes an app value into the vault: a priority, a Project's Échéance, or the Client's Answer. */
 export function writePull(files: VaultFiles, pull: PullWrite): Promise<void> {
 	if ("priority" in pull.write) return writeRemotePriority(files, pull.kind, pull.id, pull.path, pull.write.priority);
+	if ("due_date" in pull.write) {
+		const dueDate = pull.write.due_date;
+		return files.process(pull.path, (content) => setFrontmatterDueDate(content, dueDate));
+	}
 	return writeAnswer(files, { kind: pull.kind, id: pull.id, path: pull.path, answer: pull.write.answer, doneOn: pull.write.doneOn });
 }
 

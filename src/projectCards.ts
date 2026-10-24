@@ -151,3 +151,20 @@ export function setFrontmatterPriority(
 	lines.splice(closingIdx, 0, `priority: ${newPriority}`);
 	return lines.join("\n");
 }
+
+/**
+ * Sets `due_date:` in the frontmatter (`YYYY-MM-DD`), adding the key (or the
+ * frontmatter) when missing; null removes the key.
+ */
+export function setFrontmatterDueDate(content: string, dueDate: string | null): string {
+	const lines = content.split("\n");
+	if (lines[0]?.trim() !== "---") return dueDate === null ? content : `---\ndue_date: ${dueDate}\n---\n${content}`;
+	const closingIdx = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+	if (closingIdx < 0) return content;
+	const at = lines.findIndex((l, i) => i > 0 && i < closingIdx && /^due_date\s*:/.test(l));
+	if (dueDate === null) {
+		if (at >= 0) lines.splice(at, 1);
+	} else if (at >= 0) lines[at] = `due_date: ${dueDate}`;
+	else lines.splice(closingIdx, 0, `due_date: ${dueDate}`);
+	return lines.join("\n");
+}

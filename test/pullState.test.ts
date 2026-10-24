@@ -76,3 +76,88 @@ describe("Pull compares state", () => {
 		expect(w.files.get(project)).toBe(note);
 	});
 });
+
+describe("Pull of the Échéance", () => {
+	const dated: ProjectFields = { ...widget, due_date: "2027-01-15" };
+	/** Widget due 15 janv. 2027 in the vault and the Base, the app at `due_date` (set by @jmj). */
+	function dueWorld(note: string, due_date: string | null) {
+		return pushWorld({ [project]: note }, [
+			appProject("p0002", { ...dated, due_date }, { base: { path: project, fields: dated }, due_date_by: "jmj" }),
+		]);
+	}
+	const note = "---\nsuivi_id: p0002\npriority: 3\ndue_date: 2027-01-15\n---\n";
+
+	it("writes the app's Échéance into the frontmatter and acknowledges it; the Push then has nothing", async () => {
+		const w = dueWorld(note, "2027-02-01");
+		expect((await w.pull()).applied).toBe(1);
+		expect(w.files.get(project)).toBe("---\nsuivi_id: p0002\npriority: 3\ndue_date: 2027-02-01\n---\n");
+		expect(w.app.held.get("p0002")!.base).toEqual({ path: project, fields: { ...dated, due_date: "2027-02-01" } });
+		expect(await w.plan()).toEqual([]);
+		expect((await w.pull()).applied).toBe(0);
+	});
+
+	it("adds the key when the vault has none", async () => {
+		const w = pushWorld({ [project]: "---\nsuivi_id: p0002\npriority: 3\n---\n" }, [
+			appProject("p0002", dated, { base: { path: project, fields: widget } }),
+		]);
+		await w.pull();
+		expect(w.files.get(project)).toBe("---\nsuivi_id: p0002\npriority: 3\ndue_date: 2027-01-15\n---\n");
+		expect(await w.plan()).toEqual([]);
+	});
+
+	it("removes the key when the app cleared it", async () => {
+		const w = dueWorld(note, null);
+		expect((await w.pull()).applied).toBe(1);
+		expect(w.files.get(project)).toBe("---\nsuivi_id: p0002\npriority: 3\n---\n");
+		expect(w.app.held.get("p0002")!.base).toEqual({ path: project, fields: { ...dated, due_date: null } });
+		expect(await w.plan()).toEqual([]);
+	});
+
+	describe("both sides changed it", () => {
+		const changed = note.replace("2027-01-15", "2027-03-01");
+
+		it("is a conflict with both dates and who set the app's, the field held out of the Push", async () => {
+			const w = dueWorld(changed, "2027-02-01");
+			const { conflicts } = await w.pull();
+			expect(w.files.get(project)).toBe(changed);
+			expect(conflicts.map((c) => [c.key, c.unit, c.mine.label, c.theirs.label, c.theirs.by])).toEqual([
+				["p0002:due_date", "due_date", "1 mars 2027", "1 févr. 2027", "jmj"],
+			]);
+			expect((await w.plan()).map((p) => p.group)).toEqual(["conflict"]);
+		});
+
+		it("a cleared side reads « Aucune »", async () => {
+			const w = dueWorld(changed, null);
+			const { conflicts } = await w.pull();
+			expect(conflicts.map((c) => [c.mine.label, c.theirs.label])).toEqual([["1 mars 2027", "Aucune"]]);
+		});
+
+		it("(moi) pushes the vault's date with the app's as expected", async () => {
+			const w = dueWorld(changed, "2027-02-01");
+			const [conflict] = (await w.pull()).conflicts;
+			await w.pick(conflict!, "mine");
+			expect(w.app.received.at(-1)).toEqual([
+				{
+					op: "update",
+					kind: "project",
+					id: "p0002",
+					fields: { due_date: "2027-03-01" },
+					expected: { due_date: "2027-02-01" },
+					base: { path: project, fields: { ...dated, due_date: "2027-03-01" } },
+				},
+			]);
+			expect(await w.plan()).toEqual([]);
+			expect((await w.pull()).conflicts).toEqual([]);
+		});
+
+		it("(jmj) writes the app's date into the vault and acknowledges it", async () => {
+			const w = dueWorld(changed, null);
+			const [conflict] = (await w.pull()).conflicts;
+			await w.pick(conflict!, "theirs");
+			expect(w.files.get(project)).toBe("---\nsuivi_id: p0002\npriority: 3\n---\n");
+			expect(w.app.held.get("p0002")!.base).toEqual({ path: project, fields: { ...dated, due_date: null } });
+			expect(await w.plan()).toEqual([]);
+			expect((await w.pull()).conflicts).toEqual([]);
+		});
+	});
+});
