@@ -12,7 +12,10 @@ import { runPush } from "../src/sync/runPush";
 import { readSharedProject, type SharedProject } from "../src/sync/sharedProject";
 import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
 import { planTaskPush, type ProjectLinks } from "../src/sync/taskPlan";
-import { appendBlockId, LineRef, setStepDone } from "../src/lineWriter";
+import { appItems } from "../src/sync/appState";
+import { vaultWriters } from "../src/sync/runPush";
+import { fetchAppItems } from "../src/sync/appState";
+import { memoryVault } from "./fakeSuivi";
 import { commentTargetAt } from "../src/comments/commentTarget";
 import { ThreadSession, type ThreadState } from "../src/comments/threadSession";
 import { settleConflicts, withConflicts } from "../src/sync/conflicts";
@@ -44,7 +47,7 @@ const fetchTransport: Transport = async (req) => {
 const stamp = Date.now().toString(36);
 
 describe.skipIf(!url || !token)("Push against a running Suivi", () => {
-	it("creates, updates and archives a Project, and rejects a bad token", async () => {
+	it("creates and updates a Project, and rejects a bad token", async () => {
 		const files = new Map<string, string>([
 			[`2.projects/E2E ${stamp}.md`, "---\npriority: 2\nstatus: En cours\n---\n# Description\n---\nVu par **JMJ**.\n\n# Time usage\n---\n```project\n2026-10-19;60;secret\n```\n"],
 			[`2.projects/Privé ${stamp}.md`, "---\nprive: true\n---\n# Description\nNon.\n"],
@@ -63,9 +66,12 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 			writeSuiviId: async (path: string, id: string) => {
 				files.set(path, files.get(path)!.replace("---\n", `---\nsuivi_id: ${id}\n`));
 			},
+			writeBlockId: async () => {},
+			writeDoneDate: async () => {},
 		};
+		const plan = async () => planProjectPush(read(), appItems(await remote.state()));
 
-		const first = planProjectPush(read(), sync.pushedProjects);
+		const first = await plan();
 		expect(first.map((c) => c.title)).toEqual([`E2E ${stamp}`]);
 		expect(await runPush(first, deps)).toEqual({ applied: 1, failed: [] });
 		const path = `2.projects/E2E ${stamp}.md`;
@@ -73,17 +79,16 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 		expect(id).toMatch(/^[0-9a-z]{5}$/);
 
 		files.set(path, files.get(path)!.replace("priority: 2", "priority: 1"));
-		const second = planProjectPush(read(), sync.pushedProjects);
+		const second = await plan();
 		expect(second).toMatchObject([{ group: "changed", diffs: [{ field: "priority", from: 2, to: 1 }] }]);
 		expect(await runPush(second, deps)).toEqual({ applied: 1, failed: [] });
 
 		const rejected = await remote.push([{ op: "update", kind: "project", id: id!, fields: { created_by: "x" } as never }]);
 		expect(rejected).toMatchObject([{ ok: false, error: expect.stringContaining("created_by") }]);
 
+		// A Project no note carries is Unplaced, never offered.
 		files.delete(path);
-		const third = planProjectPush(read(), sync.pushedProjects);
-		expect(third).toMatchObject([{ group: "deleted", id }]);
-		expect(await runPush(third, deps)).toEqual({ applied: 1, failed: [] });
+		expect(await plan()).toEqual([]);
 
 		const bad = createHttpRemote({ url, token: "not-a-token" }, fetchTransport);
 		await expect(bad.push([])).rejects.toMatchObject({ kind: "auth" });
@@ -97,7 +102,8 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 			[meetingPath, "#task p2 Tâche de réunion\n  notes privées\n\n#bug pr Bug à valider\n#task p1 Paie #private\n"],
 		]);
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-		const plan = () => {
+		const remote = createHttpRemote({ url, token }, fetchTransport);
+		const plan = async () => {
 			const projects = [...files].flatMap(([path, content]) => {
 				const r = path.startsWith("2.projects/") ? readSharedProject(path, content) : null;
 				return r?.ok ? [r.project] : [];
@@ -109,44 +115,27 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 				...readTagTasks(path, content, path === meetingPath ? projectPath : path.startsWith("2.") ? path : null),
 				...(path.startsWith("2.projects/") ? readProjectSteps(path, content) : []),
 			]);
-			const t = planTaskPush(tasks, links, sync.pushedTasks, { now: new Date(), doneHistory: sync.doneHistory });
-			return [...planProjectPush(projects, sync.pushedProjects), ...t.changes];
+			const app = appItems(await remote.state());
+			return [...planProjectPush(projects, app), ...planTaskPush(tasks, links, app, { now: new Date() })];
 		};
-		const deps = {
-			remote: createHttpRemote({ url, token }, fetchTransport),
-			sync,
-			save: async () => {},
-			writeSuiviId: async (path: string, id: string) => {
-				files.set(path, files.get(path)!.replace("---\n", `---\nsuivi_id: ${id}\n`));
-			},
-			writeBlockId: async (path: string, ref: { line: number; raw: string }, id: string) => {
-				const r = appendBlockId(files.get(path)!, ref, id);
-				if (!r.ok) throw new Error(r.reason);
-				files.set(path, r.content);
-			},
-			writeStepDate: async (path: string, id: string, date: string) => {
-				const r = setStepDone(files.get(path)!, LineRef.byId(id), date);
-				if (!r.ok) throw new Error(r.reason);
-				files.set(path, r.content);
-			},
-		};
+		const deps = { remote, sync, save: async () => {}, ...vaultWriters(memoryVault(files).vault) };
 
-		const first = plan();
+		const first = await plan();
 		expect(first.map((c) => c.title).sort()).toEqual(
 			[`Tâches ${stamp}`, "Bug à valider", "Tâche de réunion", "Étape héritée", "Étape urgente"].sort(),
 		);
 		expect(await runPush(first, deps)).toEqual({ applied: 5, failed: [] });
 		expect(files.get(meetingPath)).toMatch(/^#task p2 Tâche de réunion \^[0-9a-z]{5}\n  notes privées\n/);
 		expect(files.get(projectPath)).toMatch(/- \[ \] Étape héritée \^[0-9a-z]{5}\n/);
-		expect(plan()).toEqual([]);
+		expect(await plan()).toEqual([]);
 
-		// Move the meeting Task into a standalone note, check a step, delete the bug.
+		// Move the meeting Task into a standalone note, check a step, delete the bug (Unplaced: not offered).
 		const taskLine = files.get(meetingPath)!.split("\n")[0]!;
 		files.set(meetingPath, files.get(meetingPath)!.replace(`${taskLine}\n`, "").replace(/#bug pr .*\n/, ""));
 		files.set(`0.inbox/Notes ${stamp}.md`, `${taskLine}\n`);
 		files.set(projectPath, files.get(projectPath)!.replace("- [ ] Étape héritée", "- [x] Étape héritée"));
-		const second = plan();
-		expect(second.map((c) => c.group).sort()).toEqual(["changed", "changed", "deleted"]);
+		const second = await plan();
+		expect(second.map((c) => c.group).sort()).toEqual(["changed", "changed"]);
 		expect(second).toContainEqual(
 			expect.objectContaining({
 				group: "changed",
@@ -154,8 +143,9 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 				diffs: [expect.objectContaining({ field: "project", to: "none" })],
 			}),
 		);
-		expect(await runPush(second, deps)).toEqual({ applied: 3, failed: [] });
-		expect(plan()).toEqual([]);
+		expect(await runPush(second, deps)).toEqual({ applied: 2, failed: [] });
+		expect(files.get(projectPath)).toMatch(/- \[x\] \d{4}-\d{2}-\d{2} Étape héritée \^/);
+		expect(await plan()).toEqual([]);
 	});
 
 	it("follows the thread of the pushed Task under the cursor: reply, edit, delete", async () => {
@@ -199,7 +189,9 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 			paths: () => [...files.keys()],
 		};
 		const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-		const plan = () => {
+		const remote = createHttpRemote({ url, token }, fetchTransport);
+		const plan = async () => {
+			const app = await fetchAppItems(remote, sync);
 			const projects = [...files].flatMap(([path, content]) => {
 				const r = path.startsWith("2.projects/") ? readSharedProject(path, content) : null;
 				return r?.ok ? [r.project] : [];
@@ -211,31 +203,21 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 			const links: ProjectLinks = Object.fromEntries(
 				projects.map((p) => [p.path, { title: p.fields.title, ...(p.suiviId ? { id: p.suiviId } : {}) }]),
 			);
-			const t = planTaskPush(tasks, links, sync.pushedTasks, { now: new Date(), doneHistory: sync.doneHistory });
-			return withConflicts([...planProjectPush(projects, sync.pushedProjects), ...t.changes], sync, projects, tasks);
+			const pending = [...planProjectPush(projects, app), ...planTaskPush(tasks, links, app, { now: new Date() })];
+			return withConflicts(pending, sync, projects, tasks);
 		};
-		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const deps = {
 			remote,
 			sync,
 			save: async () => {},
-			writeSuiviId: async (path: string, id: string) => {
-				files.set(path, files.get(path)!.replace("---\n", `---\nsuivi_id: ${id}\n`));
-			},
-			writeBlockId: async (path: string, ref: { line: number; raw: string }, id: string) => {
-				const r = appendBlockId(files.get(path)!, ref, id);
-				if (!r.ok) throw new Error(r.reason);
-				files.set(path, r.content);
-			},
-			writeStepDate: async (path: string, id: string, date: string) => {
-				const r = setStepDone(files.get(path)!, LineRef.byId(id), date);
-				if (!r.ok) throw new Error(r.reason);
-				files.set(path, r.content);
-			},
+			...vaultWriters(memoryVault(files).vault),
 			writePriority: (kind: "project" | "task", id: string, path: string, p: number | null) =>
 				writeRemotePriority(memory, kind, id, path, p),
 		};
-		const pull = () => runPull({ remote, sync, save: async () => {}, files: memory });
+		const pull = async () => {
+			await fetchAppItems(remote, sync); // as registerPull does
+			return runPull({ remote, sync, save: async () => {}, files: memory });
+		};
 		const pick = async (path: string, priority: number) =>
 			(
 				await fetch(`${url}${path}/priorite`, {
@@ -246,9 +228,10 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 				})
 			).status;
 
-		expect(await runPush(plan(), deps)).toMatchObject({ failed: [] });
+		expect(await runPush(await plan(), deps)).toMatchObject({ failed: [] });
 		await pull(); // catch up with everything so far (echoes of the Push)
-		const idOf = (title: string) => Object.entries(sync.pushedTasks).find(([, t]) => t.fields.title === title)![0];
+		const idOf = (title: string) =>
+			Object.entries(sync.pushedTasks).find(([, t]) => t.fields.title === title && [meeting, projectPath].includes(t.path))![0];
 		const task = idOf("Tâche pull");
 		const step = idOf("Étape héritée");
 		const busy = idOf("En cours pull");
@@ -261,18 +244,16 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 		expect(files.get(meeting)).toMatch(/^#task p1 Tâche pull \^\w+\n#bug p0 En cours pull/);
 		expect(files.get(projectPath)).toContain("- [ ] p2 Étape héritée ^");
 		expect(await pull()).toEqual({ applied: 0, conflicts: 0, failed: [] });
-		expect(plan()).toEqual([]);
 
 		// The Developer moves it P1 → P4 without pushing; JMJ picks P5 meanwhile.
 		files.set(meeting, files.get(meeting)!.replace("#task p1", "#task p4"));
 		expect(await pick(`/taches/${task}`, 5)).toBe(303);
 		expect(await pull()).toEqual({ applied: 0, conflicts: 1, failed: [] });
 		expect(files.get(meeting)).toContain("#task p4 Tâche pull");
-		const pending = plan();
+		const pending = await plan();
 		expect(pending).toMatchObject([{ group: "conflict", local: "P4", remote: "P5" }]);
 		expect(await runPush(pending, deps)).toEqual({ applied: 1, failed: [] });
 		expect(await pull()).toEqual({ applied: 0, conflicts: 0, failed: [] });
-		expect(plan()).toEqual([]);
 	});
 });
 
@@ -351,15 +332,13 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 		const note = ["# Réunion", "", "suite"];
 		const result = await runTriage(entry.item, { type: "bug", priority: 2 }, {
 			remote,
-			sync,
-			save: async () => {},
 			target: () => ({ path: "1.meetings/r.md", projectId: null, step: false }),
 			insert: (line) => {
 				const at = placeLine(note, 1, line);
 				note.splice(1, 1, ...at.text.split("\n"));
 			},
 		});
-		expect(result).toEqual({ ok: true, line: `#bug p2 ${title} ^${id}` });
+		expect(result).toEqual({ ok: true, line: `#bug p2 ${title} ^${id}`, missingImages: 1 });
 		expect(note).toEqual(["# Réunion", `#bug p2 ${title} ^${id}`, "\tRien ne s'affiche ![](/uploads/x.png)", "", "suite"]);
 
 		await store.refresh();
@@ -368,9 +347,9 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 
 		// The next Push sees the line as already pushed.
 		const local = readTagTasks("1.meetings/r.md", note.join("\n"), null);
-		expect(planTaskPush(local, {}, sync.pushedTasks, { now: new Date() }).changes).toEqual([]);
+		expect(planTaskPush(local, {}, appItems(await remote.state()), { now: new Date() })).toEqual([]);
 		// Triaging twice is refused.
-		expect(await runTriage(entry.item, { type: "bug", priority: 2 }, { ...noopDeps(remote, sync) })).toMatchObject({ ok: false });
+		expect(await runTriage(entry.item, { type: "bug", priority: 2 }, noopDeps(remote))).toMatchObject({ ok: false });
 	});
 });
 
@@ -411,8 +390,6 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 		const vault = new Map<string, string>();
 		const result = await runNewProject(entry.item, { priority: 4 }, {
 			remote,
-			sync,
-			save: async () => {},
 			folder: "2.projects",
 			template: async () => "---\npriority: 5\n---\n\n# Time usage\n---\n```project\n```\n\n# Tasks\n---",
 			exists: (p) => vault.has(p),
@@ -426,7 +403,7 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 		// The next Push sees the file as already pushed.
 		const read = readSharedProject(path, vault.get(path)!);
 		expect(read).toMatchObject({ ok: true, project: { suiviId: id } });
-		expect(planProjectPush([(read as { project: SharedProject }).project], sync.pushedProjects)).toEqual([]);
+		expect(planProjectPush([(read as { project: SharedProject }).project], appItems(await remote.state()))).toEqual([]);
 
 		const ideas = await (await fetch(`${url}/idees`, { headers: jmj })).text();
 		expect(ideas).toContain(`href="/projets/${id}"`);
@@ -435,11 +412,9 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 });
 
 
-function noopDeps(remote: ReturnType<typeof createHttpRemote>, sync: SyncState) {
+function noopDeps(remote: ReturnType<typeof createHttpRemote>) {
 	return {
 		remote,
-		sync,
-		save: async () => {},
 		target: () => ({ path: "x.md", projectId: null, step: false }),
 		insert: () => {
 			throw new Error("must not write");

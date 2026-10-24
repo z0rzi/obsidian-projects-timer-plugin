@@ -1,5 +1,5 @@
 import { localDay } from "../localDate";
-import { processLineById, rewriteTaskTag, setStepDone, setTaskToken } from "../lineWriter";
+import { markDone, processLineById, setTaskToken } from "../lineWriter";
 import type { ApiEvent, ItemAnswer, ItemAnsweredPayload, ProjectFields, TaskFields } from "../remote/api";
 import type { SyncState } from "./pluginData";
 import type { PullContext, VaultFiles } from "./runPull";
@@ -117,9 +117,7 @@ async function writeTaskAnswer(files: VaultFiles, path: string, id: string, line
 
 /** Validé on the Task line `^id`: `#done <date>` for a Tag task, ticked with the date (token removed) for a Project step. */
 async function writeDone(files: VaultFiles, path: string, id: string, line: LocalTask, date: string) {
-	await processLineById(files.process, path, id, (now, ref) =>
-		line.step ? setStepDone(now, ref, date) : rewriteTaskTag(now, ref, `#done ${date}`),
-	);
+	await processLineById(files.process, path, id, (now, ref) => markDone(now, ref, line.step, date));
 }
 
 /** Sets the `p0` token of the Task line `^id` (À reprendre). */

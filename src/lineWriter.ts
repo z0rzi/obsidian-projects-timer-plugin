@@ -128,6 +128,11 @@ export function setStepDone(content: string, ref: LineRef, date: string | null):
 	});
 }
 
+/** Marks a Task line done on `date`: a Project step ticked with the date, a Tag task `#done <date>`. */
+export function markDone(content: string, ref: LineRef, step: boolean, date: string): WriteResult {
+	return step ? setStepDone(content, ref, date) : rewriteTaskTag(content, ref, `#done ${date}`);
+}
+
 /**
  * Sets the status token of a Task line found by `ref`, whatever its kind: after
  * the tag of a Tag task (`#task p3 x` → `#task p1 x`), after the checkbox of a

@@ -95,7 +95,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		const name = url.slice(url.lastIndexOf("/") + 1);
 		const path = await app.fileManager.getAvailablePathForAttachment(name, notePath);
 		const file = await app.vault.createBinary(path, data);
-		return { link: app.metadataCache.fileToLinktext(file, notePath, false), path: file.path, bytes: data.byteLength };
+		return app.metadataCache.fileToLinktext(file, notePath, false);
 	}
 
 	function triage(entry: InboxEntry) {
@@ -115,8 +115,6 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				const result = await data.exclusive(() =>
 					runTriage(entry.item, choice, {
 						remote,
-						sync: data.sync,
-						save: () => data.save(),
 						target: () => target,
 						insert: (line) => {
 							const editor = view.editor;
@@ -145,8 +143,6 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				const result = await data.exclusive(() =>
 					runNewProject(entry.item, choice, {
 						remote,
-						sync: data.sync,
-						save: () => data.save(),
 						folder: data.settings.projectsLocation,
 						template: async () => {
 							const path = data.settings.projectTemplate;

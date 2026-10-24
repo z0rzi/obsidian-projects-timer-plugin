@@ -2,6 +2,7 @@ import { Notice, Plugin } from "obsidian";
 import { obsidianTransport } from "../remote/obsidianTransport";
 import { createHttpRemote, RemoteError } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
+import { fetchAppItems } from "./appState";
 import type { PluginData } from "./pluginData";
 import { PULL_HANDLERS, runPull, type PullHandler } from "./runPull";
 import { vaultFiles } from "./vaultFiles";
@@ -27,9 +28,11 @@ export function registerPull(plugin: Plugin, data: PluginData<ProjectsTimerSetti
 		if (!manual && (!suiviUrl || !suiviToken)) return;
 		const remote = createHttpRemote({ url: suiviUrl, token: suiviToken }, obsidianTransport);
 		try {
-			const outcome = await data.exclusive(() =>
-				runPull({ remote, sync: data.sync, save: () => data.save(), files: vaultFiles(plugin.app) }, handlers),
-			);
+			const outcome = await data.exclusive(async () => {
+				// The Pull reads the bases from `sync`: fresh from the app each time.
+				await fetchAppItems(remote, data.sync);
+				return runPull({ remote, sync: data.sync, save: () => data.save(), files: vaultFiles(plugin.app) }, handlers);
+			});
 			for (const f of outcome.failed) new Notice(`Pull: ${f.title}: ${f.error}`, 10_000);
 			if (outcome.conflicts > 0) {
 				new Notice(`Pull: ${outcome.conflicts} conflict(s) with your unpushed edits; pick in Push to Suivi.`, 10_000);

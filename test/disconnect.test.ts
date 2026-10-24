@@ -104,7 +104,7 @@ describe("disconnect", () => {
 
 		await disconnect(vault, data);
 
-		expect(disk.data).toEqual({ hourlyRate: 80, suiviUrl: "", suiviToken: "", sync: { pushedProjects: {}, pushedTasks: {} } });
+		expect(disk.data).toEqual({ hourlyRate: 80, suiviUrl: "", suiviToken: "", sync: {} });
 		expect(files.get(meeting)).toBe("#task Heatmap\nnotes ^abcde\n#bug Crash\n");
 	});
 });

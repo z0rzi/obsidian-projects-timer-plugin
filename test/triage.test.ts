@@ -3,9 +3,9 @@ import { InboxStore } from "../src/inbox/inboxStore";
 import { placeLine, runTriage, type TriageDeps } from "../src/inbox/triage";
 import type { InboxTicket, TaskFields, TriageRequest } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
-import type { SyncState } from "../src/sync/pluginData";
 import { readProjectSteps, readTagTasks } from "../src/sync/sharedTask";
 import { planTaskPush } from "../src/sync/taskPlan";
+import { appWith } from "./fakeSuivi";
 
 const ticket = (id = "t7f3a", type: InboxTicket["type"] = "bug"): InboxTicket => ({
 	id,
@@ -80,8 +80,8 @@ describe("placeLine", () => {
 function deps(overrides: Partial<TriageDeps> = {}, description = "Rien ne s'affiche") {
 	const sent: [string, TriageRequest][] = [];
 	const inserted: string[] = [];
-	const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
-	let saved = 0;
+	/** Bases the app was sent, by id. */
+	const bases: Record<string, { path: string; fields: TaskFields }> = {};
 	const d: TriageDeps = {
 		remote: {
 			async triage(id, as) {
@@ -97,47 +97,45 @@ function deps(overrides: Partial<TriageDeps> = {}, description = "Rien ne s'affi
 				};
 				return { id, as: "task", fields };
 			},
-		},
-		sync,
-		save: async () => {
-			saved++;
+			async acknowledge(items) {
+				for (const i of items) bases[i.id] = i.base as (typeof bases)[string];
+			},
 		},
 		target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step: false }),
 		insert: (line) => inserted.push(line),
 		...overrides,
 	};
-	return { d, sent, inserted, sync, saved: () => saved };
+	return { d, sent, inserted, bases };
 }
 
 describe("runTriage (Insérer ici)", () => {
-	it("triages in the app, writes the Tag task line with the id, and records it as pushed", async () => {
-		const { d, sent, inserted, sync, saved } = deps();
+	it("triages in the app, writes the Tag task line with the id, and sends its base", async () => {
+		const { d, sent, inserted, bases } = deps();
 		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
 
 		expect(result).toEqual({ ok: true, line: "#bug p2 Heatmap vide ^t7f3a", missingImages: 0 });
 		expect(sent).toEqual([["t7f3a", { as: "task", type: "bug", step: false, priority: 2, project_id: "p1abc" }]]);
 		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche"]);
-		expect(sync.pushedTasks.t7f3a).toEqual({
+		expect(bases.t7f3a).toEqual({
 			path: "2.projects/Widget.md",
 			fields: { title: "Heatmap vide", type: "bug", step: false, status: "a_faire", priority: 2, project_id: "p1abc", description: "Rien ne s'affiche" },
 		});
-		expect(saved()).toBe(1);
 	});
 
 	it("writes the Description under the line, one tab in, blank lines kept empty", async () => {
-		const { d, inserted, sync } = deps({}, "Rien ne s'affiche\r\n\r\n  - sur Chrome\n![](/uploads/u1.png)\n\n");
+		const { d, inserted, bases } = deps({}, "Rien ne s'affiche\r\n\r\n  - sur Chrome\n![](/uploads/u1.png)\n\n");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
 		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n\t  - sur Chrome\n\t![](/uploads/u1.png)"]);
-		expect(sync.pushedTasks.t7f3a!.fields.description).toBe("Rien ne s'affiche\n\n  - sur Chrome\n![](/uploads/u1.png)");
+		expect(bases.t7f3a!.fields.description).toBe("Rien ne s'affiche\n\n  - sur Chrome\n![](/uploads/u1.png)");
 	});
 
-	it("brings the Client's app images into the vault as embeds, and records their app URL", async () => {
+	it("brings the Client's app images into the vault as embeds", async () => {
 		const fetched: string[] = [];
-		const { d, inserted, sync } = deps(
+		const { d, inserted, bases } = deps(
 			{
 				localImage: async (url) => {
 					fetched.push(url);
-					return { link: "u1.png", path: "Attachments/u1.png", bytes: 42 };
+					return "u1.png";
 				},
 			},
 			"Voir :\n![capture](/uploads/u1.png)\n`![](/uploads/u2.png)` reste du code",
@@ -147,23 +145,21 @@ describe("runTriage (Insérer ici)", () => {
 		expect(result).toEqual({ ok: true, line: "#bug p2 Heatmap vide ^t7f3a", missingImages: 0 });
 		expect(fetched).toEqual(["/uploads/u1.png"]);
 		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tVoir :\n\t![[u1.png]]\n\t`![](/uploads/u2.png)` reste du code"]);
-		expect(sync.pushedTasks.t7f3a!.fields.description).toBe("Voir :\n![[u1.png]]\n`![](/uploads/u2.png)` reste du code");
-		expect(sync.appImages).toEqual({ "Attachments/u1.png": { url: "/uploads/u1.png", bytes: 42 } });
+		expect(bases.t7f3a!.fields.description).toBe("Voir :\n![[u1.png]]\n`![](/uploads/u2.png)` reste du code");
 	});
 
 	it("keeps the app link of an image it could not bring in, and says how many", async () => {
-		const { d, inserted, sync } = deps({ localImage: async () => null }, "![](/uploads/u1.png)");
+		const { d, inserted } = deps({ localImage: async () => null }, "![](/uploads/u1.png)");
 		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
 		expect(result).toEqual({ ok: true, line: "#bug p2 Heatmap vide ^t7f3a", missingImages: 1 });
 		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\t![](/uploads/u1.png)"]);
-		expect(sync.appImages).toBeUndefined();
 	});
 
 	it("writes only the line for an empty Description", async () => {
-		const { d, inserted, sync } = deps({}, "");
+		const { d, inserted, bases } = deps({}, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
 		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a"]);
-		expect(sync.pushedTasks.t7f3a!.fields.description).toBe("");
+		expect(bases.t7f3a!.fields.description).toBe("");
 	});
 
 	it("keeps the title on one line", async () => {
@@ -181,26 +177,33 @@ describe("runTriage (Insérer ici)", () => {
 	});
 
 	it("writes nothing when the app refuses", async () => {
-		const { d, inserted, sync } = deps({
-			remote: {
-				triage: async () => {
-					throw new Error("Suivi error (HTTP 409): Pas à trier : t7f3a");
-				},
-			},
-		});
+		const { d, inserted, bases } = deps();
+		d.remote.triage = async () => {
+			throw new Error("Suivi error (HTTP 409): Pas à trier : t7f3a");
+		};
 		const result = await runTriage({ id: "t7f3a", title: "X" }, { type: "bug", priority: 2 }, d);
 		expect(result).toEqual({ ok: false, error: "Suivi error (HTTP 409): Pas à trier : t7f3a" });
 		expect(inserted).toEqual([]);
-		expect(sync.pushedTasks).toEqual({});
+		expect(bases).toEqual({});
+	});
+
+	it("says so when the line is inserted but the app didn't take its base", async () => {
+		const { d, inserted } = deps();
+		d.remote.acknowledge = async () => {
+			throw new Error("Suivi unreachable");
+		};
+		const result = await runTriage({ id: "t7f3a", title: "X" }, { type: "bug", priority: 2 }, d);
+		expect(result).toEqual({ ok: false, error: expect.stringContaining("inserted, but its base was not sent (Suivi unreachable)") });
+		expect(inserted).toHaveLength(1);
 	});
 
 	it("writes a Project step in a Project note's Tasks section, sent with step: true", async () => {
-		const { d, sent, inserted, sync } = deps({ target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step: true }) });
+		const { d, sent, inserted, bases } = deps({ target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step: true }) });
 		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
 		expect(result).toEqual({ ok: true, line: "- [ ] #bug p2 Heatmap vide ^t7f3a", missingImages: 0 });
 		expect(sent).toEqual([["t7f3a", { as: "task", type: "bug", step: true, priority: 2, project_id: "p1abc" }]]);
 		expect(inserted).toEqual(["- [ ] #bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche"]);
-		expect(sync.pushedTasks.t7f3a!.fields).toMatchObject({ step: true, description: "Rien ne s'affiche" });
+		expect(bases.t7f3a!.fields).toMatchObject({ step: true, description: "Rien ne s'affiche" });
 	});
 
 	it("writes no token for a step that inherits the Project's priority", async () => {
@@ -218,10 +221,10 @@ describe("Triage then Push", () => {
 	/** Runs the Triage into `note` at `cursor`, returns the note as written. */
 	async function triageInto(note: string[], cursor: number, step: boolean, priority: number | null) {
 		let content = note.join("\n");
-		const { d, sync } = deps(
+		const { d, bases } = deps(
 			{
 				target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step }),
-				localImage: async () => ({ link: "u1.png", path: "Attachments/u1.png", bytes: 42 }),
+				localImage: async () => "u1.png",
 				insert: (text) => {
 					const at = placeLine(note, cursor, text);
 					const lines = [...note];
@@ -232,20 +235,20 @@ describe("Triage then Push", () => {
 			description,
 		);
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority }, d);
-		return { content, sync };
+		return { content, app: appWith({}, bases) };
 	}
 
 	it("leaves nothing to push for a Tag task", async () => {
-		const { content, sync } = await triageInto(["# Réunion", "", "Suite"], 0, false, 2);
+		const { content, app } = await triageInto(["# Réunion", "", "Suite"], 0, false, 2);
 		const local = readTagTasks("2.projects/Widget.md", content, "2.projects/Widget.md");
 		expect(local).toHaveLength(1);
-		expect(planTaskPush(local, links, sync.pushedTasks, { now: new Date() }).changes).toEqual([]);
+		expect(planTaskPush(local, links, app, { now: new Date() })).toEqual([]);
 	});
 
 	it("leaves nothing to push for a step that inherits", async () => {
-		const { content, sync } = await triageInto(["## Tasks", "- [ ] Étape ^s1", "## Notes"], 1, true, null);
+		const { content, app } = await triageInto(["## Tasks", "- [ ] Étape ^s1abc", "## Notes"], 1, true, null);
 		const local = readProjectSteps("2.projects/Widget.md", content).filter((t) => t.blockId === "t7f3a");
 		expect(local).toHaveLength(1);
-		expect(planTaskPush(local, links, sync.pushedTasks, { now: new Date() }).changes).toEqual([]);
+		expect(planTaskPush(local, links, app, { now: new Date() })).toEqual([]);
 	});
 });

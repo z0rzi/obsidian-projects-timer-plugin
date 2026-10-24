@@ -18,33 +18,36 @@ const pushed = { t7f3a: { path: "2.projects/W.md", fields: { title: "W", descrip
 
 describe("PluginData", () => {
 	it("reads settings and sync state from the same data.json without mixing them", async () => {
-		const io = disk({ projectsLocation: "2.projects", hourlyRate: 80, sync: { pushedProjects: pushed } });
+		const io = disk({ projectsLocation: "2.projects", hourlyRate: 80, sync: { cursor: 7 } });
 		const data = await PluginData.load(defaults, io.load, io.save);
 
 		expect(data.settings).toEqual({ projectsLocation: "2.projects", hourlyRate: 80, suiviUrl: "" });
-		expect(data.sync.pushedProjects).toEqual(pushed);
+		expect(data.sync.cursor).toBe(7);
 	});
 
 	it("saving settings keeps the sync state, and saving sync state keeps the settings", async () => {
-		const io = disk({ projectsLocation: "2.projects", hourlyRate: 80, sync: { pushedProjects: pushed } });
+		const io = disk({ projectsLocation: "2.projects", hourlyRate: 80, sync: { cursor: 7 } });
 		const data = await PluginData.load(defaults, io.load, io.save);
 
 		data.settings.hourlyRate = 90;
 		await data.save();
-		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { pushedProjects: pushed, pushedTasks: {} } });
+		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { cursor: 7 } });
 
-		delete data.sync.pushedProjects.t7f3a;
+		data.sync.cursor = 8;
 		await data.save();
-		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { pushedProjects: {}, pushedTasks: {} } });
+		expect(io.d.data).toEqual({ projectsLocation: "2.projects", hourlyRate: 90, suiviUrl: "", sync: { cursor: 8 } });
 	});
 
-	it("drops the pushedReviews of an older data.json on load", async () => {
+	it("drops the bases, done history, image URLs and pushedReviews of an older data.json, and never saves bases", async () => {
 		const review = { path: "2.projects/reviews/Démo.md", fields: { title: "Démo", body: "" }, answer: "valide" };
-		const io = disk({ sync: { pushedProjects: pushed, pushedTasks: {}, pushedReviews: { r1abc: review } } });
+		const appImages = { "capture.png": { url: "/uploads/u1.png", bytes: 3 } };
+		const io = disk({ sync: { pushedProjects: pushed, pushedTasks: {}, doneHistory: [], appImages, pushedReviews: { r1abc: review }, cursor: 3 } });
 		const data = await PluginData.load(defaults, io.load, io.save);
 
+		expect(data.sync).toEqual({ pushedProjects: {}, pushedTasks: {}, cursor: 3 });
+		data.sync.pushedProjects = pushed;
 		await data.save();
-		expect(io.d.data).toEqual({ ...defaults, sync: { pushedProjects: pushed, pushedTasks: {} } });
+		expect(io.d.data).toEqual({ ...defaults, sync: { cursor: 3 } });
 	});
 
 	it("starts empty when there is no data.json yet", async () => {

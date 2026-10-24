@@ -1,7 +1,6 @@
 import { UPLOADED_IMAGE } from "../comments/commentMarkdown";
 import type { TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
-import type { SyncState } from "../sync/pluginData";
 import { rewriteOutsideCode } from "../sync/sharedBody";
 import { deindent } from "../sync/sharedTask";
 import { readIndentedBody } from "../taskParser";
@@ -26,9 +25,7 @@ export interface TriageChoice {
 }
 
 export interface TriageDeps {
-	remote: Pick<Remote, "triage">;
-	sync: SyncState;
-	save(): Promise<void>;
+	remote: Pick<Remote, "triage" | "acknowledge">;
 	/**
 	 * The note the line goes into, its Project's app id (null = standalone) and whether the
 	 * line is a Project step (cursor in a Project note's Tasks section), or why there is none.
@@ -38,9 +35,9 @@ export interface TriageDeps {
 	insert(text: string): void;
 	/**
 	 * Copies an image the Client uploaded (`/uploads/…`) into the vault; returns
-	 * its link text for `![[…]]`, its vault path and size, or null if it failed.
+	 * its link text for `![[…]]`, or null if it failed.
 	 */
-	localImage?(url: string): Promise<{ link: string; path: string; bytes: number } | null>;
+	localImage?(url: string): Promise<string | null>;
 }
 
 /** `missingImages`: app images left as app links because they couldn't be copied into the vault. */
@@ -50,9 +47,9 @@ export type TriageResult = { ok: true; line: string; missingImages: number } | {
  * "Insérer ici": the app turns the item into a Task first (the call most
  * likely to fail), then the Tag task line `#<type> p<n> <title> ^<id>` (or the
  * Project step `- [ ] #<type> p<n> <title> ^<id>`, no token when inheriting)
- * goes at the cursor with the Description as its body, and is recorded as
- * last pushed, so the next Push sees no change. The same app item stays:
- * description and comments are kept.
+ * goes at the cursor with the Description as its body, and its base is sent
+ * to the app as the vault reads it back, so the next Push sees no change. The
+ * same app item stays: description and comments are kept.
  */
 export async function runTriage(
 	item: { id: string; title: string },
@@ -81,22 +78,26 @@ export async function runTriage(
 	const { text: body, missing } = await withVaultImages(fields.description, deps);
 	const written = [line, ...taskBody(body)];
 	deps.insert(written.join("\n"));
-	// Recorded as the next Push reads it back from the vault, so it compares equal.
+	// The base as the next Push reads it back from the vault, so it compares equal.
 	const description = deindent(readIndentedBody(written, 0).join("\n"));
-	deps.sync.pushedTasks[item.id] = { path: target.path, fields: { ...fields, description } };
-	await deps.save();
+	try {
+		await deps.remote.acknowledge([{ id: item.id, base: { path: target.path, fields: { ...fields, description } } }]);
+	} catch (e) {
+		const error = e instanceof Error ? e.message : String(e);
+		return { ok: false, error: `inserted, but its base was not sent (${error}); the next Push offers its description` };
+	}
 	return { ok: true, line, missingImages: missing };
 }
 
 /**
  * The Description with each app image (`![alt](/uploads/…)`, outside code)
- * copied into the vault and embedded as `![[…]]`, so Obsidian shows it; its
- * app URL is recorded so a later Push reuses it. An image that couldn't be
- * copied keeps its app link and is counted in `missing`.
+ * copied into the vault and embedded as `![[…]]`, so Obsidian shows it (a
+ * later Push uploads it again: the app answers with the same URL). An image
+ * that couldn't be copied keeps its app link and is counted in `missing`.
  */
 async function withVaultImages(description: string, deps: TriageDeps): Promise<{ text: string; missing: number }> {
 	let missing = 0;
-	const copies = new Map<string, Promise<{ link: string; path: string; bytes: number } | null>>();
+	const copies = new Map<string, Promise<string | null>>();
 	const text = await rewriteOutsideCode(description, async (piece) => {
 		const parts: string[] = [];
 		let last = 0;
@@ -105,10 +106,9 @@ async function withVaultImages(description: string, deps: TriageDeps): Promise<{
 			last = m.index! + m[0].length;
 			const url = m[2]!;
 			if (!copies.has(url)) copies.set(url, deps.localImage ? deps.localImage(url).catch(() => null) : Promise.resolve(null));
-			const copy = await copies.get(url)!;
-			if (copy) {
-				(deps.sync.appImages ??= {})[copy.path] = { url, bytes: copy.bytes };
-				parts.push(`![[${copy.link}]]`);
+			const link = await copies.get(url)!;
+			if (link) {
+				parts.push(`![[${link}]]`);
 			} else {
 				missing++;
 				parts.push(m[0]);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectFields } from "../src/remote/api";
 import type { SharedProject } from "../src/sync/sharedProject";
 import { planProjectPush } from "../src/sync/pushPlan";
+import { appWith } from "./fakeSuivi";
 
 const fields: ProjectFields = { title: "Widget", description: "Desc", status: "a_faire", priority: 2 };
 const local = (over: Partial<SharedProject> & { fields?: Partial<ProjectFields> } = {}): SharedProject => ({
@@ -13,7 +14,7 @@ const local = (over: Partial<SharedProject> & { fields?: Partial<ProjectFields> 
 
 describe("planProjectPush", () => {
 	it("offers a Project never pushed as new", () => {
-		expect(planProjectPush([local()], {})).toEqual([
+		expect(planProjectPush([local()], appWith())).toEqual([
 			{
 				group: "new",
 				key: "new:2.projects/Widget.md",
@@ -26,13 +27,13 @@ describe("planProjectPush", () => {
 	});
 
 	it("does not offer archived Projects that were never pushed", () => {
-		expect(planProjectPush([local({ archived: true, fields: { status: "termine" } })], {})).toEqual([]);
+		expect(planProjectPush([local({ archived: true, fields: { status: "termine" } })], appWith())).toEqual([]);
 	});
 
 	it("offers nothing for a pushed Project that hasn't changed", () => {
 		const pushed = { t7f3a: { path: "2.projects/Widget.md", fields } };
 
-		expect(planProjectPush([local({ suiviId: "t7f3a" })], pushed)).toEqual([]);
+		expect(planProjectPush([local({ suiviId: "t7f3a" })], appWith(pushed))).toEqual([]);
 	});
 
 	it("lists each changed field old → new and sends only those", () => {
@@ -43,7 +44,7 @@ describe("planProjectPush", () => {
 			fields: { title: "Widget été", description: "Desc", status: "en_cours", priority: 1 },
 		});
 
-		expect(planProjectPush([now], pushed)).toEqual([
+		expect(planProjectPush([now], appWith(pushed))).toEqual([
 			{
 				group: "changed",
 				key: "changed:t7f3a",
@@ -61,43 +62,38 @@ describe("planProjectPush", () => {
 					kind: "project",
 					id: "t7f3a",
 					fields: { title: "Widget été", status: "en_cours", priority: 1 },
+					expected: { title: "Widget", status: "a_faire", priority: 2 },
 				},
 			},
 		]);
 	});
 
-	it("offers a pushed Project whose file is gone, or now prive, as deleted (archive)", () => {
+	it("never offers an app Project no note carries (Unplaced)", () => {
 		const pushed = { t7f3a: { path: "2.projects/Widget.md", fields } };
 
-		expect(planProjectPush([], pushed)).toEqual([
+		expect(planProjectPush([], appWith(pushed))).toEqual([]);
+	});
+
+	it("creates a Project with an id the app doesn't know, keeping it", () => {
+		expect(planProjectPush([local({ suiviId: "abcde" })], appWith())).toEqual([
 			{
-				group: "deleted",
-				key: "deleted:t7f3a",
-				id: "t7f3a",
+				group: "new",
+				key: "new:2.projects/Widget.md",
+				id: "abcde",
+				path: "2.projects/Widget.md",
 				title: "Widget",
-				change: { op: "archive", kind: "project", id: "t7f3a" },
+				fields,
+				change: { op: "create", kind: "project", id: "abcde", fields },
 			},
 		]);
 	});
 
-	it("does not archive a pushed Project whose file couldn't be read", () => {
-		const pushed = { t7f3a: { path: "2.projects/Widget.md", fields } };
+	it("sends what changed since the base, expecting the app's current values", () => {
+		const app = appWith({ t7f3a: { path: "2.projects/Widget.md", fields } });
+		app.projects.t7f3a!.current = { ...fields, priority: 4 };
 
-		expect(planProjectPush([], pushed, ["t7f3a"])).toEqual([]);
-	});
-
-	it("sends every field of a Project with an id this machine never pushed", () => {
-		const [change] = planProjectPush([local({ suiviId: "abcde" })], {});
-
-		expect(change).toMatchObject({
-			group: "changed",
-			diffs: [
-				{ field: "title", from: null, to: "Widget" },
-				{ field: "description", from: null, to: "Desc" },
-				{ field: "status", from: null, to: "a_faire" },
-				{ field: "priority", from: null, to: 2 },
-			],
-			change: { op: "update", id: "abcde", fields },
-		});
+		expect(planProjectPush([local({ suiviId: "t7f3a", fields: { status: "en_pause" } })], app)).toMatchObject([
+			{ group: "changed", change: { fields: { status: "en_pause" }, expected: { status: "a_faire" } } },
+		]);
 	});
 });

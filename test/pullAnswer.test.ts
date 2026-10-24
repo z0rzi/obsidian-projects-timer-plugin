@@ -7,6 +7,7 @@ import { planTaskPush } from "../src/sync/taskPlan";
 import { planProjectPush } from "../src/sync/pushPlan";
 import { settleConflicts, withConflicts } from "../src/sync/conflicts";
 import { runPush } from "../src/sync/runPush";
+import { appWith } from "./fakeSuivi";
 import { writeRemotePriority } from "../src/sync/pullPriority";
 import { writeAnswer } from "../src/sync/pullAnswer";
 import { readSharedProject, type SharedProject } from "../src/sync/sharedProject";
@@ -71,11 +72,10 @@ function world(events: Omit<ApiEvent, "id">[]) {
 		const tasks = [...readTagTasks(meeting, files.get(meeting)!, project), ...readProjectSteps(project, files.get(project)!)];
 		settleConflicts(sync, projects, tasks);
 		const pending = [
-			...planProjectPush(projects, sync.pushedProjects),
-			...planTaskPush(tasks, { [project]: { id: "p0002", title: "Widget" } }, sync.pushedTasks, {
+			...planProjectPush(projects, appWith(sync.pushedProjects, sync.pushedTasks)),
+			...planTaskPush(tasks, { [project]: { id: "p0002", title: "Widget" } }, appWith(sync.pushedProjects, sync.pushedTasks), {
 				now: new Date("2026-10-21T10:00:00Z"),
-				doneHistory: [],
-			}).changes,
+			}),
 		];
 		return withConflicts(pending, sync, projects, tasks);
 	};
@@ -85,6 +85,8 @@ function world(events: Omit<ApiEvent, "id">[]) {
 			remote: {
 				async push(changes) {
 					received.push(...changes);
+					// The app keeps the base each change carries; the next plan reads it back.
+					for (const c of changes) if ("base" in c && c.base) Object.assign(c.kind === "task" ? sync.pushedTasks : sync.pushedProjects, { [c.id!]: c.base });
 					return changes.map((c): PushResult => ({ ok: true, id: c.op === "create" ? "new" : c.id }));
 				},
 			} as Remote,
@@ -92,7 +94,7 @@ function world(events: Omit<ApiEvent, "id">[]) {
 			save: async () => {},
 			writeSuiviId: async () => {},
 			writeBlockId: async () => {},
-			writeStepDate: async () => {},
+			writeDoneDate: async () => {},
 			writePriority: (kind, id, path, p) => writeRemotePriority(vault, kind, id, path, p),
 			writeAnswer: (conflict) => writeAnswer(vault, conflict),
 		});

@@ -3,7 +3,6 @@ import { InboxStore } from "../src/inbox/inboxStore";
 import { projectFile, runNewProject, type NewProjectDeps } from "../src/inbox/newProject";
 import type { ProjectFields, TriageRequest } from "../src/remote/api";
 import type { Remote } from "../src/remote/remote";
-import type { SyncState } from "../src/sync/pluginData";
 import { readSharedProject } from "../src/sync/sharedProject";
 
 /** The vault's `8.templates/project.md`. */
@@ -13,7 +12,8 @@ const IDEA = { id: "i4k2z", title: "Carte des flux", description: "Voir les flux
 function deps(overrides: Partial<NewProjectDeps> = {}) {
 	const sent: [string, TriageRequest][] = [];
 	const files = new Map<string, string>();
-	const sync: SyncState = { pushedProjects: {}, pushedTasks: {} };
+	/** Bases the app was sent, by id. */
+	const bases: Record<string, { path: string; fields: ProjectFields }> = {};
 	const d: NewProjectDeps = {
 		remote: {
 			async triage(id, as) {
@@ -27,9 +27,10 @@ function deps(overrides: Partial<NewProjectDeps> = {}) {
 				};
 				return { id, as: "project", fields };
 			},
+			async acknowledge(items) {
+				for (const i of items) bases[i.id] = i.base as (typeof bases)[string];
+			},
 		},
-		sync,
-		save: async () => {},
 		folder: "2.projects",
 		template: async () => TEMPLATE,
 		exists: (path) => files.has(path),
@@ -38,12 +39,12 @@ function deps(overrides: Partial<NewProjectDeps> = {}) {
 		},
 		...overrides,
 	};
-	return { d, sent, files, sync };
+	return { d, sent, files, bases };
 }
 
 describe("runNewProject (Nouveau projet)", () => {
 	it("triages in the app, then creates the Project file from the template with suivi_id and the Idea's description", async () => {
-		const { d, sent, files, sync } = deps();
+		const { d, sent, files, bases } = deps();
 		const result = await runNewProject(IDEA, { priority: 2 }, d);
 
 		expect(result).toEqual({ ok: true, path: "2.projects/Carte des flux.md" });
@@ -60,27 +61,27 @@ describe("runNewProject (Nouveau projet)", () => {
 				fields: { title: "Carte des flux", description: IDEA.description, status: "a_faire", priority: 2 },
 			},
 		});
-		expect(sync.pushedProjects.i4k2z).toEqual({
+		expect(bases.i4k2z).toEqual({
 			path: "2.projects/Carte des flux.md",
 			fields: { title: "Carte des flux", description: IDEA.description, status: "a_faire", priority: 2 },
 		});
 	});
 
 	it("writes En cours for P0, so the next Push sees no change", async () => {
-		const { d, files, sync } = deps();
+		const { d, files, bases } = deps();
 		await runNewProject(IDEA, { priority: 0 }, d);
 		const read = readSharedProject("2.projects/Carte des flux.md", files.get("2.projects/Carte des flux.md")!);
-		expect(read).toMatchObject({ ok: true, project: { fields: sync.pushedProjects.i4k2z!.fields } });
+		expect(read).toMatchObject({ ok: true, project: { fields: bases.i4k2z!.fields } });
 	});
 
 	it("fills an existing # Description section and works without a template", async () => {
 		for (const template of ["---\npriority: 5\nstatus: En pause\n---\n# Description\n---\n\n# Tasks\n", ""]) {
-			const { d, files, sync } = deps({ template: async () => template });
+			const { d, files, bases } = deps({ template: async () => template });
 			await runNewProject(IDEA, { priority: 4 }, d);
 			const content = files.get("2.projects/Carte des flux.md")!;
 			expect(content.match(/# Description/g)).toHaveLength(1);
 			const read = readSharedProject("2.projects/Carte des flux.md", content);
-			expect(read).toMatchObject({ ok: true, project: { suiviId: "i4k2z", fields: sync.pushedProjects.i4k2z!.fields } });
+			expect(read).toMatchObject({ ok: true, project: { suiviId: "i4k2z", fields: bases.i4k2z!.fields } });
 		}
 	});
 
@@ -114,19 +115,16 @@ describe("runNewProject (Nouveau projet)", () => {
 	});
 
 	it("creates no file when the app refuses", async () => {
-		const { d, files, sync } = deps({
-			remote: {
-				triage: async () => {
-					throw new Error("Suivi error (HTTP 409): Idée pas à trier : i4k2z");
-				},
-			},
-		});
+		const { d, files, bases } = deps();
+		d.remote.triage = async () => {
+			throw new Error("Suivi error (HTTP 409): Idée pas à trier : i4k2z");
+		};
 		expect(await runNewProject(IDEA, { priority: 2 }, d)).toEqual({
 			ok: false,
 			error: "Suivi error (HTTP 409): Idée pas à trier : i4k2z",
 		});
 		expect(files.size).toBe(0);
-		expect(sync.pushedProjects).toEqual({});
+		expect(bases).toEqual({});
 	});
 });
 
