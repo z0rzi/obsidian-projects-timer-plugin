@@ -1,4 +1,6 @@
 import type {
+	AcknowledgedItem,
+	AcknowledgeResponse,
 	ActivityResponse,
 	ApiError,
 	Comment,
@@ -10,6 +12,8 @@ import type {
 	PushChange,
 	PushResponse,
 	PushResult,
+	ItemState,
+	StateResponse,
 	UploadResponse,
 	TriageRequest,
 	TriageResponse,
@@ -21,6 +25,10 @@ import type {
  */
 export interface Remote {
 	push(changes: PushChange[]): Promise<PushResult[]>;
+	/** Every Project and Task of the app, archived ones included, with its base. */
+	state(): Promise<ItemState[]>;
+	/** Sets the base of Items the vault now agrees on (all or nothing). */
+	acknowledge(items: AcknowledgedItem[]): Promise<void>;
 	/** Events after `cursor` (null = from the start) and the cursor to keep. */
 	pull(cursor: number | null): Promise<EventsResponse>;
 	/** Thread of a Project or Task, oldest first. */
@@ -133,6 +141,12 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 	return {
 		async push(changes) {
 			return (await call<PushResponse>("POST", "/push", { changes })).results;
+		},
+		async state() {
+			return (await call<StateResponse>("GET", "/state")).items;
+		},
+		async acknowledge(items) {
+			await call<AcknowledgeResponse>("POST", "/state/acknowledge", { items });
 		},
 		async pull(cursor) {
 			return call<EventsResponse>("GET", `/events?since=${cursor ?? 0}`);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { TaskFields } from "../src/remote/api";
 import type { LocalTask } from "../src/sync/sharedTask";
 import { planTaskPush, type ProjectLinks, type PushedTasks } from "../src/sync/taskPlan";
+import { appWith } from "./fakeSuivi";
 
 const now = new Date("2026-10-20T10:00:00Z");
 const projects: ProjectLinks = {
@@ -25,8 +26,9 @@ const task = (over: Partial<LocalTask> = {}): LocalTask => ({
 	...over,
 });
 const fields: TaskFields = { title: "Widget saison", type: "task", step: false, status: "a_faire", priority: 2, project_id: null, description: "" };
-const plan = (local: LocalTask[], pushed: PushedTasks = {}, doneHistory?: string[]) =>
-	planTaskPush(local, projects, pushed, { now, doneHistory });
+const plan = (local: LocalTask[], pushed: PushedTasks = {}) => ({
+	changes: planTaskPush(local, projects, appWith({}, pushed), { now }),
+});
 
 describe("planTaskPush", () => {
 	it("offers a Task line without block ID as new, linked to its Project", () => {
@@ -101,19 +103,10 @@ describe("planTaskPush", () => {
 		]);
 	});
 
-	it("reads a snapshot pushed with the old step type as a task step, without diff", () => {
-		const { step: _none, ...beforeFlag } = fields;
-		const old = { ...beforeFlag, type: "step", priority: null } as unknown as TaskFields;
-		const step = task({ blockId: "s1xyz", step: true, priority: null });
-		expect(plan([step], { s1xyz: { path: "1.meetings/m.md", fields: old } }).changes).toEqual([]);
-	});
-
-	it("offers nothing for an unchanged pushed Task, and an archive when its line is gone", () => {
+	it("offers nothing for an unchanged pushed Task, nor when its line is gone (Unplaced)", () => {
 		const pushed = { t7f3a: { path: "1.meetings/m.md", fields } };
 		expect(plan([task({ blockId: "t7f3a" })], pushed).changes).toEqual([]);
-		expect(plan([], pushed).changes).toMatchObject([
-			{ group: "deleted", id: "t7f3a", title: "Widget saison", change: { op: "archive", kind: "task", id: "t7f3a" } },
-		]);
+		expect(plan([], pushed).changes).toEqual([]);
 	});
 
 	it("pushes #done with its date, keeping the type last pushed", () => {
@@ -134,15 +127,11 @@ describe("planTaskPush", () => {
 		expect(plan([recent, old]).changes.map((c) => c.title)).toEqual(["Récent"]);
 	});
 
-	it("leaves out undated done items at the first Push, and offers those checked later", () => {
-		const step = (title: string, line: number) =>
-			task({ type: "task", step: true, status: "termine", priority: null, title, line, raw: `- [x] ${title}`, path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
-		const first = plan([step("Ancienne", 1)]);
-		expect(first.changes).toEqual([]);
-		expect(first.history).toEqual(["2.projects/Tetris.md\n- [x] Ancienne"]);
-
-		const later = plan([step("Ancienne", 1), step("Nouvelle", 2)], {}, first.history);
-		expect(later.changes.map((c) => c.title)).toEqual(["Nouvelle"]);
+	it("lists undated done items never pushed as « Terminées sans date », unticked at a first Push", () => {
+		const step = task({ type: "task", step: true, status: "termine", priority: null, raw: "- [x] Ancienne", path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
+		expect(plan([step]).changes).toMatchObject([{ group: "new", undated: true, ticked: false }]);
+		const app = appWith({}, { t7f3a: { path: "1.meetings/m.md", fields } });
+		expect(planTaskPush([step], projects, app, { now })).toMatchObject([{ group: "new", undated: true, ticked: true }]);
 	});
 
 	it("counts a copied block ID once", () => {

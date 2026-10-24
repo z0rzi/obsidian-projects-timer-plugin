@@ -1,10 +1,8 @@
+import { APP_ID } from "../blockId";
 import { parseFrontmatter } from "../projectCards";
 import type { PluginData } from "./pluginData";
 import type { VaultFiles } from "./runPull";
 import { readProjectSteps, readTagTasks } from "./sharedTask";
-
-/** A block ID as the Client app makes them: 5 characters, `a-z0-9`. */
-const APP_ID = /^[a-z0-9]{5}$/;
 
 /** Numbers of the Task lines of `content` ending with an app-format `^id`. */
 function appTaskLines(path: string, content: string): number[] {

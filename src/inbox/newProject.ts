@@ -1,7 +1,6 @@
 import { localDay } from "../localDate";
 import type { ProjectFields, ProjectStatus } from "../remote/api";
 import type { Remote } from "../remote/remote";
-import type { SyncState } from "../sync/pluginData";
 
 export interface NewProjectChoice {
 	/** 0 (En cours) to 5. */
@@ -9,9 +8,7 @@ export interface NewProjectChoice {
 }
 
 export interface NewProjectDeps {
-	remote: Pick<Remote, "triage">;
-	sync: SyncState;
-	save(): Promise<void>;
+	remote: Pick<Remote, "triage" | "acknowledge">;
 	/** Projects folder (setting), where the file goes. */
 	folder: string;
 	/** Content of the Project template (setting); "" when there is none. */
@@ -26,7 +23,7 @@ export type NewProjectResult = { ok: true; path: string } | { ok: false; error: 
  * "Nouveau projet" on a launched Idea: the app makes the item a Project
  * first (same id, so JMJ's description and comments stay on it), then the
  * Project file is created from the template with `suivi_id:`, priority,
- * status and the Idea's description, and recorded as last pushed so the
+ * status and the Idea's description, and its base is sent to the app so the
  * next Push sees no change. Nothing is called or written if the file
  * already exists.
  */
@@ -51,8 +48,12 @@ export async function runNewProject(
 	if (response.as !== "project") return { ok: false, error: "The app did not make it a Project." };
 
 	await deps.create(path, projectFile(await deps.template(), name, item.id, response.fields));
-	deps.sync.pushedProjects[item.id] = { path, fields: response.fields };
-	await deps.save();
+	try {
+		await deps.remote.acknowledge([{ id: item.id, base: { path, fields: response.fields } }]);
+	} catch (e) {
+		const error = e instanceof Error ? e.message : String(e);
+		return { ok: false, error: `${path} created, but its base was not sent (${error})` };
+	}
 	return { ok: true, path };
 }
 

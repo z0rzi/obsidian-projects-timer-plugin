@@ -1,8 +1,11 @@
-import type { PushChange, TaskFields } from "../remote/api";
+import { APP_ID } from "../blockId";
+import type { PushChange, TaskFields, TaskStateFields } from "../remote/api";
 import type { LineRef } from "../lineWriter";
+import type { AppItems } from "./appState";
+import type { PushError } from "./pushPlan";
 import type { LocalTask } from "./sharedTask";
 
-/** Last-pushed state of each Task, by app id (= its block ID). */
+/** Base of each Task, by app id (= its block ID). */
 export type PushedTasks = Record<string, { path: string; fields: TaskFields }>;
 
 /**
@@ -20,34 +23,42 @@ export interface TaskDiff {
 	to: string;
 }
 
-/** One Task line of the Push modal; `change` is what goes to the app if it stays ticked. */
+/**
+ * One Task line of the Push modal; `change` is what goes to the app if it
+ * stays ticked, `fields` (all shared fields now) its base once applied.
+ */
 export type PendingTaskChange =
 	| {
 			group: "new";
 			key: string;
+			/** The line's block ID the app doesn't know; none = one is generated and written into the line first. */
+			id?: string;
 			path: string;
-			/** Where to write the block ID the app gives. */
+			/** Where to write the generated block ID. */
 			ref: LineRef;
 			title: string;
 			fields: TaskFields;
 			/** Path of a Project created in the same Push: its id goes into `project_id` once known. */
 			needsProject?: string;
 			detail: string;
+			/** A done line without a date, never pushed (« Terminées sans date »). */
+			undated?: true;
+			/** Starts ticked in the Push modal (absent = ticked). */
+			ticked?: boolean;
 			change: Extract<PushChange, { kind: "task"; op: "create" }>;
 	  }
 	| {
-			group: "changed";
+			group: "changed" | "restored";
 			key: string;
 			id: string;
 			path: string;
 			title: string;
-			/** All shared fields now, recorded as last-pushed once applied. */
 			fields: TaskFields;
 			needsProject?: string;
+			/** Empty for `restored`: all fields are sent. */
 			diffs: TaskDiff[];
-			change: Extract<PushChange, { kind: "task"; op: "update" }>;
-	  }
-	| { group: "deleted"; key: string; id: string; title: string; change: Extract<PushChange, { kind: "task"; op: "archive" }> };
+			change: Extract<PushChange, { kind: "task"; op: "update" | "restore" }>;
+	  };
 
 const DONE_OFFERED_MS = 30 * 24 * 60 * 60_000;
 const FIELDS = ["title", "type", "step", "status", "priority", "project_id", "done_on", "description"] as const;
@@ -66,39 +77,50 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 /**
- * Compares the vault's Task lines with what was last pushed. A line with a
- * block ID is the app item of that id wherever it now lives (a moved line is
- * a change, not delete + create); a pushed id no longer found is offered as
- * an archive. Lines never pushed and done more than 30 days ago stay in the
- * vault; done lines without a date are left out at the first Push (their
- * keys come back in `history`) and offered afterwards unless in `doneHistory`.
+ * Compares the vault's Task lines with their base in the app. A line with a
+ * block ID is the app Task of that id wherever it now lives (a moved line is
+ * a change); an id the app doesn't know is created keeping it, one it holds
+ * archived is restored, a Project's id or a block ID not in the app's format
+ * is an error. Lines never pushed and done more than 30 days ago stay in the
+ * vault; done ones without a date are « Terminées sans date », ticked unless
+ * the app holds no base yet (a first Push). App Tasks no line carries are not
+ * offered (Unplaced).
  */
 export function planTaskPush(
 	local: LocalTask[],
 	projects: ProjectLinks,
-	pushed: PushedTasks,
-	opts: { now: Date; doneHistory?: string[] },
-): { changes: PendingTaskChange[]; history: string[] } {
-	const changes: PendingTaskChange[] = [];
-	const history: string[] = [];
+	app: AppItems,
+	opts: { now: Date },
+): (PendingTaskChange | PushError)[] {
+	const changes: (PendingTaskChange | PushError)[] = [];
 	const seen = new Set<string>();
 	const titleOf = (id: string | null) => {
 		if (id === null) return "none";
 		return Object.values(projects).find((p) => p.id === id)?.title ?? id;
 	};
-	const keptProjects = new Set(Object.values(projects).flatMap((p) => (p.unreadable && p.id ? [p.id] : [])));
 
 	for (const t of local) {
 		const link = t.projectPath ? projects[t.projectPath] : undefined;
 		if (link?.hidden || link?.unreadable) continue;
 		const needsProject = link && !link.id ? t.projectPath! : undefined;
+		const id = t.blockId;
+		const error = (message: string) =>
+			changes.push({ group: "error", key: `error:${t.path}:${t.line}`, path: t.path, title: t.title, error: message });
 
-		if (t.blockId) {
-			if (seen.has(t.blockId)) continue; // a copied line keeps the id: the first one wins
-			seen.add(t.blockId);
+		if (id) {
+			if (!APP_ID.test(id)) {
+				error("id de bloc non reconnu");
+				continue;
+			}
+			if (seen.has(id)) continue; // a copied line keeps the id: the first one wins
+			seen.add(id);
+			if (app.projects[id]) {
+				error(`^${id} is a Project in Suivi; fix it in the note`);
+				continue;
+			}
 		}
-		const stored = t.blockId ? pushed[t.blockId]?.fields : undefined;
-		const before = stored ? upgradeSnapshot(stored) : undefined;
+		const held = id ? app.tasks[id] : undefined;
+		const before = held?.base.fields;
 		const fields: TaskFields = {
 			title: t.title,
 			type: t.type ?? before?.type ?? "task",
@@ -110,23 +132,14 @@ export function planTaskPush(
 			description: t.description,
 		};
 
-		if (!t.blockId) {
-			if (t.status === "termine") {
-				if (t.doneOn) {
-					if (opts.now.getTime() - Date.parse(`${t.doneOn}T00:00:00Z`) > DONE_OFFERED_MS) continue;
-				} else {
-					const key = `${t.path}\n${t.raw}`;
-					if (!opts.doneHistory) {
-						history.push(key);
-						continue;
-					}
-					if (opts.doneHistory.includes(key)) continue;
-				}
-			}
+		if (!held) {
+			const undated = !id && t.status === "termine" && !t.doneOn;
+			if (!id && t.doneOn && opts.now.getTime() - Date.parse(`${t.doneOn}T00:00:00Z`) > DONE_OFFERED_MS) continue;
 			const project = needsProject ? link!.title : titleOf(fields.project_id);
 			changes.push({
 				group: "new",
 				key: `new-task:${t.path}:${t.line}`,
+				...(id ? { id } : {}),
 				path: t.path,
 				ref: { line: t.line, raw: t.raw },
 				title: t.title,
@@ -135,54 +148,50 @@ export function planTaskPush(
 				detail: [TYPE_LABELS[fields.type], show("status", fields), project === "none" ? "" : project]
 					.filter(Boolean)
 					.join(" · "),
-				change: { op: "create", kind: "task", fields },
+				...(undated ? { undated: true as const, ticked: app.hasBases } : {}),
+				change: { op: "create", kind: "task", ...(id ? { id } : {}), fields },
 			});
+			continue;
+		}
+		if (held.archived) {
+			const change = { op: "restore" as const, kind: "task" as const, id: id!, fields };
+			changes.push({ group: "restored", key: `restored-task:${id}`, id: id!, path: t.path, title: t.title, fields, ...(needsProject ? { needsProject } : {}), diffs: [], change });
 			continue;
 		}
 
 		const diffs: TaskDiff[] = [];
 		const sent: Partial<TaskFields> = {};
+		const expected: Partial<TaskStateFields> = {};
 		for (const field of FIELDS) {
 			// Reopening clears the done date in the app; no need to send it.
 			if (field === "done_on" && fields.status !== "termine") continue;
 			const from = before?.[field] ?? null;
 			const to = fields[field] ?? null;
 			const projectPending = field === "project_id" && needsProject;
-			if (before && from === to && !projectPending) continue;
+			if (from === to && !projectPending) continue;
 			Object.assign(sent, { [field]: to });
+			Object.assign(expected, { [field]: held.current[field] });
 			if (field === "project_id") {
 				const shown = needsProject ? link!.title : titleOf(fields.project_id);
-				diffs.push({ field: "project", from: before ? titleOf(before.project_id) : "?", to: shown });
+				diffs.push({ field: "project", from: titleOf(before!.project_id), to: shown });
 			} else {
-				diffs.push({ field: LABEL[field], from: before ? show(field, before) : "?", to: show(field, fields) });
+				diffs.push({ field: LABEL[field], from: show(field, before!), to: show(field, fields) });
 			}
 		}
 		if (diffs.length === 0) continue;
 		changes.push({
 			group: "changed",
-			key: `changed-task:${t.blockId}`,
-			id: t.blockId,
+			key: `changed-task:${id}`,
+			id: id!,
 			path: t.path,
 			title: t.title,
 			fields,
 			...(needsProject ? { needsProject } : {}),
 			diffs,
-			change: { op: "update", kind: "task", id: t.blockId, fields: sent },
+			change: { op: "update", kind: "task", id: id!, fields: sent, expected },
 		});
 	}
-
-	for (const [id, last] of Object.entries(pushed)) {
-		if (seen.has(id)) continue;
-		if (last.fields.project_id && keptProjects.has(last.fields.project_id)) continue;
-		changes.push({
-			group: "deleted",
-			key: `deleted-task:${id}`,
-			id,
-			title: last.fields.title,
-			change: { op: "archive", kind: "task", id },
-		});
-	}
-	return { changes, history };
+	return changes;
 }
 
 const LABEL = {
@@ -195,21 +204,6 @@ const LABEL = {
 	done_on: "done",
 	description: "description",
 } as const satisfies Record<(typeof FIELDS)[number], TaskDiff["field"]>;
-
-/**
- * Reads a snapshot recorded by an older version as today's fields: no
- * description before bodies were shared (= empty), and a Project step was the
- * `step` type before it became a flag (= a `task` with `step`).
- */
-function upgradeSnapshot(stored: TaskFields): TaskFields {
-	const oldStep = (stored.type as string) === "step";
-	return {
-		...stored,
-		type: oldStep ? "task" : stored.type,
-		step: stored.step ?? oldStep,
-		description: stored.description ?? "",
-	};
-}
 
 function show(field: (typeof FIELDS)[number], f: TaskFields): string {
 	switch (field) {

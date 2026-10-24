@@ -41,6 +41,19 @@ describe("HTTP remote", () => {
 		]);
 	});
 
+	it("gets the state and posts acknowledged bases", async () => {
+		const items = [{ id: "t7f3a", kind: "task", base: null, archived: false, triaged: true, answer: null }];
+		const { sent, transport } = fakeTransport(200, { items, ok: true });
+		const remote = createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport);
+
+		expect(await remote.state()).toEqual(items);
+		await remote.acknowledge([{ id: "t7f3a", base: { path: "m.md" } }]);
+		expect(sent.map((r) => [r.method, r.url, r.body])).toEqual([
+			["GET", "https://suivi.test/api/state", undefined],
+			["POST", "https://suivi.test/api/state/acknowledge", JSON.stringify({ items: [{ id: "t7f3a", base: { path: "m.md" } }] })],
+		]);
+	});
+
 	it("turns a rejected token into a clear auth error", async () => {
 		for (const status of [401, 403]) {
 			const remote = createHttpRemote(

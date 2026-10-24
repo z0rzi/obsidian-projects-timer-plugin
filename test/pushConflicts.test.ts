@@ -6,12 +6,13 @@ import type { SyncState } from "../src/sync/pluginData";
 import { writeRemotePriority } from "../src/sync/pullPriority";
 import { planProjectPush, type PendingChange } from "../src/sync/pushPlan";
 import { runPush } from "../src/sync/runPush";
+import { appWith } from "./fakeSuivi";
 import { readSharedProject, type SharedProject } from "../src/sync/sharedProject";
 import { readTagTasks } from "../src/sync/sharedTask";
 import { planTaskPush } from "../src/sync/taskPlan";
 
 const now = new Date("2026-10-20T10:00:00Z");
-const fields: TaskFields = { title: "Fix heatmap", type: "task", status: "a_faire", priority: 3, project_id: null, description: "" };
+const fields: TaskFields = { title: "Fix heatmap", type: "task", step: false, status: "a_faire", priority: 3, project_id: null, description: "" };
 
 /** A vault where the Developer moved a Task P3 → P4 (and renamed it) while JMJ moved it to P1. */
 function world() {
@@ -31,6 +32,8 @@ function world() {
 	const remote: Remote = {
 		async push(changes) {
 			received.push(changes);
+			// The app keeps the base each change carries; the next plan reads it back.
+			for (const c of changes) if ("base" in c && c.base) Object.assign(c.kind === "task" ? sync.pushedTasks : sync.pushedProjects, { [c.id!]: c.base });
 			return changes.map((c): PushResult => ({ ok: true, id: c.op === "create" ? "new" : c.id }));
 		},
 		async pull() {
@@ -43,8 +46,8 @@ function world() {
 		const projects: SharedProject[] = r?.ok ? [r.project] : [];
 		settleConflicts(sync, projects, tasks);
 		const pending = [
-			...planProjectPush(projects, sync.pushedProjects),
-			...planTaskPush(tasks, {}, sync.pushedTasks, { now }).changes,
+			...planProjectPush(projects, appWith(sync.pushedProjects, sync.pushedTasks)),
+			...planTaskPush(tasks, {}, appWith(sync.pushedProjects, sync.pushedTasks), { now }),
 		];
 		return withConflicts(pending, sync, projects, tasks);
 	};
@@ -54,7 +57,7 @@ function world() {
 		save: async () => {},
 		writeSuiviId: async () => {},
 		writeBlockId: async () => {},
-		writeStepDate: async () => {},
+		writeDoneDate: async () => {},
 		writePriority: (kind: "project" | "task", id: string, path: string, priority: number | null) =>
 			writeRemotePriority(
 				{
@@ -77,7 +80,7 @@ describe("Push modal: Pull conflicts", () => {
 		const pending = w.plan();
 		expect(pending.map((c) => c.group).sort()).toEqual(["changed", "conflict", "conflict"]);
 		const changed = pending.find((c) => c.group === "changed")!;
-		expect(changed.change).toEqual({ op: "update", kind: "task", id: "t7f3a", fields: { title: "Fix heatmap axis" } });
+		expect(changed.change).toEqual({ op: "update", kind: "task", id: "t7f3a", fields: { title: "Fix heatmap axis" }, expected: { title: "Fix heatmap" } });
 		expect(pending.filter((c) => c.group === "conflict")).toEqual([
 			expect.objectContaining({ id: "aaaaa", title: "A", local: "P2", remote: "P1", choice: "mine" }),
 			expect.objectContaining({ id: "t7f3a", title: "Fix heatmap axis", local: "P4", remote: "P1", choice: "mine" }),
@@ -105,6 +108,6 @@ describe("Push modal: Pull conflicts", () => {
 		const pending = w.plan();
 		expect(pending.filter((c) => c.group === "conflict").map((c) => c.key)).toEqual(["conflict:aaaaa:priority"]);
 		expect(w.sync.pushedTasks.t7f3a!.fields.priority).toBe(1);
-		expect(pending.some((c) => c.change.kind === "task")).toBe(false);
+		expect(pending.some((c) => c.group !== "error" && c.change.kind === "task")).toBe(false);
 	});
 });

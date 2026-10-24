@@ -129,16 +129,18 @@ export function withConflicts(
 		const pushed = pushedItem(sync, p.change.kind, p.id);
 		const base = pushed!.fields as unknown as Loose;
 		const sent = { ...((p.change as { fields?: Loose }).fields ?? {}) };
-		// The snapshot recorded if this change is pushed keeps the held fields at their last-pushed value.
+		const expected = { ...((p.change as { expected?: Loose }).expected ?? {}) };
+		// The base sent with this change keeps the held fields at their base value.
 		const snapshot = { ...(p.fields as unknown as Loose) };
 		for (const f of fields) {
 			delete sent[f];
+			delete expected[f];
 			if (f in base) snapshot[f] = base[f];
 			else delete snapshot[f];
 		}
 		const diffs = p.diffs.filter((d) => !fields.has(DIFF_FIELD[d.field] ?? d.field));
 		if (diffs.length === 0) return [];
-		return [{ ...p, fields: snapshot, diffs, change: { ...p.change, fields: sent } } as unknown as PendingChange];
+		return [{ ...p, fields: snapshot, diffs, change: { ...p.change, fields: sent, expected } } as unknown as PendingChange];
 	});
 	return [...kept, ...entries.sort((a, b) => a.title.localeCompare(b.title))];
 }
