@@ -6,6 +6,7 @@ import type {
 	Comment,
 	CommentResponse,
 	CommentsResponse,
+	EventsResponse,
 	InboxResponse,
 	MarkReadResponse,
 	PushChange,
@@ -51,15 +52,22 @@ export interface Remote {
 	image(path: string): Promise<{ data: ArrayBuffer; type: string }>;
 	/** Turns an item À trier into a Task; returns its shared fields as the app now has them. */
 	triage(itemId: string, as: TriageRequest): Promise<TriageResponse>;
+	/** Checks the URL and the token with a cheap authenticated call (an empty page of events). */
+	checkConnection(): Promise<void>;
 }
 
 export type RemoteErrorKind = "config" | "auth" | "network" | "server";
 
-/** A call that failed as a whole; `message` is ready for a Notice. */
+/**
+ * A call that failed as a whole; `message` is ready for a Notice. `status` is the
+ * HTTP status the app answered, `detail` why the app couldn't be reached.
+ */
 export class RemoteError extends Error {
 	constructor(
 		readonly kind: RemoteErrorKind,
 		message: string,
+		readonly status?: number,
+		readonly detail?: string,
 	) {
 		super(message);
 		this.name = "RemoteError";
@@ -114,17 +122,19 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 				body: raw ? raw.body : body === undefined ? undefined : JSON.stringify(body),
 			});
 		} catch (e) {
-			throw new RemoteError("network", `Suivi unreachable at ${base}: ${(e as Error).message}`);
+			const detail = (e as Error).message;
+			throw new RemoteError("network", `Suivi unreachable at ${base}: ${detail}`, undefined, detail);
 		}
 		const error = (res.json as Partial<ApiError> | null)?.error;
 		if (res.status === 401 || res.status === 403) {
 			throw new RemoteError(
 				"auth",
 				`Suivi rejected the API token${error ? ` (${error})` : ""}. Check it in the plugin settings.`,
+				res.status,
 			);
 		}
 		if (res.status < 200 || res.status >= 300) {
-			throw new RemoteError("server", `Suivi error (HTTP ${res.status})${error ? `: ${error}` : ""}`);
+			throw new RemoteError("server", `Suivi error (HTTP ${res.status})${error ? `: ${error}` : ""}`, res.status);
 		}
 		return res;
 	}
@@ -183,6 +193,9 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		},
 		async triage(itemId, as) {
 			return call<TriageResponse>("POST", `/items/${encodeURIComponent(itemId)}/triage`, as);
+		},
+		async checkConnection() {
+			await call<EventsResponse>("GET", `/events?since=${Number.MAX_SAFE_INTEGER}`);
 		},
 	};
 }

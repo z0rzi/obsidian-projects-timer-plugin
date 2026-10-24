@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHttpRemote, RemoteError, type Transport, type TransportRequest } from "../src/remote/remote";
+import { connectionStatus } from "../src/remote/connectionStatus";
 
 function fakeTransport(status: number, body: unknown) {
 	const sent: TransportRequest[] = [];
@@ -226,5 +227,33 @@ describe("HTTP remote, triage", () => {
 			method: "POST",
 			body: JSON.stringify(as),
 		});
+	});
+});
+
+describe("HTTP remote, connection test", () => {
+	it("gets an empty page of events, past every event id", async () => {
+		const { sent, transport } = fakeTransport(200, { events: [], cursor: Number.MAX_SAFE_INTEGER });
+		await createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport).checkConnection();
+
+		expect(sent[0]).toMatchObject({ url: `https://suivi.test/api/events?since=${Number.MAX_SAFE_INTEGER}`, method: "GET" });
+	});
+
+	it("tells what is wrong with the URL or the token", async () => {
+		const status = (url: string, transport: Transport) =>
+			connectionStatus(createHttpRemote({ url, token: "tok" }, transport));
+		const answering = (code: number, error?: string) => fakeTransport(code, error ? { error } : null).transport;
+		const events = fakeTransport(200, { events: [], cursor: 0 }).transport;
+
+		expect(await status("https://suivi.test", events)).toBe("Connected");
+		expect(await status("https://suivi.test", answering(200))).toBe("Suivi error (HTTP 200): not JSON");
+		expect(await status("https://suivi.test", answering(401, "Jeton révoqué"))).toBe("Token rejected");
+		expect(await status("https://suivi.test", answering(403, "Réservé aux Développeurs"))).toBe("Not a Developer token");
+		expect(await status("https://suivi.test", answering(500, "Boom"))).toBe("Suivi error (HTTP 500): Boom");
+		expect(await status("", events)).toBe("Suivi: set the app URL and API token in the plugin settings.");
+		expect(
+			await status("suivi", async () => {
+				throw new Error("Invalid URL");
+			}),
+		).toBe("Unreachable: Invalid URL");
 	});
 });
