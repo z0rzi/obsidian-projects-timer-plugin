@@ -99,16 +99,24 @@ export interface ItemAnsweredPayload {
 export type ItemBase = { [key: string]: unknown };
 
 /**
- * One vault change in a Push. Items are addressed by the id the app gave them
- * at creation. `base`: the Item's base once the change applies, stored with it
- * (absent = the base stays as it was).
+ * One vault change in a Push. Items are addressed by their app id.
+ * `create`: `id` is the one the plugin generated and wrote into the note (5
+ * characters `a-z0-9`; absent = the app picks one). An id the app already
+ * holds is refused, unless it is the same kind with the same fields: a retried
+ * create, answered ok without creating twice. `restore`: unarchives the Item
+ * and applies `fields`. `expected`: the app values the plugin saw for the
+ * fields it sends; when one no longer holds, the change is refused, naming the
+ * field and its current value (absent = no check). `base`: the Item's base
+ * once the change applies, stored with it (absent = the base stays as it was).
  */
 export type PushChange =
-  | { op: "create"; kind: "project"; fields: ProjectFields; base?: ItemBase }
-  | { op: "update"; kind: "project"; id: string; fields: Partial<ProjectFields>; base?: ItemBase }
+  | { op: "create"; kind: "project"; id?: string; fields: ProjectFields; base?: ItemBase }
+  | { op: "update"; kind: "project"; id: string; fields: Partial<ProjectFields>; expected?: Partial<ProjectFields>; base?: ItemBase }
+  | { op: "restore"; kind: "project"; id: string; fields: Partial<ProjectFields>; expected?: Partial<ProjectFields>; base?: ItemBase }
   | { op: "archive"; kind: "project"; id: string }
-  | { op: "create"; kind: "task"; fields: TaskFields; base?: ItemBase }
-  | { op: "update"; kind: "task"; id: string; fields: Partial<TaskFields>; base?: ItemBase }
+  | { op: "create"; kind: "task"; id?: string; fields: TaskFields; base?: ItemBase }
+  | { op: "update"; kind: "task"; id: string; fields: Partial<TaskFields>; expected?: Partial<TaskStateFields>; base?: ItemBase }
+  | { op: "restore"; kind: "task"; id: string; fields: Partial<TaskFields>; expected?: Partial<TaskStateFields>; base?: ItemBase }
   | { op: "archive"; kind: "task"; id: string };
 
 /** `POST /api/push` body. */
@@ -117,8 +125,10 @@ export interface PushRequest {
 }
 
 /**
- * Outcome of one change. A change that is invalid, targets an unknown item or
- * sets a field the Developer doesn't own fails alone; the others still apply.
+ * Outcome of one change; `id` is the Item's (on create, the one sent). A
+ * change that is invalid, targets an unknown item, sets a field the Developer
+ * doesn't own or expects a value that no longer holds fails alone; the others
+ * still apply.
  */
 export type PushResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -461,21 +471,20 @@ interface ItemStateCommon {
 }
 
 /**
- * One Item of `GET /api/state`. A Task's `type` and `status` may be ones only
+ * A Task's fields as the app holds them: `type` and `status` may be ones only
  * the app sets (a Ticket's `amelioration`, `a_trier`); `done_on` is the
- * `YYYY-MM-DD` (UTC) of its done date, null when not Terminé. A launched Idea
- * is its Project; its Idea row is not listed.
+ * `YYYY-MM-DD` (UTC) of its done date, null when not Terminé.
  */
+export type TaskStateFields = Omit<TaskFields, "type" | "status" | "done_on"> & {
+  type: TaskType;
+  status: TaskStatus;
+  done_on: string | null;
+};
+
+/** One Item of `GET /api/state`. A launched Idea is its Project; its Idea row is not listed. */
 export type ItemState =
   | (ItemStateCommon & { kind: "project"; fields: ProjectFields })
-  | (ItemStateCommon & {
-      kind: "task";
-      fields: Omit<TaskFields, "type" | "status" | "done_on"> & {
-        type: TaskType;
-        status: TaskStatus;
-        done_on: string | null;
-      };
-    });
+  | (ItemStateCommon & { kind: "task"; fields: TaskStateFields });
 
 /** `GET /api/state` response (the Pull): every Project and Task, archived ones included. */
 export interface StateResponse {
