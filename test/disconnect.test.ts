@@ -6,6 +6,7 @@ import type { VaultFiles } from "../src/sync/runPull";
 const project = "2.projects/Widget.md";
 const meeting = "1.meetings/m.md";
 const other = "notes/n.md";
+const foreign = "2.projects/Foreign.md";
 
 /** Obsidian's `processFrontMatter` on the flat `key: value` frontmatter of these notes. */
 function editFrontmatter(content: string, edit: (fm: Record<string, unknown>) => void): string {
@@ -43,23 +44,25 @@ const vaultWithIds = () =>
 		[project]: "---\nsuivi_id: p0002\npriority: 2\n---\n# Tasks\n- [ ] Export ^s9xyz\n- [ ] Local step ^my-link\n",
 		[meeting]: "#task Heatmap ^t7f3a\nnotes ^abcde\n#bug Crash ^b1234\n",
 		[other]: "---\npriority: 1\n---\n#task Not pushed\n",
+		[foreign]: "---\nsuivi_id: legacy-42\npriority: 3\n---\n",
 	});
 
 describe("countAppIds", () => {
-	it("counts Project notes with suivi_id and Task lines with an app-format block id", async () => {
+	it("counts Project notes with an app-format suivi_id and Task lines with an app-format block id", async () => {
 		const { vault } = vaultWithIds();
 		expect(await countAppIds(vault)).toEqual({ projects: 1, tasks: 3 });
 	});
 });
 
 describe("removeAppIds", () => {
-	it("removes suivi_id and app-format ^ids from Task lines, other block ids stay", async () => {
+	it("removes app-format suivi_id and ^ids, other ids stay", async () => {
 		const { vault, files } = vaultWithIds();
 		await removeAppIds(vault);
 
 		expect(files.get(project)).toBe("---\npriority: 2\n---\n# Tasks\n- [ ] Export\n- [ ] Local step ^my-link\n");
 		expect(files.get(meeting)).toBe("#task Heatmap\nnotes ^abcde\n#bug Crash\n");
 		expect(files.get(other)).toBe("---\npriority: 1\n---\n#task Not pushed\n");
+		expect(files.get(foreign)).toBe("---\nsuivi_id: legacy-42\npriority: 3\n---\n");
 		expect(await countAppIds(vault)).toEqual({ projects: 0, tasks: 0 });
 	});
 });

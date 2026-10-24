@@ -11,24 +11,28 @@ function appTaskLines(path: string, content: string): number[] {
 		.map((t) => t.line);
 }
 
-const hasSuiviId = (content: string): boolean => Boolean(parseFrontmatter(content).suivi_id);
+/** Whether the note's `suivi_id:` is an id in the app's format (an all-digit id reads as a number). */
+const hasAppSuiviId = (content: string): boolean => {
+	const id = parseFrontmatter(content).suivi_id;
+	return (typeof id === "string" || typeof id === "number") && APP_ID.test(String(id));
+};
 
-/** How many Project notes have a `suivi_id:` and how many Task lines an app-format `^id`. */
+/** How many Project notes have an app-format `suivi_id:` and how many Task lines an app-format `^id`. */
 export async function countAppIds(files: VaultFiles): Promise<{ projects: number; tasks: number }> {
 	let projects = 0;
 	let tasks = 0;
 	for (const path of files.paths()) {
 		const content = await files.read(path);
 		if (content === null) continue;
-		if (hasSuiviId(content)) projects++;
+		if (hasAppSuiviId(content)) projects++;
 		tasks += appTaskLines(path, content).length;
 	}
 	return { projects, tasks };
 }
 
 /**
- * Removes the Client app ids from the vault: `suivi_id:` from Project notes
- * and the app-format `^id` from Task lines. Other block IDs stay; notes
+ * Removes the Client app ids from the vault: the app-format `suivi_id:` from
+ * Project notes and `^id` from Task lines. Ids in another format stay; notes
  * without app ids are not touched.
  */
 export async function removeAppIds(files: VaultFiles): Promise<void> {
@@ -44,7 +48,7 @@ export async function removeAppIds(files: VaultFiles): Promise<void> {
 				return lines.join("\n");
 			});
 		}
-		if (hasSuiviId(content)) {
+		if (hasAppSuiviId(content)) {
 			await files.processFrontMatter(path, (fm) => {
 				delete fm.suivi_id;
 			});
