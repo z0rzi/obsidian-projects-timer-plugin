@@ -33,10 +33,10 @@ export type ProjectCardItem = {
 	text: string;
 	line: number;
 	checked: boolean;
-	/** Type tag right after the checkbox (`- [ ] #bug p2 …`); "task" without one. */
+	/** Type tag anywhere on the line, written after the checkbox (`- [ ] #bug p2 …`); "task" without one. */
 	type: TaskTagLabel;
 	blockId?: string;
-	/** Done date of a ticked step, after its type tag (`- [x] #bug 2026-10-24 …`). */
+	/** Done date of a ticked step, first word once its type tag is out (`- [x] #bug 2026-10-24 …`). */
 	doneOn?: string;
 	/** Status token carried by the step itself, replacing the Project's priority. */
 	override?: { priority: number; status: TaskStatus };
