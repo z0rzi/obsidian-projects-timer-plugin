@@ -884,7 +884,7 @@ export default class ProjectsTimerPlugin extends Plugin {
 		this.settings = this.data.settings;
 	}
 
-	/** Saves settings together with the sync state (both live in data.json). */
+	/** Saves the settings (data.json holds nothing else). */
 	async saveSettings() {
 		await this.data.save();
 	}

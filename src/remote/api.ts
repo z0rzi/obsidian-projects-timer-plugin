@@ -160,9 +160,9 @@ export type EventType = (typeof EVENT_TYPES)[number];
  */
 export type EventOrigin = "push" | "api" | "site";
 
-/** One entry of the event log, as the Pull returns it. */
+/** One entry of the event log, as `GET /api/events` returns it. */
 export interface ApiEvent {
-  /** Monotonic; the Pull cursor. */
+  /** Monotonic. */
   id: number;
   /** ISO date-time. */
   at: string;
@@ -177,20 +177,26 @@ export interface ApiEvent {
 }
 
 /**
- * Payload of `item.updated`: one field of a Project or Task changed. A Client
- * priority change is `{ field: "priority", from, to }` with `to` in 1–5 (`from`
- * null = a Project step that inherited its Project's).
+ * Payload of `item.updated`: one field of a Project or Task changed, with its
+ * old and new values. A Client priority change is `{ field: "priority", from,
+ * to }` with `to` in 1–5 (`from` null = a Project step that inherited its
+ * Project's). A Description change carries no values: `handles` lists the
+ * Mention handles before and after instead. A change an Answer caused carries
+ * `answer`, the id of its `item.answered` event.
  */
 export interface ItemUpdatedPayload {
   field: string;
-  from: unknown;
-  to: unknown;
+  from?: unknown;
+  to?: unknown;
+  handles?: { from: string[]; to: string[] };
+  answer?: number;
 }
 
 /**
- * `GET /api/events?since=<cursor>` response (Pull): events with id greater than
- * `since` (absent = 0, i.e. everything), oldest first, and the cursor to send
- * next time (`since` itself when there is nothing new).
+ * `GET /api/events?since=<id>` response: events with id greater than `since`
+ * (absent = 0, i.e. everything), oldest first, and the `since` to send next
+ * time (`since` itself when there is nothing new). The plugin doesn't use it:
+ * the Pull compares state (`GET /api/state`).
  */
 export interface EventsResponse {
   events: ApiEvent[];

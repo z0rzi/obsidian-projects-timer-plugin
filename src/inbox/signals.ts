@@ -11,7 +11,7 @@ function actorName(actor: ActivityEntry["actor"]): string {
 	return name.length <= 3 ? name.toUpperCase() : name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-/** Text of the toast shown when a Pull brought this Client entry, e.g. "JMJ a commenté Algo détection". */
+/** Text of the toast shown for a Client entry new since the Inbox's previous load (after a Pull), e.g. "JMJ a commenté Algo détection". */
 export function toastText(entry: ActivityEntry): string {
 	const title = entry.item?.title ?? "";
 	switch (entry.type) {

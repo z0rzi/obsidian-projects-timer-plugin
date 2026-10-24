@@ -151,7 +151,7 @@ export function setTaskToken(content: string, ref: LineRef, token: StatusToken |
 }
 
 /**
- * Ends a line not yet pushed with the block ID the app gave it. The line is
+ * Ends a line not yet pushed with the block ID the plugin generated for it. The line is
  * found by its content: where it was read, else its only exact copy in the
  * file (lines may have moved while the Push modal was open).
  */
