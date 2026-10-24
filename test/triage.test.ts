@@ -103,6 +103,7 @@ function deps(overrides: Partial<TriageDeps> = {}, description = "Rien ne s'affi
 		},
 		target: () => ({ path: "2.projects/Widget.md", projectId: "p1abc", step: false }),
 		insert: (line) => inserted.push(line),
+		appUrl: "https://suivi.test/",
 		...overrides,
 	};
 	return { d, sent, inserted, bases };
@@ -125,8 +126,8 @@ describe("runTriage (Insérer ici)", () => {
 	it("writes the Description under the line, one tab in, blank lines kept empty", async () => {
 		const { d, inserted, bases } = deps({}, "Rien ne s'affiche\r\n\r\n  - sur Chrome\n![](/uploads/u1.png)\n\n");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
-		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n\t  - sur Chrome\n\t![](/uploads/u1.png)"]);
-		expect(bases.t7f3a!.fields.description).toBe("Rien ne s'affiche\n\n  - sur Chrome\n![](/uploads/u1.png)");
+		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n\t  - sur Chrome\n\t![](https://suivi.test/uploads/u1.png)"]);
+		expect(bases.t7f3a!.fields.description).toBe("Rien ne s'affiche\n\n  - sur Chrome\n![](https://suivi.test/uploads/u1.png)");
 	});
 
 	it("brings the Client's app images into the vault as embeds", async () => {
@@ -148,11 +149,18 @@ describe("runTriage (Insérer ici)", () => {
 		expect(bases.t7f3a!.fields.description).toBe("Voir :\n![[u1.png]]\n`![](/uploads/u2.png)` reste du code");
 	});
 
-	it("keeps the app link of an image it could not bring in, and says how many", async () => {
+	it("keeps the app link of an image it could not bring in, made absolute, and says how many", async () => {
 		const { d, inserted } = deps({ localImage: async () => null }, "![](/uploads/u1.png)");
 		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
 		expect(result).toEqual({ ok: true, line: "#bug p2 Heatmap vide ^t7f3a", missingImages: 1 });
-		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\t![](/uploads/u1.png)"]);
+		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\t![](https://suivi.test/uploads/u1.png)"]);
+	});
+
+	it("points the Client's other uploads at the app, so they open in the browser, code aside", async () => {
+		const { d, inserted, bases } = deps({}, "Voir [document.pdf](/uploads/abc.pdf)\n`[x](/uploads/c.pdf)`");
+		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, d);
+		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tVoir [document.pdf](https://suivi.test/uploads/abc.pdf)\n\t`[x](/uploads/c.pdf)`"]);
+		expect(bases.t7f3a!.fields.description).toBe("Voir [document.pdf](https://suivi.test/uploads/abc.pdf)\n`[x](/uploads/c.pdf)`");
 	});
 
 	it("writes only the line for an empty Description", async () => {

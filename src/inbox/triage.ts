@@ -1,10 +1,9 @@
-import { UPLOADED_IMAGE } from "../comments/commentMarkdown";
 import type { TaskStateFields, TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
-import { rewriteOutsideCode } from "../sync/sharedBody";
 import { deindent } from "../sync/sharedTask";
 import { priorityToken } from "../lineWriter";
 import { A_VALIDER_TOKEN, readIndentedBody } from "../taskParser";
+import { descriptionForVault, type AppDescriptionDeps } from "./appDescription";
 
 /** Tags "Insérer ici" offers, as the vault writes them. */
 export const TRIAGE_TAGS: { type: TriageTaskType; label: string }[] = [
@@ -25,7 +24,7 @@ export interface TriageChoice {
 	priority: number | null;
 }
 
-export interface TriageDeps {
+export interface TriageDeps extends AppDescriptionDeps {
 	remote: Pick<Remote, "triage" | "acknowledge">;
 	/**
 	 * The note the line goes into, its Project's app id (null = standalone) and whether the
@@ -34,11 +33,6 @@ export interface TriageDeps {
 	target(): { path: string; projectId: string | null; step: boolean } | { error: string };
 	/** Writes the line (and its body lines) at the cursor of that note. */
 	insert(text: string): void;
-	/**
-	 * Copies an image the Client uploaded (`/uploads/…`) into the vault; returns
-	 * its link text for `![[…]]`, or null if it failed.
-	 */
-	localImage?(url: string): Promise<string | null>;
 }
 
 /** `missingImages`: app images left as app links because they couldn't be copied into the vault. */
@@ -114,11 +108,11 @@ async function writeTask(
 	head: string,
 	fields: { description: string },
 	path: string,
-	deps: Pick<TriageDeps, "insert" | "localImage"> & { remote: Pick<Remote, "acknowledge"> },
+	deps: Pick<TriageDeps, "insert" | "localImage" | "appUrl"> & { remote: Pick<Remote, "acknowledge"> },
 ): Promise<TriageResult> {
 	const title = item.title.replace(/\s+/g, " ").trim();
 	const line = `${head} ${title} ^${item.id}`;
-	const { text: body, missing } = await withVaultImages(fields.description, deps);
+	const { text: body, missing } = await descriptionForVault(fields.description, deps);
 	const written = [line, ...taskBody(body)];
 	deps.insert(written.join("\n"));
 	// The base as the next Push reads it back from the vault, so it compares equal.
@@ -131,37 +125,6 @@ async function writeTask(
 		return { ok: false, error: `insérée, mais sa base n'a pas été envoyée (${error}) : le prochain Push proposera sa description` };
 	}
 	return { ok: true, line, missingImages: missing };
-}
-
-/**
- * The Description with each app image (`![alt](/uploads/…)`, outside code)
- * copied into the vault and embedded as `![[…]]`, so Obsidian shows it (a
- * later Push uploads it again: the app answers with the same URL). An image
- * that couldn't be copied keeps its app link and is counted in `missing`.
- */
-async function withVaultImages(description: string, deps: Pick<TriageDeps, "localImage">): Promise<{ text: string; missing: number }> {
-	let missing = 0;
-	const copies = new Map<string, Promise<string | null>>();
-	const text = await rewriteOutsideCode(description, async (piece) => {
-		const parts: string[] = [];
-		let last = 0;
-		for (const m of piece.matchAll(UPLOADED_IMAGE)) {
-			parts.push(piece.slice(last, m.index));
-			last = m.index! + m[0].length;
-			const url = m[2]!;
-			if (!copies.has(url)) copies.set(url, deps.localImage ? deps.localImage(url).catch(() => null) : Promise.resolve(null));
-			const link = await copies.get(url)!;
-			if (link) {
-				parts.push(`![[${link}]]`);
-			} else {
-				missing++;
-				parts.push(m[0]);
-			}
-		}
-		parts.push(piece.slice(last));
-		return parts.join("");
-	});
-	return { text, missing };
 }
 
 /** The Description as Task body lines: one tab in, blank lines empty, none at the edges. */

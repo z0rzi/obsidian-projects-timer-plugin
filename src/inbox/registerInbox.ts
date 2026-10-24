@@ -131,6 +131,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 						remote,
 						target: () => target,
 						insert: (line) => insertAtCursor(view, line),
+						appUrl: data.settings.suiviUrl,
 						localImage: (url) => copyAppImage(url, target.path),
 					}),
 				);
@@ -160,6 +161,8 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 			create: async (path, content) => {
 				await app.vault.create(path, content);
 			},
+			appUrl: data.settings.suiviUrl,
+			localImage: copyAppImage,
 		};
 	}
 
@@ -178,7 +181,14 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 			const view = noteView();
 			if (!view) return failed("ouvrez la note où va la Tâche et placez-y le curseur.");
 			const result = await data.exclusive(() =>
-				insertUnplacedTask(item, { remote, target: () => triageTarget(view), insert: (line) => insertAtCursor(view, line) }),
+				insertUnplacedTask(item, {
+					remote,
+					target: () => triageTarget(view),
+					insert: (line) => insertAtCursor(view, line),
+					appUrl: data.settings.suiviUrl,
+					// noteView only returns a view with a file.
+					localImage: (url) => copyAppImage(url, view.file!.path),
+				}),
 			);
 			if (!result.ok) return failed(result.error);
 			new Notice(`Insérée : ${result.line}`);

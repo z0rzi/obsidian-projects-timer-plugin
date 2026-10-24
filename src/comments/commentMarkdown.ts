@@ -14,14 +14,18 @@ export function uploadedImages(body: string): string[] {
  * single `/` are made absolute against the app URL.
  */
 export function withAppUrls(body: string, appUrl: string, images: ReadonlyMap<string, string> = new Map()): string {
+	const withImages = body.replace(UPLOADED_IMAGE, (_m, alt: string, path: string) => {
+		const local = images.get(path);
+		if (local) return `![${alt}](${local})`;
+		return alt ? `*(image: ${alt})*` : "*(image)*";
+	});
+	return withAbsoluteAppLinks(withImages, appUrl);
+}
+
+/** `text` with each link target starting with a single `/` (`](/uploads/…)`, `](/taches/…)`) made absolute against the app URL. */
+export function withAbsoluteAppLinks(text: string, appUrl: string): string {
 	const base = appUrl.trim().replace(/\/+$/, "");
-	return body
-		.replace(UPLOADED_IMAGE, (_m, alt: string, path: string) => {
-			const local = images.get(path);
-			if (local) return `![${alt}](${local})`;
-			return alt ? `*(image: ${alt})*` : "*(image)*";
-		})
-		.replace(/(\]\()(\/(?!\/)[^)\s]*)/g, (_m, open: string, path: string) => `${open}${base}${path}`);
+	return text.replace(/(\]\()(\/(?!\/)[^)\s]*)/g, (_m, open: string, path: string) => `${open}${base}${path}`);
 }
 
 /** Code spans and fenced blocks: a Mention is never inside them. */

@@ -7,7 +7,9 @@ import { readSharedProject } from "../src/sync/sharedProject";
 
 /** The vault's `8.templates/project.md`. */
 const TEMPLATE = "---\npriority: 5\n---\n\n# Time usage\n---\n```project\n```\n\n# Tasks\n---";
-const IDEA = { id: "i4k2z", title: "Carte des flux", description: "Voir les flux\n\n![](/uploads/abc.png)" };
+const IDEA = { id: "i4k2z", title: "Carte des flux", description: "Voir les flux\n\n![](/uploads/abc.png)\n[plan.pdf](/uploads/plan.pdf)" };
+/** The Idea's description as the vault writes it: its image copied in, its other upload pointing at the app. */
+const IN_VAULT = "Voir les flux\n\n![[abc.png]]\n[plan.pdf](https://suivi.test/uploads/plan.pdf)";
 
 function deps(overrides: Partial<NewProjectDeps> = {}) {
 	const sent: [string, TriageRequest][] = [];
@@ -37,13 +39,15 @@ function deps(overrides: Partial<NewProjectDeps> = {}) {
 		create: async (path, content) => {
 			files.set(path, content);
 		},
+		appUrl: "https://suivi.test",
+		localImage: async (url) => url.slice(url.lastIndexOf("/") + 1),
 		...overrides,
 	};
 	return { d, sent, files, bases };
 }
 
 describe("runNewProject (Nouveau projet)", () => {
-	it("triages in the app, then creates the Project file from the template with suivi_id and the Idea's description", async () => {
+	it("triages in the app, then creates the Project file from the template with suivi_id and the Idea's description, its images in the vault", async () => {
 		const { d, sent, files, bases } = deps();
 		const result = await runNewProject(IDEA, { priority: 2 }, d);
 
@@ -58,12 +62,12 @@ describe("runNewProject (Nouveau projet)", () => {
 				path: "2.projects/Carte des flux.md",
 				suiviId: "i4k2z",
 				archived: false,
-				fields: { title: "Carte des flux", description: IDEA.description, status: "a_faire", priority: 2 },
+				fields: { title: "Carte des flux", description: IN_VAULT, status: "a_faire", priority: 2 },
 			},
 		});
 		expect(bases.i4k2z).toEqual({
 			path: "2.projects/Carte des flux.md",
-			fields: { title: "Carte des flux", description: IDEA.description, status: "a_faire", priority: 2 },
+			fields: { title: "Carte des flux", description: IN_VAULT, status: "a_faire", priority: 2 },
 		});
 	});
 

@@ -64,6 +64,7 @@ describe("Unplaced items", () => {
 			remote: w.app.remote,
 			target: () => ({ path: meeting, projectId: null, step: false }),
 			insert: (text) => w.files.set(meeting, `${w.files.get(meeting)}${text}\n`),
+			appUrl: "https://suivi.test",
 		});
 		expect(result).toMatchObject({ ok: true, line: "#done 2026-10-01 Old fix ^t0del" });
 		expect(w.files.get(meeting)).toBe("# Notes\n#done 2026-10-01 Old fix ^t0del\n\tFait\n\t\tdétail\n");
@@ -80,6 +81,7 @@ describe("Unplaced items", () => {
 			remote: w.app.remote,
 			target: () => ({ path: meeting, projectId: null, step: false }),
 			insert: (text) => w.files.set(meeting, `${w.files.get(meeting)}${text}\n`),
+			appUrl: "https://suivi.test",
 		});
 		expect(w.app.held.get("t0ans")!.answer).toBeNull();
 		expect(await w.pull()).toMatchObject({ applied: 0, conflicts: [], unplaced: [] });
@@ -98,6 +100,7 @@ describe("Unplaced items", () => {
 			remote: w.app.remote,
 			target: () => ({ path: project, projectId: "p0002", step: true }),
 			insert: (text) => w.files.set(project, `${w.files.get(project)}${text}\n`),
+			appUrl: "https://suivi.test",
 		});
 		expect(w.files.get(project)).toBe(`${note}- [ ] #task p2 Export ^s9xyz\n`);
 		expect(await w.plan()).toEqual([]);
@@ -114,6 +117,7 @@ describe("Unplaced items", () => {
 			template: async () => "",
 			exists: (path) => w.files.has(path),
 			create: async (path, content) => void w.files.set(path, content),
+			appUrl: "https://suivi.test",
 		});
 		expect(result).toEqual({ ok: true, path: project });
 		expect(w.files.get(project)).toContain("suivi_id: p0002");
