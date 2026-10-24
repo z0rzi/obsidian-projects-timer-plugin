@@ -3,10 +3,14 @@ import type { Remote } from "../remote/remote";
 import type { AppItems } from "./appState";
 import type { PushVault } from "./planPush";
 
-/** An app Item, Triaged or pushed and not archived, that no readable note carries (spec section 7), with its app fields now. */
+/**
+ * An app Item, Triaged or pushed and not archived, that no readable note
+ * carries (spec section 7), with its app fields now and the id of the Answer
+ * they come from, if not acknowledged yet.
+ */
 export type UnplacedItem =
-	| { kind: "project"; id: string; fields: ProjectFields }
-	| { kind: "task"; id: string; fields: TaskStateFields; projectTitle: string | null };
+	| { kind: "project"; id: string; fields: ProjectFields; answer?: number }
+	| { kind: "task"; id: string; fields: TaskStateFields; projectTitle: string | null; answer?: number };
 
 /**
  * The app's Unplaced items: non-archived, Triaged or pushed Items whose id no
@@ -21,14 +25,14 @@ export function unplacedItems(vault: PushVault, app: AppItems): UnplacedItem[] {
 	const out: UnplacedItem[] = [];
 	for (const [id, p] of Object.entries(app.projects)) {
 		if (p.archived || !p.triaged || carried.has(id) || unreadableIds.has(id) || unreadablePaths.has(p.base.path)) continue;
-		out.push({ kind: "project", id, fields: p.current });
+		out.push({ kind: "project", id, fields: p.current, ...(p.answer ? { answer: p.answer.id } : {}) });
 	}
 	for (const [id, t] of Object.entries(app.tasks)) {
 		const fields = t.current;
 		const inUnreadable = unreadablePaths.has(t.base.path) || (fields.step && unreadableIds.has(fields.project_id ?? undefined));
 		if (t.archived || !t.triaged || carried.has(id) || inUnreadable) continue;
 		const projectTitle = fields.project_id ? (app.projects[fields.project_id]?.current.title ?? null) : null;
-		out.push({ kind: "task", id, fields, projectTitle });
+		out.push({ kind: "task", id, fields, projectTitle, ...(t.answer ? { answer: t.answer.id } : {}) });
 	}
 	return out;
 }

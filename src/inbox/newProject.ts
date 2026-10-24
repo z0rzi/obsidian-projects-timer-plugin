@@ -47,16 +47,17 @@ export async function runNewProject(
 
 /**
  * « Insérer ici » on an Unplaced Project: its file is created from the
- * template with its id and the app's fields now, and its base is sent.
- * Nothing is written if the file already exists.
+ * template with its id and the app's fields now, and its base is sent,
+ * acknowledging the Answer its status comes from, as the Pull does. Nothing
+ * is written if the file already exists.
  */
 export function insertUnplacedProject(
-	item: { id: string; fields: ProjectFields },
+	item: { id: string; fields: ProjectFields; answer?: number },
 	deps: Omit<NewProjectDeps, "remote"> & { remote: Pick<Remote, "acknowledge"> },
 ): Promise<NewProjectResult> {
 	const at = projectPath(item.fields.title, deps);
 	if ("error" in at) return Promise.resolve({ ok: false, error: at.error });
-	return writeProjectNote(at, item.id, item.fields, deps);
+	return writeProjectNote(at, item.id, item.fields, deps, item.answer);
 }
 
 /** Where the Project file of `title` goes, or why it can't. */
@@ -70,17 +71,18 @@ function projectPath(title: string, deps: Pick<NewProjectDeps, "folder" | "exist
 	return { path, name };
 }
 
-/** Creates the Project file at `at` from the template, then sends `fields` as its base. */
+/** Creates the Project file at `at` from the template, then sends `fields` as its base, acknowledging `answer` if any. */
 async function writeProjectNote(
 	at: { path: string; name: string },
 	id: string,
 	fields: ProjectFields,
 	deps: Pick<NewProjectDeps, "template" | "create"> & { remote: Pick<Remote, "acknowledge"> },
+	answer?: number,
 ): Promise<NewProjectResult> {
 	const { path } = at;
 	await deps.create(path, projectFile(await deps.template(), at.name, id, fields));
 	try {
-		await deps.remote.acknowledge([{ id, base: { path, fields } }]);
+		await deps.remote.acknowledge([{ id, base: { path, fields }, ...(answer !== undefined ? { answer } : {}) }]);
 	} catch (e) {
 		const error = e instanceof Error ? e.message : String(e);
 		return { ok: false, error: `${path} created, but its base was not sent (${error})` };

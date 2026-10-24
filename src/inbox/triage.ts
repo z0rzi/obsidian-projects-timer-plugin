@@ -79,11 +79,12 @@ export async function runTriage(
  * « Insérer ici » on an Unplaced Task: its line, written from the app's fields
  * now (type, status token or done date, title, `^id`) as a Tag task or a
  * Project step after the cursor's place, with its Description as body; then
- * its base is sent. The app isn't otherwise changed: a Project or step the
- * placement changes is offered by the next Push.
+ * its base is sent, acknowledging the Answer its fields come from, as the
+ * Pull does. The app isn't otherwise changed: a Project or step the placement
+ * changes is offered by the next Push.
  */
 export function insertUnplacedTask(
-	item: { id: string; fields: TaskStateFields },
+	item: { id: string; fields: TaskStateFields; answer?: number },
 	deps: Omit<TriageDeps, "remote"> & { remote: Pick<Remote, "acknowledge"> },
 ): Promise<TriageResult> {
 	const target = deps.target();
@@ -97,16 +98,17 @@ export function insertUnplacedTask(
 		const token = fields.status === "a_valider" ? "pr" : fields.status === "en_cours" ? "p0" : fields.priority === null ? "" : `p${fields.priority}`;
 		head = `${target.step ? "- [ ] " : ""}${tag}${token ? ` ${token}` : ""}`;
 	}
-	return writeTask({ id: item.id, title: fields.title }, head, fields, target.path, deps);
+	return writeTask({ id: item.id, title: fields.title, answer: item.answer }, head, fields, target.path, deps);
 }
 
 /**
  * Writes the Task line `<head> <title> ^<id>` with the Description of `fields`
  * as its body at the cursor of `path`, then sends `fields` as its base, with
- * the title and description as the vault reads them back, so the next Push sees no change.
+ * the title and description as the vault reads them back, so the next Push
+ * sees no change, and acknowledges the Answer `item.answer`, if any.
  */
 async function writeTask(
-	item: { id: string; title: string },
+	item: { id: string; title: string; answer?: number },
 	head: string,
 	fields: { description: string },
 	path: string,
@@ -120,7 +122,8 @@ async function writeTask(
 	// The base as the next Push reads it back from the vault, so it compares equal.
 	const description = deindent(readIndentedBody(written, 0).join("\n"));
 	try {
-		await deps.remote.acknowledge([{ id: item.id, base: { path, fields: { ...fields, title, description } } }]);
+		const answer = item.answer !== undefined ? { answer: item.answer } : {};
+		await deps.remote.acknowledge([{ id: item.id, base: { path, fields: { ...fields, title, description } }, ...answer }]);
 	} catch (e) {
 		const error = e instanceof Error ? e.message : String(e);
 		return { ok: false, error: `inserted, but its base was not sent (${error}); the next Push offers its description` };
