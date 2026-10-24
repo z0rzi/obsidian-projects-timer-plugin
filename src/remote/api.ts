@@ -26,6 +26,12 @@ export interface ProjectFields {
   description: string;
   status: ProjectStatus;
   priority: number;
+  /**
+   * The Échéance (Due date): the day the Client needs it done, `YYYY-MM-DD`,
+   * null for none (vault: `due_date:` frontmatter). A Push may omit it on
+   * create (none); any other string is refused.
+   */
+  due_date: string | null;
 }
 
 /**

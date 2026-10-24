@@ -4,7 +4,7 @@ import type { SharedProject } from "../src/sync/sharedProject";
 import { planProjectPush } from "../src/sync/pushPlan";
 import { appWith } from "./fakeSuivi";
 
-const fields: ProjectFields = { title: "Widget", description: "Desc", status: "a_faire", priority: 2 };
+const fields: ProjectFields = { title: "Widget", description: "Desc", status: "a_faire", priority: 2, due_date: null };
 const local = (over: Partial<SharedProject> & { fields?: Partial<ProjectFields> } = {}): SharedProject => ({
 	path: `2.projects/${over.fields?.title ?? fields.title}.md`,
 	archived: false,

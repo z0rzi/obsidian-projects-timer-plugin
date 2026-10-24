@@ -126,6 +126,22 @@ describe("Unplaced items", () => {
 		expect(await w.plan()).toEqual([]);
 	});
 
+	it("Insérer ici on a Project with an Échéance writes its due_date, and the Push then has nothing", async () => {
+		const fields = { ...widget, due_date: "2027-01-15" };
+		const w = pushWorld({}, [appProject("p0002", fields, { base: { path: "old/Widget.md", fields } })]);
+		const [item] = (await w.pull()).unplaced;
+		await insertUnplacedProject(item as Extract<UnplacedItem, { kind: "project" }>, {
+			remote: w.app.remote,
+			folder: "2.projects",
+			template: async () => "",
+			exists: (path) => w.files.has(path),
+			create: async (path, content) => void w.files.set(path, content),
+			appUrl: "https://suivi.test",
+		});
+		expect(w.files.get(project)).toContain("due_date: 2027-01-15");
+		expect(await w.plan()).toEqual([]);
+	});
+
 	it("Retirer de l'app archives the Items and reports the ones refused", async () => {
 		const w = pushWorld({}, [appTask("t0del", { ...heatmap, title: "Deleted" }), appProject("p0002", widget)], (c) =>
 			c.kind === "project" ? "refusé" : undefined,

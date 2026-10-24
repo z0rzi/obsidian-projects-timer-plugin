@@ -49,14 +49,20 @@ export function appItems(items: ItemState[]): AppItems {
 	for (const item of items) {
 		const common = { archived: item.archived, triaged: item.triaged, answer: item.answer, priorityBy: item.priority_by };
 		if (item.kind === "project") {
-			const base = (item.base as Base<ProjectFields> | null) ?? { path: "", fields: item.fields };
-			out.projects[item.id] = { base, current: item.fields, ...common };
+			const current = withDueDate(item.fields);
+			const base = item.base as Base<ProjectFields> | null;
+			out.projects[item.id] = { base: base ? { ...base, fields: withDueDate(base.fields) } : { path: "", fields: current }, current, ...common };
 		} else {
 			const base = (item.base as Base<TaskFields> | null) ?? { path: "", fields: item.fields as TaskFields };
 			out.tasks[item.id] = { base, current: item.fields, ...common };
 		}
 	}
 	return out;
+}
+
+/** Project fields with `due_date` null when absent: a Base written (or an app) from before the Échéance has none. */
+function withDueDate(fields: ProjectFields): ProjectFields {
+	return { ...fields, due_date: fields.due_date ?? null };
 }
 
 /** Fetches the app's state (`GET /api/state`) by id. */

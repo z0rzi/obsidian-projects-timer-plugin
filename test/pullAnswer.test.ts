@@ -9,7 +9,7 @@ const project = "2.projects/Widget.md";
 const projectNote = "---\nsuivi_id: p0002\nstatus: a valider\npriority: 2\n---\n# Tasks\n- [ ] #bug pr Export ^s9xyz\n";
 const tagTask: TaskFields = { title: "Heatmap", type: "task", step: false, status: "a_valider", priority: null, project_id: null, description: "notes" };
 const step: TaskFields = { title: "Export", type: "bug", step: true, status: "a_valider", priority: null, project_id: "p0002", description: "" };
-const widget: ProjectFields = { title: "Widget", description: "", status: "a_valider", priority: 2 };
+const widget: ProjectFields = { title: "Widget", description: "", status: "a_valider", priority: 2, due_date: null };
 const AT = "2026-10-21T09:30:00.000Z";
 
 /** What an Answer makes of the app's fields. */

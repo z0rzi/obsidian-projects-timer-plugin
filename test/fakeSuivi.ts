@@ -94,7 +94,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 			item.triaged = true;
 			if (as.as === "project") {
 				item.kind = "project";
-				item.fields = { title: item.fields.title, description: item.fields.description, status: as.priority === 0 ? "en_cours" : "a_faire", priority: as.priority };
+				item.fields = { title: item.fields.title, description: item.fields.description, status: as.priority === 0 ? "en_cours" : "a_faire", priority: as.priority, due_date: null };
 				return { id, as: "project", fields: item.fields as unknown as ProjectFields };
 			}
 			const { base: _base, as: _as, ...set } = as;
@@ -131,7 +131,7 @@ export function appProject(id: string, fields: Partial<ProjectFields>, more: Par
 		triaged: true,
 		answer: null,
 		priority_by: null,
-		fields: { title: "", description: "", status: "a_faire", priority: 5, ...fields },
+		fields: { title: "", description: "", status: "a_faire", priority: 5, due_date: null, ...fields },
 		...more,
 	} as ItemState;
 }
