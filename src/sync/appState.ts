@@ -35,8 +35,8 @@ export interface AppTask extends AppItem {
 export interface AppItems {
 	projects: Record<string, AppProject>;
 	tasks: Record<string, AppTask>;
-	/** The app holds a base for some Item: this vault pushed or triaged before. */
-	hasBases: boolean;
+	/** Ids of the Items the app holds a base for (pushed or triaged before). */
+	withBase: Set<string>;
 }
 
 /**
@@ -45,7 +45,7 @@ export interface AppItems {
  * values only the app sets (`amelioration`), which the Push simply replaces.
  */
 export function appItems(items: ItemState[]): AppItems {
-	const out: AppItems = { projects: {}, tasks: {}, hasBases: items.some((i) => i.base !== null) };
+	const out: AppItems = { projects: {}, tasks: {}, withBase: new Set(items.filter((i) => i.base !== null).map((i) => i.id)) };
 	for (const item of items) {
 		const common = { archived: item.archived, triaged: item.triaged, answer: item.answer, priorityBy: item.priority_by };
 		if (item.kind === "project") {

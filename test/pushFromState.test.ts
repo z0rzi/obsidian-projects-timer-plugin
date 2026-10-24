@@ -109,14 +109,14 @@ describe("Push planned against the app's state", () => {
 		const first = world(notes);
 		expect(await first.plan()).toMatchObject([{ group: "new", undated: true, ticked: false }]);
 
-		const base = { path: "x.md", fields: {} };
-		const later = world(notes, [appTask("t7f3a", { title: "Autre" }, { base })]);
+		const base = { path: "m.md", fields: { title: "Autre", type: "task", step: false, status: "a_faire", priority: 1, project_id: null, description: "" } };
+		const later = world({ "m.md": "#done Vieille tâche\n#task Autre ^t7f3a\n" }, [appTask("t7f3a", base.fields, { base })]);
 		const pending = await later.plan();
 		expect(pending).toMatchObject([{ group: "new", undated: true, ticked: true }]);
 		await later.push(pending);
 
 		const today = localDay();
-		expect(later.files.get("m.md")).toMatch(new RegExp(`^#done ${today} Vieille tâche \\^[a-z0-9]{5}\\n$`));
+		expect(later.files.get("m.md")).toMatch(new RegExp(`^#done ${today} Vieille tâche \\^[a-z0-9]{5}\\n#task Autre \\^t7f3a\\n$`));
 		expect(later.app.received.flat()).toMatchObject([{ op: "create", fields: { status: "termine", done_on: today } }]);
 		expect(await later.plan()).toEqual([]);
 	});

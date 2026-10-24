@@ -80,8 +80,8 @@ const STATUS_LABELS: Record<string, string> = {
  * archived is restored, a Project's id or a block ID not in the app's format
  * is an error. Lines never pushed and done more than 30 days ago stay in the
  * vault; done ones without a date are « Terminées sans date », ticked unless
- * the app holds no base yet (a first Push). App Tasks no line carries are not
- * offered (Unplaced).
+ * the app holds no base for any Item of this vault (a first Push). App Tasks
+ * no line carries are not offered (Unplaced).
  */
 export function planTaskPush(
 	local: LocalTask[],
@@ -91,6 +91,8 @@ export function planTaskPush(
 ): (PendingTaskChange | PushError)[] {
 	const changes: (PendingTaskChange | PushError)[] = [];
 	const seen = new Set<string>();
+	const vaultIds = [...local.map((t) => t.blockId), ...Object.values(projects).map((p) => p.id)];
+	const firstPush = !vaultIds.some((id) => id !== undefined && app.withBase.has(id));
 	const titleOf = (id: string | null) => {
 		if (id === null) return "none";
 		return Object.values(projects).find((p) => p.id === id)?.title ?? id;
@@ -145,7 +147,7 @@ export function planTaskPush(
 				detail: [TYPE_LABELS[fields.type], show("status", fields), project === "none" ? "" : project]
 					.filter(Boolean)
 					.join(" · "),
-				...(undated ? { undated: true as const, ticked: app.hasBases } : {}),
+				...(undated ? { undated: true as const, ticked: !firstPush } : {}),
 				change: { op: "create", kind: "task", ...(id ? { id } : {}), fields },
 			});
 			continue;

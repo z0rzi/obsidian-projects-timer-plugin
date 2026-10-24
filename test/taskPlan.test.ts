@@ -130,8 +130,14 @@ describe("planTaskPush", () => {
 	it("lists undated done items never pushed as « Terminées sans date », unticked at a first Push", () => {
 		const step = task({ type: "task", step: true, status: "termine", priority: null, raw: "- [x] Ancienne", path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
 		expect(plan([step]).changes).toMatchObject([{ group: "new", undated: true, ticked: false }]);
-		const app = appWith({}, { t7f3a: { path: "1.meetings/m.md", fields } });
+		const app = appWith({ p0001: { path: "2.projects/Tetris.md", fields: {} } });
 		expect(planTaskPush([step], projects, app, { now })).toMatchObject([{ group: "new", undated: true, ticked: true }]);
+	});
+
+	it("starts « Terminées sans date » unticked when the app's bases are all for Items this vault doesn't carry", () => {
+		const step = task({ type: "task", step: true, status: "termine", priority: null, raw: "- [x] Ancienne", path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
+		const otherVault = appWith({ zz999: { path: "2.projects/Other.md", fields: {} } }, { t7f3a: { path: "1.meetings/m.md", fields } });
+		expect(planTaskPush([step], projects, otherVault, { now })).toMatchObject([{ group: "new", undated: true, ticked: false }]);
 	});
 
 	it("counts a copied block ID once", () => {
