@@ -158,9 +158,9 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		}).open();
 	}
 
-	/** What the Triage dialog shows of `entry`; `into`, the Project's title, for « Insérer dans <Projet> ». */
-	function modalItem(entry: InboxEntry, step: boolean, into?: string): ConstructorParameters<typeof TriageModal>[1] {
-		return { title: entry.item.title, type: entry.ticketType ?? "task", step, context: entry.context, into, urgency: entry.urgency };
+	/** What the Triage dialog shows of `entry`; `projectTitle` for « Insérer dans <Projet> ». */
+	function modalItem(entry: InboxEntry, step: boolean, projectTitle?: string): ConstructorParameters<typeof TriageModal>[1] {
+		return { title: entry.item.title, type: entry.ticketType ?? "task", step, context: entry.context, projectTitle, urgency: entry.urgency };
 	}
 
 	/** Runs the Triage of `entry` into the note at `path` and tells how it went. */

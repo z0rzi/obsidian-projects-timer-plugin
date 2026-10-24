@@ -9,7 +9,7 @@ const INHERIT = "inherit";
 
 /**
  * "Insérer ici" dialog: pick the tag and priority of the Task line written at the cursor
- * (« Insérer dans <into> »: as the first step of that Project);
+ * (« Insérer dans <projectTitle> »: as the first step of that Project);
  * a Project step can also inherit its Project's priority. Shows the Client's Project and
  * Urgency, whose suggested priority comes first (else p3, or inherit for a step).
  */
@@ -18,7 +18,7 @@ export class TriageModal extends Modal {
 
 	constructor(
 		app: App,
-		private readonly item: { title: string; type: string; step: boolean; context?: TicketContext; into?: string; urgency?: TicketUrgency | null },
+		private readonly item: { title: string; type: string; step: boolean; context?: TicketContext; projectTitle?: string; urgency?: TicketUrgency | null },
 		private readonly onSubmit: (choice: TriageChoice) => void,
 	) {
 		super(app);
@@ -56,7 +56,7 @@ export class TriageModal extends Modal {
 
 	/** « Insérer ici », or « Insérer dans <Projet> ». */
 	private action(): string {
-		return this.item.into ? insertIntoText(this.item.into) : "Insérer ici";
+		return this.item.projectTitle ? insertIntoText(this.item.projectTitle) : "Insérer ici";
 	}
 
 	private submit() {
