@@ -1,5 +1,5 @@
 import { splitBlockId } from "./blockId";
-import { DAY_SOURCE, STATUS_TOKEN_SOURCE, TYPE_TAG_SOURCE } from "./taskParser";
+import { DAY_SOURCE, readTypeTag, STATUS_TOKEN_SOURCE, TYPE_TAG_SOURCE } from "./taskParser";
 
 /** What the kanban knew about a line when it was loaded; with a block ID, the line is found by it alone. */
 export type LineRef = { line: number; raw: string; blockId?: string };
@@ -93,6 +93,22 @@ const STEP_HEAD = new RegExp(
 	`^- \\[[ xX]\\] ((?:${TYPE_TAG_SOURCE} )?)(?:(?:${STATUS_TOKEN_SOURCE})(?: |$))?(?:${DAY_SOURCE}(?: |$))?`,
 );
 
+/** Checkbox of a Project step. */
+const CHECKBOX = /^- \[[ xX]\] /;
+
+/**
+ * The step line with its type tag moved right after the checkbox, where the
+ * head regexes above look for it; unchanged without tag or checkbox.
+ */
+function withTypeTagFirst(line: string): string {
+	const checkbox = line.match(CHECKBOX)?.[0];
+	if (!checkbox) return line;
+	const text = line.slice(checkbox.length);
+	const { type, rest } = readTypeTag(text);
+	if (rest === text) return line;
+	return rest ? `${checkbox}#${type} ${rest}` : `${checkbox}#${type}`;
+}
+
 /** Replaces the tag (and priority token) of a Tag task line, keeping title and block ID. */
 export function rewriteTaskTag(content: string, ref: LineRef, newTag: string): WriteResult {
 	return rewriteLine(content, ref, (line) => {
@@ -109,9 +125,10 @@ export function rewriteStepToken(content: string, ref: LineRef, token: StatusTok
 
 /** The step line with `token` (none if null) after its checkbox and type tag; null if not a checkbox line. */
 function withStepToken(line: string, token: StatusToken | null): string | null {
-	const match = line.match(CHECKBOX_AND_TOKEN);
+	const step = withTypeTagFirst(line);
+	const match = step.match(CHECKBOX_AND_TOKEN);
 	if (!match) return null;
-	return `${match[1]}${token ? `${token} ` : ""}${line.slice(match[0].length)}`;
+	return `${match[1]}${token ? `${token} ` : ""}${step.slice(match[0].length)}`;
 }
 
 /**
@@ -121,9 +138,10 @@ function withStepToken(line: string, token: StatusToken | null): string | null {
  */
 export function setStepDone(content: string, ref: LineRef, date: string | null): WriteResult {
 	return rewriteLine(content, ref, (line) => {
-		const match = line.match(STEP_HEAD);
+		const step = withTypeTagFirst(line);
+		const match = step.match(STEP_HEAD);
 		if (!match) return null;
-		const rest = line.slice(match[0].length);
+		const rest = step.slice(match[0].length);
 		return date ? `- [x] ${match[1]}${date} ${rest}` : `- [ ] ${match[1]}${rest}`;
 	});
 }

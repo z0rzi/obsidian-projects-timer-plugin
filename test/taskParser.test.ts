@@ -66,6 +66,10 @@ describe("parseTasks types", () => {
 		expect(parseTasks([`#${tag} p2 Titre`], file, null)).toEqual([]);
 	});
 
+	it("does not treat a line whose type tag is not in front as a Tag task", () => {
+		expect(parseTasks(["p2 #bug Titre", "Titre #task"], file, null)).toEqual([]);
+	});
+
 	it("ends a Task's body at the first line of indent zero, tag or not", () => {
 		const tasks = parseTasks(["#task p1 A", "  corps", "#project p2 B", "suite", "#bug p2 C"], file, null);
 		expect(tasks.map((t) => [t.title, t.description])).toEqual([

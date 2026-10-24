@@ -89,6 +89,13 @@ describe("readProjectSteps", () => {
 		expect(JSON.stringify(steps)).not.toMatch(/Secret|pas une étape/);
 	});
 
+	it("shares the same step whether its type tag is in front or further on the line", () => {
+		const front = readProjectSteps("2.projects/W.md", "# Tasks\n- [ ] #bug pr Do this ^s1");
+		const moved = readProjectSteps("2.projects/W.md", "# Tasks\n- [ ] pr Do this #bug ^s1");
+		expect(moved.map(({ raw, ...s }) => s)).toEqual(front.map(({ raw, ...s }) => s));
+		expect(moved[0]).toMatchObject({ title: "Do this", type: "bug", status: "a_valider" });
+	});
+
 	it("reads the date after a done step's type tag (or checkbox) as its done date", () => {
 		const note = "# Tasks\n- [x] #bug 2026-10-24 Export Excel ^ab12c\n- [x] 2026-10-20 Relire\n- [x] Ancien";
 		expect(readProjectSteps("2.projects/W.md", note).map((s) => [s.title, s.doneOn])).toEqual([

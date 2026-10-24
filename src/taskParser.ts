@@ -31,14 +31,17 @@ export function readStatusToken(text: string): { token: StatusToken | null; rest
 export const TYPE_TAG_SOURCE = `#(?:${TASKS_TYPES.map((t) => t.tag).join("|")})`;
 
 /**
- * Type tag of a Project step = first word of `text` when it is `#task`,
- * `#bug`, `#quick` or `#wait`. Returns the type ("task" if absent) and the
- * text after it.
+ * Type tag of a Project step = first whole word of `text`, wherever it sits,
+ * that is `#task`, `#bug`, `#quick` or `#wait` (later ones stay text). Returns
+ * the type ("task" if absent) and `text` without that word.
  */
 export function readTypeTag(text: string): { type: TaskTagLabel; rest: string } {
-	const [firstWord = "", ...others] = text.split(" ");
-	const type = TASKS_TYPES.find((t) => firstWord === `#${t.tag}`)?.tag;
-	return type ? { type, rest: others.join(" ") } : { type: "task", rest: text };
+	const words = text.split(" ");
+	for (const [at, word] of words.entries()) {
+		const type = TASKS_TYPES.find((t) => word === `#${t.tag}`)?.tag;
+		if (type) return { type, rest: [...words.slice(0, at), ...words.slice(at + 1)].join(" ") };
+	}
+	return { type: "task", rest: text };
 }
 
 /**

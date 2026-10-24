@@ -3,7 +3,7 @@ import { ProjectCard, ProjectCardItem } from "./types";
 import { splitBlockId } from "./blockId";
 import { DAY_SOURCE, readIndentedBody, readStatusToken, readTypeTag } from "./taskParser";
 
-/** Done date of a ticked step, first word after its type tag. */
+/** Done date of a ticked step: first word once its type tag and token are out. */
 const DONE_DAY = new RegExp(`^(${DAY_SOURCE})(?: |$)`);
 
 export function findTasksHeadingSection(
