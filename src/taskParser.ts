@@ -33,13 +33,17 @@ export const TYPE_TAG_SOURCE = `#(?:${TASKS_TYPES.map((t) => t.tag).join("|")})`
 /**
  * Type tag of a Project step = first whole word of `text`, wherever it sits,
  * that is `#task`, `#bug`, `#quick` or `#wait` (later ones stay text). Returns
- * the type ("task" if absent) and `text` without that word.
+ * the type ("task" if absent) and `text` without that word, one space left
+ * where it was.
  */
 export function readTypeTag(text: string): { type: TaskTagLabel; rest: string } {
 	const words = text.split(" ");
 	for (const [at, word] of words.entries()) {
 		const type = TASKS_TYPES.find((t) => word === `#${t.tag}`)?.tag;
-		if (type) return { type, rest: [...words.slice(0, at), ...words.slice(at + 1)].join(" ") };
+		if (!type) continue;
+		const before = words.slice(0, at).join(" ").trimEnd();
+		const after = words.slice(at + 1).join(" ").trimStart();
+		return { type, rest: [before, after].filter(Boolean).join(" ") };
 	}
 	return { type: "task", rest: text };
 }
