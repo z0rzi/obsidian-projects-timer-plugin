@@ -41,7 +41,7 @@ export function readVaultItems(projectNotes: Note[], notes: Note[], projectOf: (
 		} else {
 			const p = result.project;
 			vault.projects.push(p);
-			if (p.archived && !p.suiviId) {
+			if (p.fields.done && !p.suiviId) {
 				vault.links[path] = { title, hidden: true };
 				continue;
 			}

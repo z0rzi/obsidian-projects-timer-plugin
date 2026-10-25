@@ -2,7 +2,8 @@ import { APP_ID } from "../blockId";
 import type { PushChange, TaskFields, TaskStateFields } from "../remote/api";
 import type { LineRef } from "../lineWriter";
 import type { AppItems } from "./appState";
-import type { PushError } from "./pushPlan";
+import { itemLabel } from "./itemLabel";
+import { sendsField, type PushError } from "./pushPlan";
 import type { LocalTask } from "./sharedTask";
 
 /**
@@ -15,7 +16,7 @@ export type ProjectLinks = Record<string, { id?: string; title: string; hidden?:
 
 /** A field change as shown in the Push modal. */
 export interface TaskDiff {
-	field: "title" | "type" | "step" | "status" | "priority" | "project" | "done" | "description";
+	field: "title" | "type" | "step" | "priority" | "done" | "project" | "date" | "description";
 	from: string;
 	to: string;
 }
@@ -58,19 +59,13 @@ export type PendingTaskChange =
 	  };
 
 const DONE_OFFERED_MS = 30 * 24 * 60 * 60_000;
-const FIELDS = ["title", "type", "step", "status", "priority", "project_id", "done_on", "description"] as const;
+const FIELDS = ["title", "type", "step", "priority", "done", "project_id", "done_on", "description"] as const;
 
 const TYPE_LABELS: Record<string, string> = {
 	task: "Tâche",
 	bug: "Bug",
 	quick: "Tâche rapide",
 	wait: "En attente",
-};
-const STATUS_LABELS: Record<string, string> = {
-	a_faire: "À faire",
-	en_cours: "En cours",
-	a_valider: "À valider",
-	termine: "Terminé",
 };
 
 /**
@@ -124,15 +119,15 @@ export function planTaskPush(
 			title: t.title,
 			type: t.type ?? before?.type ?? "task",
 			step: t.step,
-			status: t.status,
 			priority: t.priority,
+			done: t.done,
 			project_id: link?.id ?? null,
-			...(t.status === "termine" ? { done_on: t.doneOn ?? null } : {}),
+			...(t.done ? { done_on: t.doneOn ?? null } : {}),
 			description: t.description,
 		};
 
 		if (!held) {
-			const undated = !id && t.status === "termine" && !t.doneOn;
+			const undated = !id && t.done && !t.doneOn;
 			if (!id && t.doneOn && opts.now.getTime() - Date.parse(`${t.doneOn}T00:00:00Z`) > DONE_OFFERED_MS) continue;
 			const project = needsProject ? link!.title : titleOf(fields.project_id);
 			changes.push({
@@ -144,7 +139,7 @@ export function planTaskPush(
 				title: t.title,
 				fields,
 				...(needsProject ? { needsProject } : {}),
-				detail: [TYPE_LABELS[fields.type], show("status", fields), project === "none" ? "" : project]
+				detail: [TYPE_LABELS[fields.type], itemLabel("task", fields), project === "none" ? "" : project]
 					.filter(Boolean)
 					.join(" · "),
 				...(undated ? { undated: true as const, ticked: !firstPush } : {}),
@@ -163,13 +158,14 @@ export function planTaskPush(
 		const expected: Partial<TaskStateFields> = {};
 		for (const field of FIELDS) {
 			// Reopening clears the done date in the app; no need to send it.
-			if (field === "done_on" && fields.status !== "termine") continue;
+			if (field === "done_on" && !fields.done) continue;
 			const from = before?.[field] ?? null;
 			const to = fields[field] ?? null;
 			const projectPending = field === "project_id" && needsProject;
-			if (from === to && !projectPending) continue;
+			if (!sendsField(field, from !== to || Boolean(projectPending), before!, fields)) continue;
 			Object.assign(sent, { [field]: to });
 			Object.assign(expected, { [field]: held.current[field] });
+			if (from === to && !projectPending) continue;
 			if (field === "project_id") {
 				const shown = needsProject ? link!.title : titleOf(fields.project_id);
 				diffs.push({ field: "project", from: titleOf(before!.project_id), to: shown });
@@ -177,7 +173,7 @@ export function planTaskPush(
 				diffs.push({ field: LABEL[field], from: show(field, before!), to: show(field, fields) });
 			}
 		}
-		if (diffs.length === 0) continue;
+		if (Object.keys(sent).length === 0) continue;
 		changes.push({
 			group: "changed",
 			key: `changed-task:${id}`,
@@ -197,10 +193,10 @@ const LABEL = {
 	title: "title",
 	type: "type",
 	step: "step",
-	status: "status",
 	priority: "priority",
+	done: "done",
 	project_id: "project",
-	done_on: "done",
+	done_on: "date",
 	description: "description",
 } as const satisfies Record<(typeof FIELDS)[number], TaskDiff["field"]>;
 
@@ -210,10 +206,9 @@ function show(field: (typeof FIELDS)[number], f: TaskFields): string {
 			return TYPE_LABELS[f.type] ?? f.type;
 		case "step":
 			return f.step ? "oui" : "non";
-		case "status":
-			return STATUS_LABELS[f.status] ?? f.status;
 		case "priority":
-			return f.priority === null ? "(none)" : `P${f.priority}`;
+		case "done":
+			return itemLabel("task", f);
 		case "done_on":
 			return f.done_on ?? "(Push date)";
 		case "description":

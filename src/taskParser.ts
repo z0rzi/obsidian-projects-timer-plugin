@@ -1,30 +1,29 @@
 import type { TFile } from "obsidian";
 import { splitBlockId } from "./blockId";
-import { Task, TaskStatus, TaskTagLabel, TASKS_TYPES } from "./types";
+import type { Priority } from "./remote/api";
+import { Task, TaskTagLabel, TASKS_TYPES } from "./types";
 
 const DEFAULT_PRIORITY = 1;
 const PRIORITY_TOKEN = /^p([0-5])$/;
-/** Status token of an À valider line. */
-export const A_VALIDER_TOKEN = "pr";
+/** Priority token of a line at PR (À valider). */
+const PR_TOKEN = "pr";
 
-/** Regex source of the status token: lowercase `p0`-`p5` or `pr`. */
-export const STATUS_TOKEN_SOURCE = "p[0-5]|pr";
+/** Regex source of the Priority token: lowercase `p0`-`p5` or `pr`. */
+export const PRIORITY_TOKEN_SOURCE = "p[0-5]|pr";
 
 /** Regex source of a day, `YYYY-MM-DD`. */
 export const DAY_SOURCE = "\\d{4}-\\d{2}-\\d{2}";
 
-export type StatusToken = { priority: number; status: TaskStatus };
-
 /**
- * Status token = first word of `text`, lowercase, whole word.
- * Returns the token (null if absent) and the text after it.
+ * Priority token = first word of `text`, lowercase, whole word.
+ * Returns the Priority it gives (null if absent) and the text after it.
  */
-export function readStatusToken(text: string): { token: StatusToken | null; rest: string } {
+export function readPriorityToken(text: string): { priority: Priority | null; rest: string } {
 	const [firstWord = "", ...others] = text.split(" ");
 	const match = PRIORITY_TOKEN.exec(firstWord);
-	if (match) return { token: { priority: +match[1]!, status: "priority" }, rest: others.join(" ") };
-	if (firstWord === A_VALIDER_TOKEN) return { token: { priority: DEFAULT_PRIORITY, status: "a_valider" }, rest: others.join(" ") };
-	return { token: null, rest: text };
+	if (match) return { priority: +match[1]! as Priority, rest: others.join(" ") };
+	if (firstWord === PR_TOKEN) return { priority: "pr", rest: others.join(" ") };
+	return { priority: null, rest: text };
 }
 
 /** Regex source of a Project step's type tag: `#task`, `#bug`, `#quick` or `#wait`. */
@@ -88,15 +87,14 @@ export function parseTasks(
 		const taskType = TASKS_TYPES.find((t) => line.startsWith(`#${t.tag} `));
 		if (!taskType) continue;
 		const rest = line.slice(taskType.tag.length + 2).trimStart();
-		const { token, rest: afterToken } = readStatusToken(rest);
+		const { priority, rest: afterToken } = readPriorityToken(rest);
 		const { text: title, blockId } = splitBlockId(afterToken);
 		tasks.push({
 			id: `${file.path}:${lineNr}`,
 			title,
 			...(blockId ? { blockId } : {}),
 			raw: line,
-			priority: token?.priority ?? DEFAULT_PRIORITY,
-			status: token?.status ?? "priority",
+			priority: priority ?? DEFAULT_PRIORITY,
 			file,
 			projectFile: projectFile ?? undefined,
 			description: readIndentedBody(lines, lineNr).join("\n"),

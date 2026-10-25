@@ -1,10 +1,11 @@
 import { priorityToken, processLineById, setTaskToken } from "../lineWriter";
 import { setFrontmatterKey } from "../projectCards";
+import type { Priority } from "../remote/api";
 import type { VaultFiles } from "./runPull";
 
 /**
  * Writes an app priority into the vault: `priority:` frontmatter of a Project,
- * the status token of a Task line found by its block ID (an inheriting
+ * the Priority token of a Task line found by its block ID (an inheriting
  * Project step gains the token and becomes an Override; null removes it).
  */
 export async function writeRemotePriority(
@@ -12,7 +13,7 @@ export async function writeRemotePriority(
 	kind: "project" | "task",
 	id: string,
 	path: string,
-	priority: number | null,
+	priority: Priority | null,
 ): Promise<void> {
 	if (kind === "project") {
 		if (priority !== null) await files.process(path, (content) => setFrontmatterKey(content, "priority", priority));

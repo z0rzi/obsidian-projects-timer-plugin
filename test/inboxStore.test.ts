@@ -166,6 +166,25 @@ describe("Inbox feed: new Client entries", () => {
 		expect((await store.refresh()).map((e) => e.id)).toEqual([5]);
 		expect(await store.refresh()).toEqual([]);
 	});
+
+	it("leave out the Developer's own new Ticket, still À trier", async () => {
+		const feed = [comment(4)];
+		const { store } = storeOn(fakeApp(feed));
+		await store.refresh();
+		const created = (id: number, actor: ActivityEntry["actor"]): ActivityEntry => ({
+			id,
+			at: `2026-10-20T10:${String(id).padStart(2, "0")}:00.000Z`,
+			actor,
+			origin: "site",
+			type: "ticket.created",
+			label: "Nouvelle demande",
+			item: { kind: "task", id: "t9bug", title: "Heatmap vide" },
+			unread: actor.role === "client",
+		});
+		feed.unshift(created(6, ME), created(5, JMJ));
+		expect((await store.refresh()).map((e) => e.id)).toEqual([5]);
+		expect(store.current.toTriage.map((e) => e.item?.id)).toEqual(["t9bug"]);
+	});
 });
 
 describe("Inbox feed: paging", () => {

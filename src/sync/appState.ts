@@ -16,7 +16,7 @@ interface AppItem {
 	archived: boolean;
 	/** Triaged or pushed: a vault note should carry it. */
 	triaged: boolean;
-	/** The Answer the current status comes from, not acknowledged yet. */
+	/** The Answer the current Priority or Done comes from, not acknowledged yet. */
 	answer: StateAnswer | null;
 	/** Handle of the Client whose site change set the current priority. */
 	priorityBy: string | null;

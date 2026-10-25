@@ -15,26 +15,6 @@ const GROUPS: { group: PendingChange["group"]; heading: string }[] = [
 /** Never-pushed done lines without a date, listed apart in a collapsed group. */
 const isUndated = (c: PendingChange) => c.group === "new" && "undated" in c && c.undated === true;
 
-const STATUS_LABELS: Record<string, string> = {
-	a_faire: "À faire",
-	en_cours: "En cours",
-	en_pause: "En pause",
-	a_valider: "À valider",
-	termine: "Terminé",
-};
-
-function show(field: string, value: string | number | null): string {
-	if (field === "due_date") return value === null ? "(none)" : String(value);
-	if (value === null) return "?";
-	if (field === "status") return STATUS_LABELS[value] ?? String(value);
-	if (field === "priority") return `P${value}`;
-	if (field === "description") {
-		const s = String(value).replace(/\s+/g, " ").trim();
-		return s ? `“${s.length > 60 ? `${s.slice(0, 60)}…` : s}”` : "(empty)";
-	}
-	return String(value);
-}
-
 /**
  * Lists pending changes grouped new / restored / changed (old → new) /
  * conflicts / errors under the app's host, ticked unless they say otherwise;
@@ -118,13 +98,7 @@ export class PushModal extends Modal {
 		const desc = setting.descEl;
 		if ("detail" in change) desc.createDiv({ text: change.detail });
 		if (change.group === "changed") {
-			for (const d of change.diffs) {
-				// Task diffs come ready to show.
-				const text = isTask
-					? `${d.field}: ${d.from} → ${d.to}`
-					: `${d.field}: ${show(d.field, d.from)} → ${show(d.field, d.to)}`;
-				desc.createDiv({ text });
-			}
+			for (const d of change.diffs) desc.createDiv({ text: `${d.field}: ${d.from} → ${d.to}` });
 		}
 	}
 

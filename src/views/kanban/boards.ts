@@ -1,5 +1,6 @@
-import type { StatusToken } from "../../lineWriter";
-import { TASKS_TYPES, type TaskStatus } from "../../types";
+import type { PriorityToken } from "../../lineWriter";
+import type { Priority } from "../../remote/api";
+import { TASKS_TYPES } from "../../types";
 
 export const A_VALIDER_BOARD_ID = "pr";
 
@@ -14,7 +15,9 @@ export function emptyBoards(): BoardDef[] {
 	];
 }
 
-export function priorityToBoardId(priority: number): string {
+/** The column of a Priority: to validate for PR, doing for P0, P5 for anything above 5. */
+export function priorityBoardId(priority: Priority): string {
+	if (priority === "pr") return A_VALIDER_BOARD_ID;
 	if (priority === 0) return "doing";
 	if (priority >= 5) return "p5";
 	if (priority >= 4) return "p4";
@@ -23,16 +26,11 @@ export function priorityToBoardId(priority: number): string {
 	return "p1";
 }
 
-export function statusBoardId(item: { priority: number; status: TaskStatus }): string {
-	if (item.status === "a_valider") return A_VALIDER_BOARD_ID;
-	return priorityToBoardId(item.priority);
-}
-
-/** Status token written on the line when a card is dropped on a board. */
-export function boardIdToToken(boardId: string): StatusToken | null {
+/** Priority token written on the line when a card is dropped on a board. */
+export function boardIdToToken(boardId: string): PriorityToken | null {
 	if (boardId === A_VALIDER_BOARD_ID) return "pr";
 	if (boardId === "doing") return "p0";
-	return /^p[1-5]$/.test(boardId) ? (boardId as StatusToken) : null;
+	return /^p[1-5]$/.test(boardId) ? (boardId as PriorityToken) : null;
 }
 
 export const PROJECT_CARD_STYLE = { label: "project", color: "#2677b8", css: "border: 3px solid var(--card-color);" };

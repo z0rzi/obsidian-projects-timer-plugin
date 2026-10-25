@@ -27,18 +27,45 @@ describe("runPush", () => {
 		expect(await w.plan()).toEqual([]);
 	});
 
+	it("pushes a Project made Done, then reopened with its Priority", async () => {
+		const path = "2.projects/Widget.md";
+		const w = pushWorld({ [path]: project() });
+		await w.push();
+		w.files.set(path, w.files.get(path)!.replace("priority: 2", "priority: 2\narchived: true"));
+		expect(await w.push()).toEqual({ applied: 1, failed: [] });
+		expect(w.app.received.at(-1)).toMatchObject([{ op: "update", fields: { done: true } }]);
+		expect(w.app.received.at(-1)![0]).not.toHaveProperty("fields.priority");
+
+		w.files.set(path, w.files.get(path)!.replace("archived: true", "archived: false"));
+		expect(await w.push()).toEqual({ applied: 1, failed: [] });
+		expect(w.app.received.at(-1)).toMatchObject([{ op: "update", fields: { priority: 2, done: false } }]);
+		expect(await w.plan()).toEqual([]);
+	});
+
+	it("reopens a Tag task outside any Project with its Priority", async () => {
+		const w = pushWorld({ "m.md": "#task p2 Export\n" });
+		await w.push();
+		const id = w.files.get("m.md")!.match(/\^(\w+)/)![1]!;
+		w.files.set("m.md", `#done 2026-10-20 Export ^${id}\n`);
+		await w.push();
+		w.files.set("m.md", `#task p2 Export ^${id}\n`);
+		expect(await w.push()).toEqual({ applied: 1, failed: [] });
+		expect(w.app.received.at(-1)).toMatchObject([{ op: "update", fields: { priority: 2, done: false } }]);
+		expect(await w.plan()).toEqual([]);
+	});
+
 	it("keeps unticked changes pending and pushes them next time", async () => {
 		const w = pushWorld({ "2.projects/A.md": project(), "2.projects/B.md": project() });
 		await w.push();
 		w.files.set("2.projects/A.md", w.files.get("2.projects/A.md")!.replace("priority: 2", "priority: 1"));
-		w.files.set("2.projects/B.md", w.files.get("2.projects/B.md")!.replace("priority: 2", "priority: 2\nstatus: en pause"));
+		w.files.set("2.projects/B.md", w.files.get("2.projects/B.md")!.replace("priority: 2", "priority: pr"));
 
 		const pending = await w.plan();
 		await w.push(pending.filter((c) => c.title === "A"));
 
 		expect(w.app.received.at(-1)).toMatchObject([{ op: "update", kind: "project", fields: { priority: 1 }, expected: { priority: 2 } }]);
 		expect(await w.plan()).toMatchObject([
-			{ group: "changed", title: "B", diffs: [{ field: "status", from: "a_faire", to: "en_pause" }] },
+			{ group: "changed", title: "B", diffs: [{ field: "priority", from: "P2", to: "À valider" }] },
 		]);
 	});
 
@@ -117,7 +144,7 @@ describe("runPush: due_date", () => {
 			w.files.set("2.projects/Widget.md", w.files.get("2.projects/Widget.md")!.replace(from, to));
 
 		edit("priority: 2", "priority: 2\ndue_date: 2027-01");
-		expect(await w.plan()).toMatchObject([{ group: "changed", diffs: [{ field: "due_date", from: null, to: "2027-01" }] }]);
+		expect(await w.plan()).toMatchObject([{ group: "changed", diffs: [{ field: "due_date", from: "(none)", to: "2027-01" }] }]);
 		await w.push();
 		edit("due_date: 2027-01", "due_date: 2027-02");
 		await w.push();
@@ -150,7 +177,7 @@ describe("runPush: due_date", () => {
 	});
 
 	it("offers nothing for a Project whose Base predates the Échéance and has none", async () => {
-		const fields = { title: "Widget", description: "", status: "a_faire", priority: 2 };
+		const fields = { title: "Widget", description: "", priority: 2, done: false };
 		const w = pushWorld({ "2.projects/Widget.md": "---\npriority: 2\nsuivi_id: t7f3a\n---\n" }, [
 			appProject("t7f3a", fields, { base: { path: "2.projects/Widget.md", fields } }),
 		]);

@@ -15,17 +15,32 @@ export interface ApiError {
   error: string;
 }
 
-/** Project status codes; the app shows them as À faire, En cours, En pause, À valider, Terminé. */
-export const PROJECT_STATUSES = ["a_faire", "en_cours", "en_pause", "a_valider", "termine"] as const;
-export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+/**
+ * Priority codes of open work, Project or Task: 0 is P0 (« En ce moment »),
+ * 1–5 are P1–P5, `"pr"` is PR (« À valider »: waiting for the Client's
+ * Answer). There is no status besides it: work is open at a Priority, or Done.
+ */
+export const PRIORITIES = [0, 1, 2, 3, 4, 5, "pr"] as const;
+export type Priority = (typeof PRIORITIES)[number];
 
-/** Fields of a Project the Developer sets by Push. Priority 0 is P0 (En cours), 1–5 are P1–P5. */
+/**
+ * Fields of a Project the Developer sets by Push. Vault mapping: `priority:
+ * 0`–`5` or `priority: pr`; `archived: true` = `done` (Livré). The `status:`
+ * key of a Project note means nothing here.
+ */
 export interface ProjectFields {
   title: string;
   /** Markdown. */
   description: string;
-  status: ProjectStatus;
-  priority: number;
+  /**
+   * Null once Done: Done work has no Priority, and one pushed with Done is
+   * not kept. Required while open: a Push creating an open Project or
+   * reopening one sends one, and can't set it to null. A Push creating a
+   * Project already Done may send null or omit it.
+   */
+  priority: Priority | null;
+  /** Livré: the Push (or the Answer Validé) that sets it dates it. */
+  done: boolean;
   /**
    * Échéance: a month "YYYY-MM", or null for none (vault: `due_date:`
    * frontmatter). A Push may omit it on create (none); any other string is
@@ -36,7 +51,7 @@ export interface ProjectFields {
 
 /**
  * Task type codes; the app shows them as Tâche, Bug, Rapide, En attente,
- * Amélioration, Idée. The last two only come from the Client. A Project step
+ * Amélioration, Idée. The last two only come from Nouvelle demande (Client or Developer). A Project step
  * is not a type but the `step` flag: a step has a type like any Task.
  */
 export const TASK_TYPES = ["task", "bug", "quick", "wait", "amelioration", "idea"] as const;
@@ -45,50 +60,50 @@ export type TaskType = (typeof TASK_TYPES)[number];
 export const PUSHED_TASK_TYPES = ["task", "bug", "quick", "wait"] as const;
 export type PushedTaskType = (typeof PUSHED_TASK_TYPES)[number];
 
-/** Task status codes; the app shows them as À trier, À faire, En cours, À valider, Terminé. */
-export const TASK_STATUSES = ["a_trier", "a_faire", "en_cours", "a_valider", "termine"] as const;
-export type TaskStatus = (typeof TASK_STATUSES)[number];
-/** Statuses a Push may set (À trier exists only in the app). */
-export const PUSHED_TASK_STATUSES = ["a_faire", "en_cours", "a_valider", "termine"] as const;
-export type PushedTaskStatus = (typeof PUSHED_TASK_STATUSES)[number];
-
 /**
  * Fields of a Task the Developer sets by Push: the line and its body.
- * Vault mapping: `p0` = en_cours + priority 0, `p1`–`p5` = a_faire + that
- * priority, `pr` = a_valider, `#done <date>` / `[x]` = termine.
+ * Vault mapping: the token `p0`–`p5` or `pr` = `priority`, `[x]` / `#done
+ * <date>` = `done` (Terminé).
  */
 export interface TaskFields {
   title: string;
   type: PushedTaskType;
-  status: PushedTaskStatus;
   /**
    * The Task's Description: its vault body, de-indented, shared with images
    * uploaded and wikilinks turned to text. A Push may omit it on create (`""`).
    */
   description: string;
-  /** 0–5, or null = inherit the Project's Priority (a Project step without token). */
-  priority: number | null;
+  /**
+   * Null = inherit the Project's Priority, PR included (a Project step
+   * without token). Null once Done: Done work has no Priority, and one pushed
+   * with Done is not kept. An open Task outside any Project (`project_id`
+   * null) has one: a Push creating, reopening or moving it out of its Project
+   * sends one, and can't clear it; a Task in a Project may inherit.
+   */
+  priority: Priority | null;
   /** App id of the Project, null for a standalone Task. */
   project_id: string | null;
-  /** `YYYY-MM-DD` the Task was done (`#done <date>`); null or absent = the Push date when it becomes termine. */
+  /** Terminé. */
+  done: boolean;
+  /** `YYYY-MM-DD` the Task was done (`#done <date>`); null or absent = the Push date when it becomes done. */
   done_on?: string | null;
   /** A Project step (a line of the Project's steps list); false for a Tag task. A line moved between the two changes it. */
   step: boolean;
 }
 
-/** Answer codes of the Client on a Task or Project À valider; the app shows them as Validé, À reprendre. */
+/** Answer codes of the Client on a Task or Project at PR; the app shows them as Validé, À reprendre. */
 export const ITEM_ANSWERS = ["valide", "a_reprendre"] as const;
 export type ItemAnswer = (typeof ITEM_ANSWERS)[number];
 
 /**
- * Payload of `item.answered` (the item is the Task or Project, which was
- * a_valider): the Client's Answer and the comment given with it (required for
- * `a_reprendre`, else null when none). On a Task, `valide` makes it termine
- * (vault: `#done <date>`, `[x]` for a step) and `a_reprendre` makes it
- * en_cours priority 0 (vault: `p0`). On a Project, `valide` makes it termine
- * (vault: `archived: true`) and `a_reprendre` en_cours (vault: `status: en
- * cours`). The app emits those changes as `item.updated` events carrying
- * `answer: <id of the item.answered event>`, right after it.
+ * Payload of `item.answered` (the item is the Task or Project, which was at
+ * PR by its own Priority: a step inheriting PR is never answered): the
+ * Client's Answer and the comment given with it (required for `a_reprendre`,
+ * else null when none). `valide` makes it done (vault: Task `#done <date>`,
+ * `[x]` for a step; Project `archived: true`), its steps untouched;
+ * `a_reprendre` puts it at priority 0 (vault: Task `p0`, Project `priority:
+ * 0`). The app emits those changes as `item.updated` events (`done`, or
+ * `priority`) carrying `answer: <id of the item.answered event>`, right after it.
  */
 export interface ItemAnsweredPayload {
   answer: ItemAnswer;
@@ -186,7 +201,8 @@ export interface ApiEvent {
  * Payload of `item.updated`: one field of a Project or Task changed, with its
  * old and new values. A Client priority change is `{ field: "priority", from,
  * to }` with `to` in 1–5 (`from` null = a Project step that inherited its
- * Project's). A Description change carries no values: `handles` lists the
+ * Project's). Becoming Done is `{ field: "done", from: false, to: true }`,
+ * reopening the reverse with the `priority` the item comes back at. A Description change carries no values: `handles` lists the
  * Mention handles before and after instead. A change an Answer caused carries
  * `answer`, the id of its `item.answered` event.
  */
@@ -195,6 +211,8 @@ export interface ItemUpdatedPayload {
   from?: unknown;
   to?: unknown;
   handles?: { from: string[]; to: string[] };
+  /** On reopening only: the Priority it comes back at (null for a Task inheriting its Project's). */
+  priority?: Priority | null;
   answer?: number;
 }
 
@@ -288,7 +306,7 @@ export interface InboxNotification {
   actor_email: string;
   /**
    * `comment.created`: a new comment; `item.updated`: a Client priority or Échéance change (`from` → `to`);
-   * `item.answered`: the Client answered a Task or Project À valider (`answer`). The changes an answer causes are not
+   * `item.answered`: the Client answered a Task or Project at PR (`answer`). The changes an answer causes are not
    * Notifications of their own.
    */
   type: "comment.created" | "item.updated" | "item.answered";
@@ -308,9 +326,9 @@ export interface InboxNotification {
 }
 
 /**
- * An Inbox À trier entry: an item the Client proposed that waits for Triage
- * (status `a_trier`): Bug and Amélioration Tickets (triaged as a Task) and
- * Ideas the Client launched (`type: "idea"`, triaged as a Project). It leaves
+ * An Inbox À trier entry: an item the Client or the Developer proposed that waits for Triage
+ * (not Triaged yet, no Priority): Bug and Amélioration Tickets (triaged as a Task) and
+ * launched Ideas (`type: "idea"`, triaged as a Project). It leaves
  * the list once triaged, so there is nothing to mark read.
  */
 export interface InboxTicket {
@@ -330,7 +348,7 @@ export interface InboxTicket {
    * question existed.
    */
   urgency: TicketUrgency | null;
-  /** The Project the Client thinks it concerns (a suggestion; Triage decides). Null: « Je ne sais pas », or an Idea. */
+  /** The Project its author thinks it concerns (a suggestion; Triage decides). Null: « Je ne sais pas », or an Idea. */
   project_id: string | null;
 }
 
@@ -418,13 +436,13 @@ export const TRIAGE_TASK_TYPES = ["task", "bug", "quick", "wait"] as const;
 export type TriageTaskType = (typeof TRIAGE_TASK_TYPES)[number];
 
 /**
- * `POST /api/items/:id/triage` body: what an item À trier becomes.
+ * `POST /api/items/:id/triage` body: what an item not Triaged yet becomes.
  * `as: "task"` (Bug and Amélioration Tickets): a Task of `type` with
- * `priority` (0 = En cours, 1–5 = À faire) in Project `project_id` (null =
+ * `priority` (0–5; PR is not offered) in Project `project_id` (null =
  * standalone), a Project step when `step` (then `priority` may be null =
  * inherit the Project's, no token on the line). `as: "project"` (launched
- * Ideas, "Nouveau projet"): a Project with `priority` (0 = En cours, 1–5 = À
- * faire), title and description taken from the Idea, which then shows lancée.
+ * Ideas, "Nouveau projet"): a Project with `priority` (0–5), title and
+ * description taken from the Idea, which then shows lancée.
  * Either way the item keeps its id, description and comments. `base`: the
  * Item's base as the vault will read the new line or file back, stored with
  * the Triage. 404 for an unknown item, 409 for one not À trier or not of that
@@ -454,9 +472,9 @@ export type TriageResponse =
   | { id: string; as: "project"; fields: ProjectFields };
 
 /**
- * The Answer an Item's current status comes from, until the Pull acknowledges
- * it (`AcknowledgedItem.answer`). The status, priority and done date it set
- * are the Item's current fields.
+ * The Answer an Item's current Priority or Done comes from, until the Pull
+ * acknowledges it (`AcknowledgedItem.answer`): Validé made it done, À
+ * reprendre put it at priority 0. What it set is in the Item's current fields.
  */
 export interface StateAnswer {
   /** Id of the `item.answered` event. */
@@ -476,10 +494,10 @@ interface ItemStateCommon {
   archived: boolean;
   /**
    * Triaged or pushed: a vault note should carry it. False for a Ticket or an
-   * Idea still with the Client or À trier (the Inbox's to_triage).
+   * Idea not Triaged yet (still in the Demandes, or in the Inbox's to_triage).
    */
   triaged: boolean;
-  /** Null when the status doesn't come from an Answer, or that Answer was acknowledged. */
+  /** Null when the Priority or Done doesn't come from an Answer, or that Answer was acknowledged. */
   answer: StateAnswer | null;
   /**
    * The `@handle` of the Client whose site change (drag or picker) set the
@@ -490,13 +508,12 @@ interface ItemStateCommon {
 }
 
 /**
- * A Task's fields as the app holds them: `type` and `status` may be ones only
- * the app sets (a Ticket's `amelioration`, `a_trier`); `done_on` is the
- * `YYYY-MM-DD` (UTC) of its done date, null when not Terminé.
+ * A Task's fields as the app holds them: `type` may be one only the app sets
+ * (a Ticket's `amelioration`); `done_on` is the `YYYY-MM-DD` (UTC) of its
+ * done date, null when not done.
  */
-export type TaskStateFields = Omit<TaskFields, "type" | "status" | "done_on"> & {
+export type TaskStateFields = Omit<TaskFields, "type" | "done_on"> & {
   type: TaskType;
-  status: TaskStatus;
   done_on: string | null;
 };
 

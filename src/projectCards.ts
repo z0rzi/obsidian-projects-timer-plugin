@@ -1,7 +1,8 @@
 import { TFile } from "obsidian";
+import type { Priority } from "./remote/api";
 import { ProjectCard, ProjectCardItem } from "./types";
 import { splitBlockId } from "./blockId";
-import { DAY_SOURCE, readIndentedBody, readStatusToken, readTypeTag } from "./taskParser";
+import { DAY_SOURCE, readIndentedBody, readPriorityToken, readTypeTag } from "./taskParser";
 
 /** Done date of a ticked step: first word once its type tag and token are out. */
 const DONE_DAY = new RegExp(`^(${DAY_SOURCE})(?: |$)`);
@@ -50,7 +51,7 @@ export function extractCheckboxItems(
 
 		const checked = match[1]!.toLowerCase() === "x";
 		const tagged = readTypeTag(match[2]!.trim());
-		const { token, rest } = readStatusToken(tagged.rest);
+		const { priority, rest } = readPriorityToken(tagged.rest);
 		const doneOn = checked ? rest.match(DONE_DAY)?.[1] : undefined;
 		const { text, blockId } = splitBlockId(doneOn ? rest.slice(doneOn.length).trimStart() : rest);
 		items.push({
@@ -60,7 +61,7 @@ export function extractCheckboxItems(
 			type: tagged.type,
 			...(blockId ? { blockId } : {}),
 			...(doneOn ? { doneOn } : {}),
-			...(token ? { override: token } : {}),
+			...(priority !== null ? { override: priority } : {}),
 			raw: line,
 			body: readIndentedBody(lines, i, end).join("\n"),
 		});
@@ -105,6 +106,12 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
 	return result;
 }
 
+/** A Project's `priority:` as the kanban places its card: a number (P5 column above 5) or `pr` in any case; else null, no card. */
+function cardPriority(value: unknown): Priority | null {
+	if (typeof value === "number") return value as Priority;
+	return typeof value === "string" && value.toLowerCase() === "pr" ? "pr" : null;
+}
+
 export function parseProjectCard(params: {
 	file: TFile;
 	content: string;
@@ -114,8 +121,8 @@ export function parseProjectCard(params: {
 
 	if (frontmatter.archived === true) return null;
 
-	const priority = frontmatter.priority;
-	if (typeof priority !== "number") return null;
+	const priority = cardPriority(frontmatter.priority);
+	if (priority === null) return null;
 
 	const lines = content.split("\n");
 	const section = findTasksHeadingSection(lines);

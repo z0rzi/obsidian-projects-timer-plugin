@@ -76,7 +76,7 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 
 		files.set(path, files.get(path)!.replace("priority: 2", "priority: 1"));
 		const second = await plan();
-		expect(second).toMatchObject([{ group: "changed", diffs: [{ field: "priority", from: 2, to: 1 }] }]);
+		expect(second).toMatchObject([{ group: "changed", diffs: [{ field: "priority", from: "P2", to: "P1" }] }]);
 		expect(await runPush(second, deps)).toEqual({ applied: 1, failed: [] });
 
 		const rejected = await remote.push([{ op: "update", kind: "project", id: id!, fields: { created_by: "x" } as never }]);
@@ -146,7 +146,7 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 	it("follows the thread of the pushed Task under the cursor: reply, edit, delete", async () => {
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const [pushed] = await remote.push([
-			{ op: "create", kind: "task", fields: { title: `Fil ${stamp}`, type: "task", status: "a_faire", priority: 2, project_id: null } },
+			{ op: "create", kind: "task", fields: { title: `Fil ${stamp}`, type: "task", priority: 2, done: false, project_id: null } },
 		]);
 		if (!pushed?.ok) throw new Error(JSON.stringify(pushed));
 		const note = `#task p2 Fil ${stamp} ^${pushed.id}\n`;
@@ -232,7 +232,7 @@ describe.skipIf(!url || !token || !clientSession)("Inbox against a running Suivi
 	it("lists JMJ's comment and priority change, not mine, and keeps read marks in the app", async () => {
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const [pushed] = await remote.push([
-			{ op: "create", kind: "task", fields: { title: `Inbox ${stamp}`, type: "task", status: "a_faire", priority: 3, project_id: null } },
+			{ op: "create", kind: "task", fields: { title: `Inbox ${stamp}`, type: "task", priority: 3, done: false, project_id: null } },
 		]);
 		if (!pushed?.ok) throw new Error(JSON.stringify(pushed));
 		const id = pushed.id;

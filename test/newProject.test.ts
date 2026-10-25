@@ -24,8 +24,8 @@ function deps(overrides: Partial<NewProjectDeps> = {}) {
 				const fields: ProjectFields = {
 					title: IDEA.title,
 					description: IDEA.description,
-					status: priority === 0 ? "en_cours" : "a_faire",
 					priority,
+					done: false,
 				};
 				return { id, as: "project", fields };
 			},
@@ -61,17 +61,16 @@ describe("runNewProject (Nouveau projet)", () => {
 			project: {
 				path: "2.projects/Carte des flux.md",
 				suiviId: "i4k2z",
-				archived: false,
-				fields: { title: "Carte des flux", description: IN_VAULT, status: "a_faire", priority: 2, due_date: null },
+				fields: { title: "Carte des flux", description: IN_VAULT, priority: 2, done: false, due_date: null },
 			},
 		});
 		expect(bases.i4k2z).toEqual({
 			path: "2.projects/Carte des flux.md",
-			fields: { title: "Carte des flux", description: IN_VAULT, status: "a_faire", priority: 2 },
+			fields: { title: "Carte des flux", description: IN_VAULT, priority: 2, done: false },
 		});
 	});
 
-	it("writes En cours for P0, so the next Push sees no change", async () => {
+	it("writes priority: 0 for P0, so the next Push sees no change", async () => {
 		const { d, files, bases } = deps();
 		await runNewProject(IDEA, { priority: 0 }, d);
 		const read = readSharedProject("2.projects/Carte des flux.md", files.get("2.projects/Carte des flux.md")!);
@@ -89,8 +88,17 @@ describe("runNewProject (Nouveau projet)", () => {
 		}
 	});
 
+	it("writes priority: but no status:, and archived: true without a Priority for a Done Project", () => {
+		const open = projectFile("", "X", "xxxxx", { title: "X", description: "", priority: "pr", done: false });
+		expect(open).toContain("priority: pr\n");
+		expect(open).not.toContain("status:");
+		const done = projectFile("", "X", "xxxxx", { title: "X", description: "", priority: null, done: true });
+		expect(done).toContain("archived: true\n");
+		expect(done).not.toContain("priority:");
+	});
+
 	it("fills {{date}} with the local day, not the UTC one", () => {
-		const fields: ProjectFields = { title: "X", description: "", status: "a_faire", priority: 3 };
+		const fields: ProjectFields = { title: "X", description: "", priority: 3, done: false };
 		// 23:30 UTC on the 21st is already the 22nd in Paris.
 		const content = projectFile("created {{date}}", "X", "xxxxx", fields, new Date("2026-10-21T23:30:00Z"));
 		expect(content).toContain("created 2026-10-22");

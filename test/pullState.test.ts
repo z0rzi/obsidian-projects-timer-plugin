@@ -4,8 +4,8 @@ import { appProject, appTask, pushWorld } from "./fakeSuivi";
 
 const meeting = "1.meetings/m.md";
 const project = "2.projects/Widget.md";
-const heatmap: TaskFields = { title: "Heatmap", type: "task", step: false, status: "a_faire", priority: 3, project_id: null, description: "" };
-const widget: ProjectFields = { title: "Widget", description: "", status: "a_faire", priority: 3 };
+const heatmap: TaskFields = { title: "Heatmap", type: "task", step: false, priority: 3, done: false, project_id: null, description: "" };
+const widget: ProjectFields = { title: "Widget", description: "", priority: 3, done: false };
 
 /** A Tag task `^t7f3a` at P3 in the vault and in the app's base, the app at `appPriority` (set by @jmj when it differs). */
 function taskWorld(line: string, appPriority: number) {
@@ -52,9 +52,9 @@ describe("Pull compares state", () => {
 		expect(w.app.held.get("t7f3a")!.base).toEqual({ path: meeting, fields: { ...heatmap, priority: 1 } });
 	});
 
-	it("a priority conflict where the vault changed the status: each button shows what its line would be", async () => {
+	it("a priority conflict where the vault put the line at PR: each button shows what its line would be", async () => {
 		const w = pushWorld({ [meeting]: "#task pr Heatmap ^t7f3a\n" }, [
-			appTask("t7f3a", { ...heatmap, status: "a_valider", priority: 1 }, { base: { path: meeting, fields: heatmap }, priority_by: "jmj" }),
+			appTask("t7f3a", { ...heatmap, priority: 1 }, { base: { path: meeting, fields: heatmap }, priority_by: "jmj" }),
 		]);
 		const { conflicts } = await w.pull();
 		expect(conflicts).toMatchObject([{ unit: "priority", mine: { label: "À valider" }, theirs: { label: "P1", by: "jmj" } }]);
@@ -67,7 +67,7 @@ describe("Pull compares state", () => {
 	});
 
 	it("leaves the Items of an unreadable Project note alone", async () => {
-		const note = "---\nsuivi_id: p0002\nstatus: bof\npriority: 3\n---\n# Tasks\n- [ ] p3 Export ^s9xyz\n";
+		const note = "---\nsuivi_id: p0002\ndue_date: bof\npriority: 3\n---\n# Tasks\n- [ ] p3 Export ^s9xyz\n";
 		const w = pushWorld({ [project]: note }, [
 			appProject("p0002", { ...widget, priority: 1 }, { base: { path: project, fields: widget } }),
 			appTask("s9xyz", { ...heatmap, step: true, priority: 1 }, { base: { path: project, fields: { ...heatmap, step: true } } }),

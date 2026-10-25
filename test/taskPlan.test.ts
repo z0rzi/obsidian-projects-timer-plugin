@@ -20,12 +20,12 @@ const task = (over: Partial<LocalTask> = {}): LocalTask => ({
 	title: "Widget saison",
 	type: "task",
 	step: false,
-	status: "a_faire",
 	priority: 2,
+	done: false,
 	description: "",
 	...over,
 });
-const fields: TaskFields = { title: "Widget saison", type: "task", step: false, status: "a_faire", priority: 2, project_id: null, description: "" };
+const fields: TaskFields = { title: "Widget saison", type: "task", step: false, priority: 2, done: false, project_id: null, description: "" };
 const plan = (local: LocalTask[], pushed: Record<string, { path: string; fields: TaskFields }> = {}) => ({
 	changes: planTaskPush(local, projects, appWith({}, pushed), { now }),
 });
@@ -87,7 +87,7 @@ describe("planTaskPush", () => {
 	it("pushes a Project step with its type tag and the step flag; a changed tag is a type diff", () => {
 		const step = task({ type: "bug", step: true, priority: null, raw: "- [ ] #bug Axe", path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
 		expect(plan([step]).changes).toMatchObject([
-			{ group: "new", detail: "Bug · À faire · Tetris", change: { fields: { type: "bug", step: true, priority: null, project_id: "p0001" } } },
+			{ group: "new", detail: "Bug · Héritée · Tetris", change: { fields: { type: "bug", step: true, priority: null, project_id: "p0001" } } },
 		]);
 		const pushed = { s1xyz: { path: "2.projects/Tetris.md", fields: { ...fields, type: "task" as const, step: true, priority: null, project_id: "p0001" } } };
 		expect(plan([{ ...step, blockId: "s1xyz" }], pushed).changes).toMatchObject([
@@ -111,31 +111,48 @@ describe("planTaskPush", () => {
 
 	it("pushes #done with its date, keeping the type last pushed", () => {
 		const pushed = { t7f3a: { path: "1.meetings/m.md", fields: { ...fields, type: "bug" as const } } };
-		const done = task({ blockId: "t7f3a", type: null, status: "termine", priority: null, doneOn: "2026-10-19" });
+		const done = task({ blockId: "t7f3a", type: null, priority: null, done: true, doneOn: "2026-10-19" });
 		expect(plan([done], pushed).changes).toMatchObject([
 			{
 				group: "changed",
-				change: { fields: { status: "termine", priority: null, done_on: "2026-10-19" } },
+				diffs: [{ field: "done", from: "P2", to: "Terminé" }, { field: "date", from: "(Push date)", to: "2026-10-19" }],
+				change: { fields: { done: true, done_on: "2026-10-19" } },
 			},
 		]);
-		expect((plan([done], pushed).changes[0]!.change as { fields: object }).fields).not.toHaveProperty("type");
+		const sent = (plan([done], pushed).changes[0]!.change as { fields: object }).fields;
+		expect(sent).not.toHaveProperty("type");
+		expect(sent).not.toHaveProperty("priority");
+	});
+
+	it("pushes a pr token as PR, shown « À valider »", () => {
+		const pushed = { t7f3a: { path: "1.meetings/m.md", fields } };
+		expect(plan([task({ blockId: "t7f3a", priority: "pr" })], pushed).changes).toMatchObject([
+			{ diffs: [{ field: "priority", from: "P2", to: "À valider" }], change: { fields: { priority: "pr" }, expected: { priority: 2 } } },
+		]);
+	});
+
+	it("reopens a Done Task with its Priority, even one equal to the base", () => {
+		const pushed = { t7f3a: { path: "1.meetings/m.md", fields: { ...fields, done: true, done_on: "2026-10-19" } } };
+		expect(plan([task({ blockId: "t7f3a" })], pushed).changes).toMatchObject([
+			{ diffs: [{ field: "done", from: "Terminé", to: "P2" }], change: { fields: { priority: 2, done: false } } },
+		]);
 	});
 
 	it("leaves out items done more than 30 days ago that were never pushed", () => {
-		const recent = task({ type: null, status: "termine", priority: null, doneOn: "2026-09-25", title: "Récent" });
-		const old = task({ type: null, status: "termine", priority: null, doneOn: "2026-09-10", title: "Vieux" });
+		const recent = task({ type: null, priority: null, done: true, doneOn: "2026-09-25", title: "Récent" });
+		const old = task({ type: null, priority: null, done: true, doneOn: "2026-09-10", title: "Vieux" });
 		expect(plan([recent, old]).changes.map((c) => c.title)).toEqual(["Récent"]);
 	});
 
 	it("lists undated done items never pushed as « Terminées sans date », unticked at a first Push", () => {
-		const step = task({ type: "task", step: true, status: "termine", priority: null, raw: "- [x] Ancienne", path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
+		const step = task({ type: "task", step: true, priority: null, done: true, raw: "- [x] Ancienne", path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
 		expect(plan([step]).changes).toMatchObject([{ group: "new", undated: true, ticked: false }]);
 		const app = appWith({ p0001: { path: "2.projects/Tetris.md", fields: {} } });
 		expect(planTaskPush([step], projects, app, { now })).toMatchObject([{ group: "new", undated: true, ticked: true }]);
 	});
 
 	it("starts « Terminées sans date » unticked when the app's bases are all for Items this vault doesn't carry", () => {
-		const step = task({ type: "task", step: true, status: "termine", priority: null, raw: "- [x] Ancienne", path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
+		const step = task({ type: "task", step: true, priority: null, done: true, raw: "- [x] Ancienne", path: "2.projects/Tetris.md", projectPath: "2.projects/Tetris.md" });
 		const otherVault = appWith({ zz999: { path: "2.projects/Other.md", fields: {} } }, { t7f3a: { path: "1.meetings/m.md", fields } });
 		expect(planTaskPush([step], projects, otherVault, { now })).toMatchObject([{ group: "new", undated: true, ticked: false }]);
 	});

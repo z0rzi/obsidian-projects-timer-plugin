@@ -181,8 +181,8 @@ function deps(overrides: Partial<TriageDeps> = {}, description = "Rien ne s'affi
 					title: "Heatmap vide",
 					type: as.type,
 					step: as.step,
-					status: as.priority === 0 ? "en_cours" : "a_faire",
 					priority: as.priority,
+					done: false,
 					project_id: as.project_id,
 					description,
 				};
@@ -210,7 +210,7 @@ describe("runTriage (Insérer ici)", () => {
 		expect(inserted).toEqual(["#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche"]);
 		expect(bases.t7f3a).toEqual({
 			path: "2.projects/Widget.md",
-			fields: { title: "Heatmap vide", type: "bug", step: false, status: "a_faire", priority: 2, project_id: "p1abc", description: "Rien ne s'affiche" },
+			fields: { title: "Heatmap vide", type: "bug", step: false, priority: 2, done: false, project_id: "p1abc", description: "Rien ne s'affiche" },
 		});
 	});
 

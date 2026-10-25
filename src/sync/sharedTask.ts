@@ -1,8 +1,8 @@
 import type { TFile } from "obsidian";
 import { splitBlockId } from "../blockId";
 import { extractCheckboxItems, findTasksHeadingSection } from "../projectCards";
-import type { PushedTaskStatus, PushedTaskType } from "../remote/api";
-import { parseTasks, readIndentedBody, type StatusToken } from "../taskParser";
+import type { Priority, PushedTaskType } from "../remote/api";
+import { parseTasks, readIndentedBody } from "../taskParser";
 
 /**
  * What the Client app sees of one Task line and its indented body (shared as
@@ -22,9 +22,10 @@ export interface LocalTask {
 	type: PushedTaskType | null;
 	/** A Project step (a checkbox under a Project note's Tasks heading); false for a Tag task. */
 	step: boolean;
-	status: PushedTaskStatus;
-	/** null = inherit the Project's (Project step without token), or no priority (À valider, Terminé). */
-	priority: number | null;
+	/** `p0`–`p5` or `pr`; null = inherit the Project's (Project step without token), or Done. */
+	priority: Priority | null;
+	/** Terminé: a `#done` line or a ticked step. */
+	done: boolean;
 	/** Date of `#done <date>`, or of a done Project step (first word once its type tag is out: `- [x] #bug <date> …`). */
 	doneOn?: string;
 	/** The body with the first body line's indentation removed from every line; "" without body. */
@@ -34,11 +35,9 @@ export interface LocalTask {
 const PRIVATE = /(^|\s)#private(\s|$)/;
 const DONE_LINE = /^#done(?=\s|$)(?:\s+(\d{4}-\d{2}-\d{2})(?=\s|$))?\s*(.*)$/;
 
-function fromToken(token: StatusToken | null): Pick<LocalTask, "status" | "priority"> | null {
-	if (!token) return null;
-	if (token.status === "a_valider") return { status: "a_valider", priority: null };
-	if (token.priority === 0) return { status: "en_cours", priority: 0 };
-	return { status: "a_faire", priority: token.priority };
+/** An open line at the Priority of its token; no token = none (a step inherits). */
+function fromToken(priority: Priority | undefined): Pick<LocalTask, "priority" | "done"> {
+	return { priority: priority ?? null, done: false };
 }
 
 const TAB_WIDTH = 4;
@@ -81,7 +80,7 @@ export function readTagTasks(path: string, content: string, projectPath: string 
 	const out: LocalTask[] = [];
 	for (const t of parseTasks(lines, { path } as TFile, null)) {
 		if (PRIVATE.test(t.raw)) continue;
-		const mapped = fromToken({ priority: t.priority, status: t.status })!;
+		const mapped = fromToken(t.priority);
 		out.push({
 			path,
 			line: t.line,
@@ -109,8 +108,8 @@ export function readTagTasks(path: string, content: string, projectPath: string 
 			title: text.trim(),
 			type: null,
 			step: false,
-			status: "termine",
 			priority: null,
+			done: true,
 			...(m[1] ? { doneOn: m[1] } : {}),
 			description: deindent(readIndentedBody(lines, line).join("\n")),
 		});
@@ -138,8 +137,8 @@ export function readProjectSteps(path: string, content: string): LocalTask[] {
 			type: item.type,
 			step: true,
 			...(item.checked
-				? { status: "termine" as const, priority: null, ...(item.doneOn ? { doneOn: item.doneOn } : {}) }
-				: (fromToken(item.override ?? null) ?? { status: "a_faire" as const, priority: null })),
+				? { priority: null, done: true, ...(item.doneOn ? { doneOn: item.doneOn } : {}) }
+				: fromToken(item.override)),
 			description: deindent(item.body),
 		}));
 }

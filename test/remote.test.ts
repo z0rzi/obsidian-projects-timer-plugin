@@ -216,7 +216,7 @@ describe("HTTP remote, inbox", () => {
 
 describe("HTTP remote, triage", () => {
 	it("posts the target to /api/items/:id/triage and returns the Task's fields", async () => {
-		const fields = { title: "Heatmap vide", type: "bug", status: "a_faire", priority: 2, project_id: null };
+		const fields = { title: "Heatmap vide", type: "bug", priority: 2, done: false, project_id: null };
 		const { sent, transport } = fakeTransport(200, { id: "t7f3a", fields });
 		const remote = createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport);
 		const as = { as: "task", type: "bug", priority: 2, project_id: null } as const;

@@ -1,5 +1,5 @@
 import { localDay } from "../localDate";
-import type { ProjectFields, ProjectStatus } from "../remote/api";
+import type { ProjectFields } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import { descriptionForVault, type AppDescriptionDeps } from "./appDescription";
 
@@ -25,8 +25,8 @@ export type NewProjectResult = { ok: true; path: string } | { ok: false; error: 
 /**
  * "Nouveau projet" on a launched Idea: the app makes the item a Project
  * first (same id, so JMJ's description and comments stay on it), then the
- * Project file is created from the template with `suivi_id:`, priority,
- * status and the Idea's description, and its base is sent to the app so the
+ * Project file is created from the template with `suivi_id:`, priority
+ * and the Idea's description, and its base is sent to the app so the
  * next Push sees no change. Nothing is called or written if the file
  * already exists.
  */
@@ -51,7 +51,7 @@ export async function runNewProject(
 /**
  * « Insérer ici » on an Unplaced Project: its file is created from the
  * template with its id and the app's fields now, and its base is sent,
- * acknowledging the Answer its status comes from, as the Pull does. Nothing
+ * acknowledging the Answer its Priority or Done comes from, as the Pull does. Nothing
  * is written if the file already exists.
  */
 export function insertUnplacedProject(
@@ -112,18 +112,9 @@ function fileName(title: string): string {
 		.replace(/^\.+/, "");
 }
 
-/** A Project status as the vault and the Push modal write it. */
-export const STATUS_WORDS: Record<ProjectStatus, string> = {
-	a_faire: "À faire",
-	en_cours: "En cours",
-	en_pause: "En pause",
-	a_valider: "À valider",
-	termine: "Terminé",
-};
-
 /**
- * The template with `{{title}}`/`{{date}}` filled, `suivi_id:`, `priority:`,
- * `status:` and `due_date:` (when it has an Échéance) set in its frontmatter
+ * The template with `{{title}}`/`{{date}}` filled, `suivi_id:`, `priority:`
+ * (open) or `archived: true` (Done), and `due_date:` (when it has an Échéance) set in its frontmatter
  * (added if missing), and the description under its `# Description` heading
  * (added after the frontmatter if missing).
  */
@@ -144,8 +135,8 @@ export function projectFile(
 	if (end < 0) end = lines.push("---") - 1;
 	const keys: [string, string][] = [
 		["suivi_id", id],
-		["priority", String(fields.priority)],
-		["status", STATUS_WORDS[fields.status]],
+		...(fields.priority !== null ? [["priority", String(fields.priority)] as [string, string]] : []),
+		...(fields.done ? [["archived", "true"] as [string, string]] : []),
 		...(fields.due_date ? [["due_date", fields.due_date] as [string, string]] : []),
 	];
 	for (const [key, value] of keys) {

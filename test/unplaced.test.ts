@@ -11,8 +11,8 @@ import { appProject, appTask, pushWorld } from "./fakeSuivi";
 
 const meeting = "1.meetings/m.md";
 const project = "2.projects/Widget.md";
-const heatmap: TaskFields = { title: "Heatmap", type: "task", step: false, status: "a_faire", priority: 3, project_id: null, description: "" };
-const widget: ProjectFields = { title: "Widget", description: "", status: "a_faire", priority: 3 };
+const heatmap: TaskFields = { title: "Heatmap", type: "task", step: false, priority: 3, done: false, project_id: null, description: "" };
+const widget: ProjectFields = { title: "Widget", description: "", priority: 3, done: false };
 
 /** Ids and titles of the Unplaced items the Pull finds. */
 async function unplaced(w: ReturnType<typeof pushWorld>) {
@@ -25,7 +25,7 @@ describe("Unplaced items", () => {
 			appTask("t7f3a", heatmap, { base: { path: meeting, fields: heatmap } }),
 			appTask("t0del", { ...heatmap, title: "Deleted" }, { base: { path: meeting, fields: heatmap } }),
 			appTask("t0arc", { ...heatmap, title: "Archived" }, { archived: true }),
-			appTask("t0tik", { ...heatmap, title: "Ticket", type: "bug", status: "a_trier" }, { triaged: false }),
+			appTask("t0tik", { ...heatmap, title: "Ticket", type: "bug", priority: null }, { triaged: false }),
 		]);
 		expect(await unplaced(w)).toEqual([["t0del", "Deleted"]]);
 		w.files.set(meeting, "#task p3 Heatmap ^t7f3a\n#task p3 Deleted ^t0del\n");
@@ -45,7 +45,7 @@ describe("Unplaced items", () => {
 	});
 
 	it("leaves out the Items of an unreadable Project note", async () => {
-		const note = "---\nsuivi_id: p0002\nstatus: bof\npriority: 3\n---\n# Tasks\n- [ ] p3 Export ^s9xyz\n";
+		const note = "---\nsuivi_id: p0002\ndue_date: bof\npriority: 3\n---\n# Tasks\n- [ ] p3 Export ^s9xyz\n";
 		const w = pushWorld({ [project]: note }, [
 			appProject("p0002", widget, { base: { path: project, fields: widget } }),
 			appTask("s9xyz", { ...heatmap, step: true, project_id: "p0002" }),
@@ -55,7 +55,7 @@ describe("Unplaced items", () => {
 	});
 
 	it("Insérer ici writes the Task line from the app's fields, keeping its id, and the Push then has nothing", async () => {
-		const done = { ...heatmap, title: "Old  fix", type: "bug" as const, status: "termine" as const, priority: null, description: "Fait\n\tdétail" };
+		const done = { ...heatmap, title: "Old  fix", type: "bug" as const, priority: null, done: true, description: "Fait\n\tdétail" };
 		const w = pushWorld({ [meeting]: "# Notes\n" }, [
 			appTask("t0del", { ...done, done_on: "2026-10-01" }, { base: { path: "gone.md", fields: done } }),
 		]);
@@ -73,7 +73,7 @@ describe("Unplaced items", () => {
 	});
 
 	it("Insérer ici on a Task acknowledges its outstanding Answer, as the Pull does", async () => {
-		const done = { ...heatmap, status: "termine" as const, priority: null, done_on: "2026-10-20" };
+		const done = { ...heatmap, priority: null, done: true, done_on: "2026-10-20" };
 		const answer = { id: 7, answer: "valide" as const, at: "2026-10-20T09:00:00Z", by: "jmj" };
 		const w = pushWorld({ [meeting]: "# Notes\n" }, [appTask("t0ans", done, { base: { path: "gone.md", fields: heatmap }, answer })]);
 		const [item] = (await w.pull()).unplaced;
@@ -107,7 +107,7 @@ describe("Unplaced items", () => {
 	});
 
 	it("Insérer ici on a Project creates its note with its id, acknowledges its Answer, and the Push then has nothing", async () => {
-		const fields = { ...widget, description: "Le widget", status: "en_pause" as const };
+		const fields = { ...widget, description: "Le widget" };
 		const answer = { id: 8, answer: "a_reprendre" as const, at: "2026-10-20T09:00:00Z", by: "jmj" };
 		const w = pushWorld({}, [appProject("p0002", fields, { base: { path: "old/Widget.md", fields }, answer })]);
 		const [item] = (await w.pull()).unplaced;

@@ -1,5 +1,5 @@
 import { markDone, processLineById, setTaskToken } from "../lineWriter";
-import type { ItemAnswer, ProjectFields, TaskFields } from "../remote/api";
+import type { ItemAnswer, Priority, ProjectFields, TaskFields } from "../remote/api";
 import type { VaultFiles } from "./runPull";
 import { locateItem, taskLine } from "./locateItem";
 import type { LocalTask } from "./sharedTask";
@@ -7,20 +7,18 @@ import type { LocalTask } from "./sharedTask";
 /** A Task's shared fields once the Answer is applied (`doneOn`: the date a Validé Task gets). */
 export function answeredTask(fields: TaskFields, answer: ItemAnswer, doneOn: string | null): TaskFields {
 	const { done_on: _old, ...rest } = fields;
-	return answer === "valide"
-		? { ...rest, status: "termine", priority: null, done_on: doneOn }
-		: { ...rest, status: "en_cours", priority: 0 };
+	return answer === "valide" ? { ...rest, priority: null, done: true, done_on: doneOn } : { ...rest, priority: 0, done: false };
 }
 
 /** A Project's shared fields once the Answer is applied. */
 export function answeredProject(fields: ProjectFields, answer: ItemAnswer): ProjectFields {
-	return { ...fields, status: answer === "valide" ? "termine" : "en_cours" };
+	return answer === "valide" ? { ...fields, priority: null, done: true } : { ...fields, priority: 0, done: false };
 }
 
-/** Whether a vault item's status (and a Task's priority) is what the Answer gives. */
-export function holdsAnswer(kind: "project" | "task", answer: ItemAnswer, now: { status?: string; priority: number | null }) {
-	if (answer === "valide") return now.status === "termine";
-	return now.status === "en_cours" && (kind === "project" || now.priority === 0);
+/** Whether a vault item is what the Answer gives: Done for Validé, open at P0 for À reprendre. */
+export function holdsAnswer(answer: ItemAnswer, now: { priority: Priority | null; done: boolean }) {
+	if (answer === "valide") return now.done;
+	return !now.done && now.priority === 0;
 }
 
 /** The Client's Answer to write into the vault (a Pull, or the Client's side of a conflict). */
@@ -44,11 +42,11 @@ export async function writeAnswer(files: VaultFiles, write: AnswerWrite): Promis
 	await writeTaskAnswer(files, path, write.id, found, write.answer, write.doneOn);
 }
 
-/** Validé: `archived: true` (pushed as Terminé). À reprendre: `status: en cours`. */
+/** Validé: `archived: true` (Done). À reprendre: `priority: 0`. */
 function writeProjectAnswer(files: VaultFiles, path: string, answer: ItemAnswer): Promise<void> {
 	return files.processFrontMatter(path, (fm) => {
 		if (answer === "valide") fm.archived = true;
-		else fm.status = "en cours";
+		else fm.priority = 0;
 	});
 }
 

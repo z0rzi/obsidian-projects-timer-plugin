@@ -4,6 +4,7 @@ import type ProjectsTimerPlugin from "../main";
 import type { ProjectCard, Task } from "../types";
 import { Subscription } from "rxjs";
 import { localDay } from "../localDate";
+import { readPriorityToken } from "../taskParser";
 import { boardIdToToken, cardTypesCss } from "./kanban/boards";
 import { boardSnapshot, fillBoards, type StepRef } from "./kanban/boardItems";
 import { CardWrites } from "./kanban/cardWrites";
@@ -233,9 +234,7 @@ export class TasksKanbanView extends ItemView {
 		if (eid.startsWith("project-")) {
 			const card = this.currentProjectCards.get(eid.replace("project-", ""));
 			if (!card) return;
-			// Projects have no À valider status: put the card back.
-			if (token === "pr") return this.putBack();
-			await this.writes.projectPriority(card, +token.slice(1));
+			await this.writes.projectPriority(card, readPriorityToken(token).priority!);
 			return;
 		}
 
