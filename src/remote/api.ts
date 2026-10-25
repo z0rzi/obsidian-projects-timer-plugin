@@ -201,7 +201,7 @@ export interface ApiEvent {
  * old and new values. A Client priority change is `{ field: "priority", from,
  * to }` with `to` in 1–5 (`from` null = a Project step that inherited its
  * Project's). Becoming Done is `{ field: "done", from: false, to: true }`,
- * reopening the reverse. A Description change carries no values: `handles` lists the
+ * reopening the reverse with the `priority` the item comes back at. A Description change carries no values: `handles` lists the
  * Mention handles before and after instead. A change an Answer caused carries
  * `answer`, the id of its `item.answered` event.
  */
@@ -210,6 +210,8 @@ export interface ItemUpdatedPayload {
   from?: unknown;
   to?: unknown;
   handles?: { from: string[]; to: string[] };
+  /** On reopening only: the Priority it comes back at (null for a Task inheriting its Project's). */
+  priority?: Priority | null;
   answer?: number;
 }
 
