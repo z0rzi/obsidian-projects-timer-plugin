@@ -23,7 +23,7 @@ const body = [
 ].join("\n");
 
 describe("readSharedProject", () => {
-	it("shares the file name as title, the Description section, status and priority", () => {
+	it("shares the file name as title, the Description section and priority", () => {
 		const result = readSharedProject(
 			"2.projects/Widget saison.md",
 			note("priority: 2\nstatus: En cours\nsuivi_id: t7f3a", body),
@@ -34,12 +34,11 @@ describe("readSharedProject", () => {
 			project: {
 				path: "2.projects/Widget saison.md",
 				suiviId: "t7f3a",
-				archived: false,
 				fields: {
 					title: "Widget saison",
 					description: "Un **widget** pour la saison.\n\n- carte",
-					status: "en_cours",
 					priority: 2,
+					done: false,
 					due_date: null,
 				},
 			},
@@ -58,24 +57,23 @@ describe("readSharedProject", () => {
 		expect(readSharedProject("p/X.md", note("prive: true\npriority: 1", body))).toBeNull();
 	});
 
-	it("reads every status label, with or without accents, and archived: true as Terminé", () => {
-		const status = (fm: string) => {
+	it("reads priority: pr as PR, and archived: true as Done without a Priority", () => {
+		const read = (fm: string) => {
 			const r = readSharedProject("p/X.md", note(fm, ""));
-			return r?.ok ? r.project.fields.status : r;
+			return r?.ok ? { priority: r.project.fields.priority, done: r.project.fields.done } : r;
 		};
 
-		expect(status("status: À faire")).toBe("a_faire");
-		expect(status("status: en pause")).toBe("en_pause");
-		expect(status('status: "À valider"')).toBe("a_valider");
-		expect(status("status: Termine")).toBe("termine");
-		expect(status("archived: true\nstatus: En cours")).toBe("termine");
-		expect(status("priority: 3")).toBe("a_faire");
+		expect(read("priority: pr")).toEqual({ priority: "pr", done: false });
+		expect(read('priority: "pr"')).toEqual({ priority: "pr", done: false });
+		expect(read("priority: 0")).toEqual({ priority: 0, done: false });
+		expect(read("archived: true\npriority: 3")).toEqual({ priority: null, done: true });
 	});
 
-	it("reports an unknown status instead of guessing", () => {
-		const r = readSharedProject("p/X.md", note("status: Fini\nsuivi_id: t7f3a", ""));
+	it("ignores the status: key of a Project note, whatever its value", () => {
+		const r = readSharedProject("p/X.md", note("status: Fini\npriority: 2", ""));
 
-		expect(r).toEqual({ ok: false, path: "p/X.md", suiviId: "t7f3a", error: expect.stringContaining("Fini") });
+		expect(r).toMatchObject({ ok: true, project: { fields: { priority: 2, done: false } } });
+		expect(JSON.stringify(r)).not.toContain("Fini");
 	});
 
 	it("defaults a missing priority to P5 and an empty description when there is no section", () => {

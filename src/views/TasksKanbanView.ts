@@ -233,9 +233,7 @@ export class TasksKanbanView extends ItemView {
 		if (eid.startsWith("project-")) {
 			const card = this.currentProjectCards.get(eid.replace("project-", ""));
 			if (!card) return;
-			// Projects have no À valider status: put the card back.
-			if (token === "pr") return this.putBack();
-			await this.writes.projectPriority(card, +token.slice(1));
+			await this.writes.projectPriority(card, token === "pr" ? "pr" : +token.slice(1));
 			return;
 		}
 

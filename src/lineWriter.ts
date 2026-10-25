@@ -12,7 +12,8 @@ export const LineRef = {
 /** A Task line's status token: `p0` (En cours) to `p5`, or `pr` (À valider). */
 export type StatusToken = "p0" | "p1" | "p2" | "p3" | "p4" | "p5" | "pr";
 
-export const priorityToken = (priority: number): StatusToken => `p${priority}` as StatusToken;
+/** The token of a Priority: `pr` for PR, else `p<n>` (0–5). */
+export const priorityToken = (priority: number | "pr"): StatusToken => (priority === "pr" ? "pr" : (`p${priority}` as StatusToken));
 
 export type WriteResult =
 	| { ok: true; content: string }

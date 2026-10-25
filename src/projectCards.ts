@@ -115,7 +115,8 @@ export function parseProjectCard(params: {
 	if (frontmatter.archived === true) return null;
 
 	const priority = frontmatter.priority;
-	if (typeof priority !== "number") return null;
+	const atPr = priority === "pr";
+	if (typeof priority !== "number" && !atPr) return null;
 
 	const lines = content.split("\n");
 	const section = findTasksHeadingSection(lines);
@@ -126,7 +127,9 @@ export function parseProjectCard(params: {
 	return {
 		id: file.path,
 		file,
-		priority,
+		// At PR the number is unused: the card sits in the to validate column.
+		priority: atPr ? 1 : (priority as number),
+		status: atPr ? "a_valider" : "priority",
 		items: selectPreviewItems(items),
 		overrides: items.filter((item) => item.override && !item.checked),
 	};

@@ -7,8 +7,8 @@ import type { PendingTaskChange } from "./taskPlan";
 
 export interface FieldDiff {
 	field: keyof ProjectFields;
-	from: string | number | null;
-	to: string | number | null;
+	from: string | number | boolean | null;
+	to: string | number | boolean | null;
 }
 
 type ProjectChange = Extract<PushChange, { kind: "project" }>;
@@ -45,11 +45,22 @@ export interface PushError {
 export type PendingChange = PendingProjectChange | PendingTaskChange | PendingConflict | PushError;
 
 /** The shared Project fields the Push compares with the Base and sends when they changed. */
-const FIELDS = ["title", "description", "status", "priority", "due_date"] as const;
+const FIELDS = ["title", "description", "priority", "done", "due_date"] as const;
+
+/**
+ * Whether the Push sends `field` of an item: changed since the base, but never
+ * a Priority while the item is Done (it has none), and always the Priority of
+ * an item being reopened (the app needs it then).
+ */
+export function sendsField(field: string, changed: boolean, before: { done: boolean }, now: { done: boolean }): boolean {
+	if (field !== "priority") return changed;
+	if (now.done) return false;
+	return changed || before.done;
+}
 
 /**
  * Compares the vault's shared Projects with their base in the app. Projects
- * never pushed and already archived stay vault-only. An id the app doesn't
+ * never pushed and already Done stay vault-only. An id the app doesn't
  * know is created keeping it; one it holds archived is restored; a Task's id
  * or an id not in the app's format is an error. App Projects no note carries are not offered (Unplaced).
  */
@@ -73,7 +84,7 @@ export function planProjectPush(local: SharedProject[], app: AppItems): (Pending
 		if (id && app.tasks[id]) {
 			error(`suivi_id: ${id} is a Task in Suivi; fix it in the note`);
 		} else if (!id || !held) {
-			if (!id && p.archived) continue;
+			if (!id && fields.done) continue;
 			const change: ProjectChange = { op: "create", kind: "project", ...(id ? { id } : {}), fields };
 			changes.push({ group: "new", key: `new:${path}`, ...(id ? { id } : {}), path, title, fields, change });
 		} else if (held.archived) {
@@ -86,12 +97,12 @@ export function planProjectPush(local: SharedProject[], app: AppItems): (Pending
 			for (const field of FIELDS) {
 				const from = held.base.fields[field];
 				const to = fields[field];
-				if (from === to) continue;
-				diffs.push({ field, from, to });
+				if (!sendsField(field, from !== to, held.base.fields, fields)) continue;
+				if (from !== to) diffs.push({ field, from, to });
 				Object.assign(sent, { [field]: to });
 				Object.assign(expected, { [field]: held.current[field] });
 			}
-			if (diffs.length === 0) continue;
+			if (Object.keys(sent).length === 0) continue;
 			const change: ProjectChange = { op: "update", kind: "project", id, fields: sent, expected };
 			changes.push({ group: "changed", key: `changed:${id}`, id, path, title, fields, diffs, change });
 		}

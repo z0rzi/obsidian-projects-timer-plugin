@@ -4,10 +4,9 @@ import type { SharedProject } from "../src/sync/sharedProject";
 import { planProjectPush } from "../src/sync/pushPlan";
 import { appWith } from "./fakeSuivi";
 
-const fields: ProjectFields = { title: "Widget", description: "Desc", status: "a_faire", priority: 2, due_date: null };
+const fields: ProjectFields = { title: "Widget", description: "Desc", priority: 2, done: false, due_date: null };
 const local = (over: Partial<SharedProject> & { fields?: Partial<ProjectFields> } = {}): SharedProject => ({
 	path: `2.projects/${over.fields?.title ?? fields.title}.md`,
-	archived: false,
 	...over,
 	fields: { ...fields, ...over.fields },
 });
@@ -33,7 +32,7 @@ describe("planProjectPush", () => {
 	});
 
 	it("does not offer archived Projects that were never pushed", () => {
-		expect(planProjectPush([local({ archived: true, fields: { status: "termine" } })], appWith())).toEqual([]);
+		expect(planProjectPush([local({ fields: { priority: null, done: true } })], appWith())).toEqual([]);
 	});
 
 	it("offers nothing for a pushed Project that hasn't changed", () => {
@@ -47,7 +46,7 @@ describe("planProjectPush", () => {
 		const now = local({
 			suiviId: "t7f3a",
 			path: "2.projects/Widget été.md",
-			fields: { title: "Widget été", description: "Desc", status: "en_cours", priority: 1 },
+			fields: { title: "Widget été", description: "Desc", priority: "pr" },
 		});
 
 		expect(planProjectPush([now], appWith(pushed))).toEqual([
@@ -60,15 +59,14 @@ describe("planProjectPush", () => {
 				fields: now.fields,
 				diffs: [
 					{ field: "title", from: "Widget", to: "Widget été" },
-					{ field: "status", from: "a_faire", to: "en_cours" },
-					{ field: "priority", from: 2, to: 1 },
+					{ field: "priority", from: 2, to: "pr" },
 				],
 				change: {
 					op: "update",
 					kind: "project",
 					id: "t7f3a",
-					fields: { title: "Widget été", status: "en_cours", priority: 1 },
-					expected: { title: "Widget", status: "a_faire", priority: 2 },
+					fields: { title: "Widget été", priority: "pr" },
+					expected: { title: "Widget", priority: 2 },
 				},
 			},
 		]);
@@ -98,8 +96,25 @@ describe("planProjectPush", () => {
 		const app = appWith({ t7f3a: { path: "2.projects/Widget.md", fields } });
 		app.projects.t7f3a!.current = { ...fields, priority: 4 };
 
-		expect(planProjectPush([local({ suiviId: "t7f3a", fields: { status: "en_pause" } })], app)).toMatchObject([
-			{ group: "changed", change: { fields: { status: "en_pause" }, expected: { status: "a_faire" } } },
+		expect(planProjectPush([local({ suiviId: "t7f3a", fields: { title: "Widget 2" } })], app)).toMatchObject([
+			{ group: "changed", change: { fields: { title: "Widget 2" }, expected: { title: "Widget" } } },
+		]);
+	});
+
+	it("sends Done without comparing the Priority it no longer has", () => {
+		const app = appWith({ t7f3a: { path: "2.projects/Widget.md", fields } });
+
+		expect(planProjectPush([local({ suiviId: "t7f3a", fields: { priority: null, done: true } })], app)).toMatchObject([
+			{ diffs: [{ field: "done", from: false, to: true }], change: { fields: { done: true }, expected: { done: false } } },
+		]);
+	});
+
+	it("reopens a Done Project with its Priority, even one equal to the base", () => {
+		const app = appWith({ t7f3a: { path: "2.projects/Widget.md", fields: { ...fields, done: true } } });
+		app.projects.t7f3a!.current = { ...fields, priority: null, done: true };
+
+		expect(planProjectPush([local({ suiviId: "t7f3a" })], app)).toMatchObject([
+			{ change: { fields: { priority: 2, done: false }, expected: { priority: null, done: true } } },
 		]);
 	});
 });

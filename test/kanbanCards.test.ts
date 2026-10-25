@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { TFile } from "obsidian";
 import { parseProjectCard } from "../src/projectCards";
 import type { Task } from "../src/types";
-import { boardSnapshot } from "../src/views/kanban/boardItems";
+import { boardSnapshot, fillBoards } from "../src/views/kanban/boardItems";
 import { cardTypesCss } from "../src/views/kanban/boards";
 import { cardHtml, overrideCardHtml, projectCardHtml } from "../src/views/kanban/cardHtml";
 
@@ -23,6 +23,15 @@ describe("kanban step lines", () => {
 	it("repaint the board when a step's tag changes", () => {
 		const before = boardSnapshot([], [card(["- [ ] Axe faux"])], new Map());
 		expect(boardSnapshot([], [card(["- [ ] #bug Axe faux"])], new Map())).not.toBe(before);
+	});
+});
+
+describe("kanban Project cards", () => {
+	it("put a priority: pr Project in the to validate column, and repaint when it gets there", () => {
+		const atPr = parseProjectCard({ file, content: "---\npriority: pr\n---\n# Tasks\n" })!;
+		const { boards } = fillBoards([], [atPr], new Map(), () => undefined);
+		expect(boards.find((b) => b.id === "pr")!.items).toMatchObject([{ id: "project-2.projects/Widget.md" }]);
+		expect(boardSnapshot([], [atPr], new Map())).not.toBe(boardSnapshot([], [card([])], new Map()));
 	});
 });
 

@@ -1,5 +1,7 @@
 import { App, Modal, Setting } from "obsidian";
+import type { Priority } from "../remote/api";
 import type { Conflict } from "../sync/compareState";
+import { itemLabel } from "../sync/itemLabel";
 import type { PendingConflict } from "../sync/conflicts";
 import type { PendingChange } from "../sync/pushPlan";
 import { conflictButtons } from "../views/inboxPinned";
@@ -15,19 +17,11 @@ const GROUPS: { group: PendingChange["group"]; heading: string }[] = [
 /** Never-pushed done lines without a date, listed apart in a collapsed group. */
 const isUndated = (c: PendingChange) => c.group === "new" && "undated" in c && c.undated === true;
 
-const STATUS_LABELS: Record<string, string> = {
-	a_faire: "À faire",
-	en_cours: "En cours",
-	en_pause: "En pause",
-	a_valider: "À valider",
-	termine: "Terminé",
-};
-
-function show(field: string, value: string | number | null): string {
+/** A Project field value as the modal shows it; Priority and Done read as the app's words. */
+function show(field: string, value: string | number | boolean | null): string {
 	if (field === "due_date") return value === null ? "(none)" : String(value);
-	if (value === null) return "?";
-	if (field === "status") return STATUS_LABELS[value] ?? String(value);
-	if (field === "priority") return `P${value}`;
+	if (field === "done") return value ? "Livré" : "Ouvert";
+	if (field === "priority") return itemLabel("project", { priority: value as Priority | null, done: false });
 	if (field === "description") {
 		const s = String(value).replace(/\s+/g, " ").trim();
 		return s ? `“${s.length > 60 ? `${s.slice(0, 60)}…` : s}”` : "(empty)";

@@ -1,5 +1,5 @@
 import { TASKS_TYPES, type ProjectCard, type ProjectCardItem, type Task } from "../../types";
-import { emptyBoards, OVERRIDE_CARD_STYLE, priorityToBoardId, statusBoardId, type BoardDef } from "./boards";
+import { emptyBoards, OVERRIDE_CARD_STYLE, statusBoardId, type BoardDef } from "./boards";
 import { badgeOf, cardHtml, overrideCardHtml, projectCardHtml } from "./cardHtml";
 
 export type StepRef = { card: ProjectCard; item: ProjectCardItem };
@@ -12,7 +12,7 @@ export function boardSnapshot(tasks: Task[], projectCards: ProjectCard[], badges
 	const cardPart = projectCards
 		.map(
 			(card) =>
-				`${card.id}:${card.priority}:${[...card.items, ...card.overrides]
+				`${card.id}:${card.priority}:${card.status}:${[...card.items, ...card.overrides]
 					.map(
 						(item) =>
 							`${item.line}:${item.checked ? 1 : 0}:${item.type}:${item.override?.status ?? ""}${item.override?.priority ?? ""}:${item.text}:${item.body}`,
@@ -51,7 +51,7 @@ export function fillBoards(
 	}
 
 	for (const card of projectCards) {
-		boardOf(priorityToBoardId(card.priority))?.items.push({
+		boardOf(statusBoardId(card))?.items.push({
 			id: `project-${card.id}`,
 			title: projectCardHtml(card, badges, suiviIdOf(card.file.path)),
 			type: "project",

@@ -50,6 +50,8 @@ export type ProjectCard = {
 	id: string;
 	file: TFile;
 	priority: number;
+	/** `a_valider` for `priority: pr` (its column is to validate), else `priority`. */
+	status: TaskStatus;
 	/** Preview shown on the Project card. */
 	items: ProjectCardItem[];
 	/** Open steps carrying their own token, shown as their own cards. */

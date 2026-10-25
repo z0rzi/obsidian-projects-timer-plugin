@@ -25,7 +25,8 @@ type Held = {
  * An app holding `items` that applies Pushes as `src/items/push.ts` does: a
  * create keeps the id sent (a retried one with the same fields is ok), a
  * change whose `expected` no longer holds is refused, `base` is stored, a
- * change of the status drops the Answer. Acknowledges store the base and clear
+ * change of Priority or Done drops the Answer. Done work keeps no Priority; an
+ * open Project, or a reopened Task outside any Project, without one is refused. Acknowledges store the base and clear
  * the Answer they name. Uploads are deduplicated by content.
  */
 export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => string | undefined = () => undefined) {
@@ -45,7 +46,8 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 		if (refused) return { ok: false, error: refused };
 		if (c.op === "create") {
 			const id = c.id ?? `ap${String(next++).padStart(3, "0")}`;
-			const fields = { ...(c.kind === "task" ? { done_on: null } : {}), ...c.fields } as Record<string, unknown>;
+			const fields = { ...(c.kind === "task" ? { done_on: null } : {}), ...c.fields, ...(c.fields.done ? { priority: null } : {}) } as Record<string, unknown>;
+			if (c.kind === "project" && !fields.done && fields.priority == null) return { ok: false, error: "Un projet ouvert a besoin d'une priorité" };
 			const now = held.get(id);
 			if (now && (now.kind !== c.kind || Object.entries(c.fields).some(([k, v]) => now.fields[k] !== v))) {
 				return { ok: false, error: `Id ${id} déjà pris` };
@@ -62,10 +64,16 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 		const changed = Object.entries(c.expected ?? {}).find(([k, v]) => now.fields[k] !== v);
 		if (changed) return { ok: false, error: `${changed[0]} a changé dans l'app, valeur actuelle : ${JSON.stringify(now.fields[changed[0]])}` };
 		if (c.op === "restore") now.archived = false;
-		if ("status" in c.fields && c.fields.status !== now.fields.status) now.answer = null;
+		const done = c.fields.done ?? now.fields.done;
+		const priority = done ? null : c.fields.priority !== undefined ? c.fields.priority : now.fields.done ? null : now.fields.priority;
+		const projectId = "project_id" in c.fields ? c.fields.project_id : now.fields.project_id;
+		if (!done && priority == null && (c.kind === "project" || (now.fields.done && projectId === null))) {
+			return { ok: false, error: "Une priorité est requise" };
+		}
+		if (done !== now.fields.done || priority !== now.fields.priority) now.answer = null;
 		if ("priority" in c.fields) now.priority_by = null;
 		if ("due_date" in c.fields) now.due_date_by = null;
-		Object.assign(now.fields, c.fields);
+		Object.assign(now.fields, c.fields, { done, priority });
 		if (c.base) now.base = c.base;
 		return { ok: true, id: c.id };
 	}
@@ -96,11 +104,11 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 			item.triaged = true;
 			if (as.as === "project") {
 				item.kind = "project";
-				item.fields = { title: item.fields.title, description: item.fields.description, status: as.priority === 0 ? "en_cours" : "a_faire", priority: as.priority, due_date: null };
+				item.fields = { title: item.fields.title, description: item.fields.description, priority: as.priority, done: false, due_date: null };
 				return { id, as: "project", fields: item.fields as unknown as ProjectFields };
 			}
 			const { base: _base, as: _as, ...set } = as;
-			Object.assign(item.fields, set, { status: as.priority === 0 ? "en_cours" : "a_faire" });
+			Object.assign(item.fields, set);
 			const { done_on: _done, ...fields } = item.fields as unknown as TaskStateFields;
 			return { id, as: "task", fields: fields as never };
 		},
@@ -118,7 +126,7 @@ export function appTask(id: string, fields: Partial<TaskStateFields>, more: Part
 		triaged: true,
 		answer: null,
 		priority_by: null,
-		fields: { title: "", type: "task", step: false, status: "a_faire", priority: 1, project_id: null, description: "", done_on: null, ...fields },
+		fields: { title: "", type: "task", step: false, priority: 1, done: false, project_id: null, description: "", done_on: null, ...fields },
 		...more,
 	} as ItemState;
 }
@@ -134,7 +142,7 @@ export function appProject(id: string, fields: Partial<ProjectFields>, more: Par
 		answer: null,
 		priority_by: null,
 		due_date_by: null,
-		fields: { title: "", description: "", status: "a_faire", priority: 5, due_date: null, ...fields },
+		fields: { title: "", description: "", priority: 5, done: false, due_date: null, ...fields },
 		...more,
 	} as ItemState;
 }

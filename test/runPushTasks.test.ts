@@ -108,14 +108,14 @@ describe("runPush with Tasks", () => {
 });
 
 describe("runPush dates a step ticked after it was pushed", () => {
-	it("sends today's date with the status and writes it into the line", async () => {
+	it("sends today's date with Done and writes it into the line", async () => {
 		const w = pushWorld({ [tetris]: "---\npriority: 3\n---\n# Tasks\n- [ ] #bug Export\n" });
 		await w.push();
 		w.files.set(tetris, w.files.get(tetris)!.replace("- [ ] #bug Export", "- [x] #bug Export"));
 
 		expect(await w.push()).toEqual({ applied: 1, failed: [] });
 
-		expect(w.app.received.at(-1)).toMatchObject([{ op: "update", fields: { status: "termine", done_on: localDay() } }]);
+		expect(w.app.received.at(-1)).toMatchObject([{ op: "update", fields: { done: true, done_on: localDay() } }]);
 		expect(w.files.get(tetris)).toContain(`- [x] #bug ${localDay()} Export ^`);
 		expect(await w.plan()).toEqual([]);
 	});

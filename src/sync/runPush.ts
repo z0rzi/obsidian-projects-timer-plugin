@@ -174,9 +174,9 @@ async function pushTasks(selected: PendingTaskChange[], deps: PushDeps, outcome:
 
 /** `t` with today as `done_on` when it sends a Task as done without a date; else `t` itself. */
 function datedTask(t: PendingTaskChange, today: string): PendingTaskChange {
-	if (t.fields.status !== "termine" || t.fields.done_on) return t;
-	// A change that sends neither the status nor the date leaves the app's date as is.
-	if (t.group === "changed" && !("done_on" in t.change.fields) && !("status" in t.change.fields)) return t;
+	if (!t.fields.done || t.fields.done_on) return t;
+	// A change that sends neither Done nor the date leaves the app's date as is.
+	if (t.group === "changed" && !("done_on" in t.change.fields) && !("done" in t.change.fields)) return t;
 	const fields = { ...t.fields, done_on: today };
 	if (t.group === "new") return { ...t, fields, change: { ...t.change, fields } };
 	return { ...t, fields, change: { ...t.change, fields: { ...t.change.fields, done_on: today } } };

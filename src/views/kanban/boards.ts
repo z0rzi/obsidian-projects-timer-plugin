@@ -14,7 +14,7 @@ export function emptyBoards(): BoardDef[] {
 	];
 }
 
-export function priorityToBoardId(priority: number): string {
+function priorityToBoardId(priority: number): string {
 	if (priority === 0) return "doing";
 	if (priority >= 5) return "p5";
 	if (priority >= 4) return "p4";

@@ -21,15 +21,15 @@ const meeting = [
 ].join("\n");
 
 describe("readTagTasks", () => {
-	it("shares the line of each Tag task with its status token mapped, and its de-indented body", () => {
+	it("shares the line of each Tag task with its token read as Priority or Done, and its de-indented body", () => {
 		const tasks = readTagTasks("1.meetings/2026-10-13.md", meeting, "2.projects/Chainage Tetris.md");
 		expect(tasks.map(({ path, projectPath, line, ...t }) => t)).toEqual([
-			{ raw: "#task p2 Nouveau widget saison ^t7f3a", blockId: "t7f3a", title: "Nouveau widget saison", type: "task", step: false, status: "a_faire", priority: 2, description: "corps de la tâche\n\n  - détail" },
-			{ raw: "#bug Légende manquante", title: "Légende manquante", type: "bug", step: false, status: "a_faire", priority: 1, description: "" },
-			{ raw: "#wait pr Accès serveur EDF", title: "Accès serveur EDF", type: "wait", step: false, status: "a_valider", priority: null, description: "" },
-			{ raw: "#quick p0 Relancer Marc", title: "Relancer Marc", type: "quick", step: false, status: "en_cours", priority: 0, description: "" },
-			{ raw: "#done 2026-10-12 Bloquer les mdp ^t91c2", blockId: "t91c2", title: "Bloquer les mdp", type: null, step: false, status: "termine", priority: null, doneOn: "2026-10-12", description: "" },
-			{ raw: "#done [excel] faire un tableau", title: "[excel] faire un tableau", type: null, step: false, status: "termine", priority: null, description: "" },
+			{ raw: "#task p2 Nouveau widget saison ^t7f3a", blockId: "t7f3a", title: "Nouveau widget saison", type: "task", step: false, priority: 2, done: false, description: "corps de la tâche\n\n  - détail" },
+			{ raw: "#bug Légende manquante", title: "Légende manquante", type: "bug", step: false, priority: 1, done: false, description: "" },
+			{ raw: "#wait pr Accès serveur EDF", title: "Accès serveur EDF", type: "wait", step: false, priority: "pr", done: false, description: "" },
+			{ raw: "#quick p0 Relancer Marc", title: "Relancer Marc", type: "quick", step: false, priority: 0, done: false, description: "" },
+			{ raw: "#done 2026-10-12 Bloquer les mdp ^t91c2", blockId: "t91c2", title: "Bloquer les mdp", type: null, step: false, priority: null, done: true, doneOn: "2026-10-12", description: "" },
+			{ raw: "#done [excel] faire un tableau", title: "[excel] faire un tableau", type: null, step: false, priority: null, done: true, description: "" },
 		]);
 		expect(tasks.every((t) => t.projectPath === "2.projects/Chainage Tetris.md")).toBe(true);
 		expect(tasks.map((t) => t.line)).toEqual([3, 9, 10, 11, 13, 14]);
@@ -80,11 +80,11 @@ describe("readProjectSteps", () => {
 	it("shares the top-level steps under Tasks with their type tag (task without), inheriting Priority unless they carry a token", () => {
 		const steps = readProjectSteps("2.projects/Widget.md", projectNote);
 		expect(steps.map(({ path, raw, line, ...s }) => s)).toEqual([
-			{ blockId: "t04be", title: "fix the x axis", type: "task", step: true, status: "a_faire", priority: null, projectPath: "2.projects/Widget.md", description: "- [ ] sous-étape\n  détails" },
-			{ title: "Override urgent", type: "bug", step: true, status: "a_faire", priority: 1, projectPath: "2.projects/Widget.md", description: "" },
-			{ title: "Export CSV", type: "task", step: true, status: "a_valider", priority: null, projectPath: "2.projects/Widget.md", description: "" },
-			{ title: "En train", type: "task", step: true, status: "en_cours", priority: 0, projectPath: "2.projects/Widget.md", description: "" },
-			{ title: "Livré", type: "quick", step: true, status: "termine", priority: null, projectPath: "2.projects/Widget.md", description: "" },
+			{ blockId: "t04be", title: "fix the x axis", type: "task", step: true, priority: null, done: false, projectPath: "2.projects/Widget.md", description: "- [ ] sous-étape\n  détails" },
+			{ title: "Override urgent", type: "bug", step: true, priority: 1, done: false, projectPath: "2.projects/Widget.md", description: "" },
+			{ title: "Export CSV", type: "task", step: true, priority: "pr", done: false, projectPath: "2.projects/Widget.md", description: "" },
+			{ title: "En train", type: "task", step: true, priority: 0, done: false, projectPath: "2.projects/Widget.md", description: "" },
+			{ title: "Livré", type: "quick", step: true, priority: null, done: true, projectPath: "2.projects/Widget.md", description: "" },
 		]);
 		expect(JSON.stringify(steps)).not.toMatch(/Secret|pas une étape/);
 	});
@@ -93,7 +93,7 @@ describe("readProjectSteps", () => {
 		const front = readProjectSteps("2.projects/W.md", "# Tasks\n- [ ] #bug pr Do this ^s1");
 		const moved = readProjectSteps("2.projects/W.md", "# Tasks\n- [ ] pr Do this #bug ^s1");
 		expect(moved.map(({ raw, ...s }) => s)).toEqual(front.map(({ raw, ...s }) => s));
-		expect(moved[0]).toMatchObject({ title: "Do this", type: "bug", status: "a_valider" });
+		expect(moved[0]).toMatchObject({ title: "Do this", type: "bug", priority: "pr" });
 	});
 
 	it("reads the date after a done step's type tag (or checkbox) as its done date", () => {

@@ -1,9 +1,9 @@
-import { STATUS_WORDS } from "../inbox/newProject";
 import { dueDateLabel } from "../dueDate";
 import { localDay } from "../localDate";
-import type { AcknowledgedItem, ItemAnswer, PushChange } from "../remote/api";
+import type { AcknowledgedItem, ItemAnswer, Priority, PushChange } from "../remote/api";
 import type { AppItems, AppProject, AppTask, Base } from "./appState";
 import type { VaultItems } from "./planPush";
+import { itemLabel } from "./itemLabel";
 import { answeredProject, answeredTask, holdsAnswer } from "./pullAnswer";
 import type { SharedProject } from "./sharedProject";
 import type { LocalTask } from "./sharedTask";
@@ -12,7 +12,7 @@ import type { LocalTask } from "./sharedTask";
  * An app value the vault gets: a priority (null removes a step's token), a
  * Project's Échéance (null removes it), or the Client's Answer with its local day.
  */
-export type VaultWrite = { priority: number | null } | { due_date: string | null } | { answer: ItemAnswer; doneOn: string };
+export type VaultWrite = { priority: Priority | null } | { due_date: string | null } | { answer: ItemAnswer; doneOn: string };
 
 /** A change of an Item's base: its fields in `patch` take the vault's value now, `answer` is the Answer acknowledged. */
 export interface BaseUpdate {
@@ -41,7 +41,7 @@ export interface Conflict {
 	id: string;
 	path: string;
 	title: string;
-	/** A priority, a Project's Échéance, or an Answer's effects (status, priority, done date) as one unit. */
+	/** A priority, a Project's Échéance, or an Answer's effects (Priority, Done, done date) as one unit. */
 	unit: "priority" | "due_date" | "answer";
 	/** Fields the Push holds out of its plain changes until the Developer picks. */
 	held: string[];
@@ -76,15 +76,6 @@ interface Unit {
 const ANSWERS: Record<ItemAnswer, string> = { valide: "Validé", a_reprendre: "À reprendre" };
 
 /**
- * A Task line's priority as a conflict button shows it: the line's status
- * instead when it is À valider or Terminé (no `status`: a line with a `p<n>` token).
- */
-function priorityLabel(priority: number | null, status?: string): string {
-	if (status === "a_valider" || status === "termine") return STATUS_WORDS[status];
-	return priority === null ? "Héritée" : `P${priority}`;
-}
-
-/**
  * Compares every Item the vault carries with the app's state, for the fields
  * the site can change: priorities, Échéances and Answers' effects. vault = app: the base
  * is aligned if behind; app changed alone: written into the vault; vault
@@ -107,7 +98,7 @@ export function compareState(vault: VaultItems, app: AppItems): StateComparison 
 	}
 	for (const t of vault.tasks) {
 		const item = carried(t.blockId, app.tasks);
-		if (item) settle(out, "task", t.blockId!, t.path, t.title, item.base, taskUnit(t, item));
+		if (item) for (const unit of taskUnits(t, item)) settle(out, "task", t.blockId!, t.path, t.title, item.base, unit);
 	}
 	return out;
 }
@@ -137,7 +128,10 @@ function dueDateChoice(dueDate: string | null): string {
 	return dueDate === null ? "Aucune" : dueDateLabel(dueDate);
 }
 
-/** A Project's priority, its Échéance, and its status when it comes from an Answer. */
+/**
+ * A Project's Échéance, and its Answer's effects (Priority and Done) when its
+ * Priority or Done comes from one, else its priority.
+ */
 function projectUnits(p: SharedProject, item: AppProject): Unit[] {
 	const id = p.suiviId!;
 	const base = item.base.fields;
@@ -145,43 +139,45 @@ function projectUnits(p: SharedProject, item: AppProject): Unit[] {
 	const mine = (fields: object, expected: object) => mineChange(common, base, fields, expected);
 	const units: Unit[] = [];
 	const answer = item.answer;
+	const vault = { priority: p.fields.priority, done: p.fields.done };
 	if (answer) {
-		const vault = p.fields.status;
+		const { priority, done } = answeredProject(base, answer.answer);
 		units.push({
-			same: holdsAnswer("project", answer.answer, p.fields),
+			same: holdsAnswer(answer.answer, vault),
 			alignNeeded: true,
-			vaultAtBase: vault === base.status,
+			vaultAtBase: vault.priority === base.priority && vault.done === base.done,
 			appAtBase: false,
-			pulled: { status: answeredProject(base, answer.answer).status },
+			pulled: { priority, done },
 			write: { answer: answer.answer, doneOn: localDay(new Date(answer.at)) },
 			answer: answer.id,
 			conflict: () => ({
 				...common,
 				key: `${id}:answer`,
 				unit: "answer",
-				held: ["status"],
-				mine: { label: STATUS_WORDS[vault], change: mine({ status: vault }, { status: item.current.status }) },
+				held: ["priority", "done"],
+				mine: { label: itemLabel("project", vault), change: mine(vault, { priority: item.current.priority, done: item.current.done }) },
 				theirs: { label: ANSWERS[answer.answer], by: answer.by },
 			}),
 		});
+	} else if (!vault.done && !item.current.done) {
+		const [now, before] = [item.current.priority, base.priority];
+		units.push({
+			same: vault.priority === now,
+			alignNeeded: vault.priority !== before,
+			vaultAtBase: vault.priority === before,
+			appAtBase: now === before,
+			pulled: { priority: now },
+			write: { priority: now },
+			conflict: () => ({
+				...common,
+				key: `${id}:priority`,
+				unit: "priority",
+				held: ["priority"],
+				mine: { label: itemLabel("project", vault), change: mine({ priority: vault.priority }, { priority: now }) },
+				theirs: { label: itemLabel("project", item.current), by: item.priorityBy },
+			}),
+		});
 	}
-	const [vault, now, before] = [p.fields.priority, item.current.priority, base.priority];
-	units.push({
-		same: vault === now,
-		alignNeeded: vault !== before,
-		vaultAtBase: vault === before,
-		appAtBase: now === before,
-		pulled: { priority: now },
-		write: { priority: now },
-		conflict: () => ({
-			...common,
-			key: `${id}:priority`,
-			unit: "priority",
-			held: ["priority"],
-			mine: { label: `P${vault}`, change: mine({ priority: vault }, { priority: now }) },
-			theirs: { label: `P${now}`, by: item.priorityBy },
-		}),
-	});
 	const [vaultDue, nowDue, beforeDue] = [p.fields.due_date, item.current.due_date, base.due_date];
 	units.push({
 		same: vaultDue === nowDue,
@@ -202,8 +198,11 @@ function projectUnits(p: SharedProject, item: AppProject): Unit[] {
 	return units;
 }
 
-/** A Task's Answer (status, priority and done date as one unit) when its status comes from one, else its priority. */
-function taskUnit(t: LocalTask, item: AppTask): Unit {
+/**
+ * A Task's Answer (Priority, Done and done date as one unit) when they come
+ * from one, else its priority; none while the Task is Done in the vault or the app.
+ */
+function taskUnits(t: LocalTask, item: AppTask): Unit[] {
 	const id = t.blockId!;
 	const base = item.base.fields;
 	const current = item.current;
@@ -212,52 +211,52 @@ function taskUnit(t: LocalTask, item: AppTask): Unit {
 	const answer = item.answer;
 	if (answer) {
 		const doneOn = localDay(new Date(answer.at));
-		const same = holdsAnswer("task", answer.answer, t);
-		const { status, priority, done_on } = answeredTask(base, answer.answer, same ? (t.doneOn ?? null) : doneOn);
-		const vault = { status: t.status, priority: t.priority, ...(t.status === "termine" ? { done_on: t.doneOn ?? null } : {}) };
-		return {
-			same,
-			alignNeeded: true,
-			vaultAtBase: t.status === base.status && t.priority === base.priority,
-			appAtBase: false,
-			pulled: { status, priority, done_on },
-			write: { answer: answer.answer, doneOn },
-			answer: answer.id,
+		const same = holdsAnswer(answer.answer, t);
+		const { priority, done, done_on } = answeredTask(base, answer.answer, same ? (t.doneOn ?? null) : doneOn);
+		const vault = { priority: t.priority, done: t.done, ...(t.done ? { done_on: t.doneOn ?? null } : {}) };
+		return [
+			{
+				same,
+				alignNeeded: true,
+				vaultAtBase: t.priority === base.priority && t.done === base.done,
+				appAtBase: false,
+				pulled: { priority, done, done_on },
+				write: { answer: answer.answer, doneOn },
+				answer: answer.id,
+				conflict: () => ({
+					...common,
+					key: `${id}:answer`,
+					unit: "answer",
+					held: ["priority", "done", "done_on"],
+					mine: {
+						label: itemLabel("task", t),
+						change: mine(vault, { priority: current.priority, done: current.done, ...("done_on" in vault ? { done_on: current.done_on } : {}) }),
+					},
+					theirs: { label: ANSWERS[answer.answer], by: answer.by },
+				}),
+			},
+		];
+	}
+	if (t.done || current.done) return [];
+	const now = current.priority;
+	return [
+		{
+			same: t.priority === now,
+			alignNeeded: t.priority !== base.priority,
+			vaultAtBase: t.priority === base.priority,
+			appAtBase: now === base.priority,
+			pulled: { priority: now },
+			write: { priority: now },
 			conflict: () => ({
 				...common,
-				key: `${id}:answer`,
-				unit: "answer",
-				held: ["status", "priority", "done_on"],
-				mine: {
-					label: STATUS_WORDS[t.status],
-					change: mine(vault, { status: current.status, priority: current.priority, ...("done_on" in vault ? { done_on: current.done_on } : {}) }),
-				},
-				theirs: { label: ANSWERS[answer.answer], by: answer.by },
+				key: `${id}:priority`,
+				unit: "priority",
+				held: ["priority"],
+				mine: { label: itemLabel("task", t), change: mine({ priority: t.priority }, { priority: now }) },
+				theirs: { label: itemLabel("task", current), by: item.priorityBy },
 			}),
-		};
-	}
-	const now = current.priority;
-	return {
-		same: t.priority === now,
-		alignNeeded: t.priority !== base.priority,
-		// A vault status change counts as a vault change: writing the app's `p<n>`
-		// token would overwrite that status, so it is a conflict, not a pull.
-		vaultAtBase: t.priority === base.priority && t.status === base.status,
-		appAtBase: now === base.priority,
-		// The token written makes the line p0 = En cours, p1–p5 = À faire; when
-		// vault = app, the line already holds that token, so this is its status.
-		pulled: { priority: now, ...(now === null ? {} : { status: now === 0 ? "en_cours" : "a_faire" }) },
-		write: { priority: now },
-		conflict: () => ({
-			...common,
-			key: `${id}:priority`,
-			unit: "priority",
-			held: ["priority"],
-			mine: { label: priorityLabel(t.priority, t.status), change: mine({ priority: t.priority }, { priority: now }) },
-			// Both buttons show the line each choice leaves: the app's token replaces any status.
-			theirs: { label: priorityLabel(now), by: item.priorityBy },
-		}),
-	};
+		},
+	];
 }
 
 /** The acknowledgements of `updates`: each Item's base with its patches applied, and the Answer acknowledged. */

@@ -2,7 +2,7 @@ import type { TaskStateFields, TicketUrgency, TriageTaskType } from "../remote/a
 import type { Remote } from "../remote/remote";
 import { deindent } from "../sync/sharedTask";
 import { priorityToken } from "../lineWriter";
-import { A_VALIDER_TOKEN, readIndentedBody } from "../taskParser";
+import { readIndentedBody } from "../taskParser";
 import { descriptionForVault, type AppDescriptionDeps } from "./appDescription";
 import { findTasksHeadingSection } from "../projectCards";
 
@@ -89,7 +89,7 @@ export async function runTriage(
 
 /**
  * « Insérer ici » on an Unplaced Task: its line, written from the app's fields
- * now (type, status token or done date, title, `^id`) as a Tag task or a
+ * now (type, Priority token or done date, title, `^id`) as a Tag task or a
  * Project step after the cursor's place, with its Description as body; then
  * its base is sent, acknowledging the Answer its fields come from, as the
  * Pull does. The app isn't otherwise changed: a Project or step the placement
@@ -105,11 +105,10 @@ export function insertUnplacedTask(
 	const tag = `#${defaultTag(fields.type)}`;
 	const date = fields.done_on ? ` ${fields.done_on}` : "";
 	let head: string;
-	if (fields.status === "termine") head = target.step ? `- [x] ${tag}${date}` : `#done${date}`;
+	if (fields.done) head = target.step ? `- [x] ${tag}${date}` : `#done${date}`;
 	else {
-		const priority = fields.status === "en_cours" ? 0 : fields.priority;
-		const token = fields.status === "a_valider" ? A_VALIDER_TOKEN : priority === null ? "" : priorityToken(priority);
-		head = `${target.step ? "- [ ] " : ""}${tag}${token ? ` ${token}` : ""}`;
+		const token = fields.priority === null ? "" : ` ${priorityToken(fields.priority)}`;
+		head = `${target.step ? "- [ ] " : ""}${tag}${token}`;
 	}
 	return writeTask({ id: item.id, title: fields.title, answer: item.answer }, head, fields, target.path, deps);
 }

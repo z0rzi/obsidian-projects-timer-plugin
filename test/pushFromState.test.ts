@@ -45,7 +45,7 @@ describe("Push planned against the app's state", () => {
 	});
 
 	it("sends each change with its base and the app values it expects", async () => {
-		const base = { path: "m.md", fields: { title: "Heatmap", type: "task", step: false, status: "a_faire", priority: 3, project_id: null, description: "" } };
+		const base = { path: "m.md", fields: { title: "Heatmap", type: "task", step: false, priority: 3, done: false, project_id: null, description: "" } };
 		const w = world({ "m.md": "#task p2 Heatmap ^t7f3a\n" }, [appTask("t7f3a", { title: "Heatmap", priority: 3 }, { base })]);
 
 		await w.push();
@@ -65,7 +65,7 @@ describe("Push planned against the app's state", () => {
 	});
 
 	it("reports a change the app refused because the Client changed it meanwhile", async () => {
-		const base = { path: "m.md", fields: { title: "Heatmap", type: "task", step: false, status: "a_faire", priority: 3, project_id: null, description: "" } };
+		const base = { path: "m.md", fields: { title: "Heatmap", type: "task", step: false, priority: 3, done: false, project_id: null, description: "" } };
 		const w = world({ "m.md": "#task p2 Heatmap ^t7f3a\n" }, [appTask("t7f3a", { title: "Heatmap", priority: 3 }, { base })]);
 		const pending = await w.plan();
 		w.app.held.get("t7f3a")!.fields.priority = 1;
@@ -109,7 +109,7 @@ describe("Push planned against the app's state", () => {
 		const first = world(notes);
 		expect(await first.plan()).toMatchObject([{ group: "new", undated: true, ticked: false }]);
 
-		const base = { path: "m.md", fields: { title: "Autre", type: "task", step: false, status: "a_faire", priority: 1, project_id: null, description: "" } };
+		const base = { path: "m.md", fields: { title: "Autre", type: "task", step: false, priority: 1, done: false, project_id: null, description: "" } };
 		const later = world({ "m.md": "#done Vieille tâche\n#task Autre ^t7f3a\n" }, [appTask("t7f3a", base.fields, { base })]);
 		const pending = await later.plan();
 		expect(pending).toMatchObject([{ group: "new", undated: true, ticked: true }]);
@@ -117,7 +117,7 @@ describe("Push planned against the app's state", () => {
 
 		const today = localDay();
 		expect(later.files.get("m.md")).toMatch(new RegExp(`^#done ${today} Vieille tâche \\^[a-z0-9]{5}\\n#task Autre \\^t7f3a\\n$`));
-		expect(later.app.received.flat()).toMatchObject([{ op: "create", fields: { status: "termine", done_on: today } }]);
+		expect(later.app.received.flat()).toMatchObject([{ op: "create", fields: { done: true, done_on: today } }]);
 		expect(await later.plan()).toEqual([]);
 	});
 
@@ -132,7 +132,7 @@ describe("Push planned against the app's state", () => {
 
 	it("triages a Ticket with an image and a PDF, then finds nothing to push", async () => {
 		const description = "Voir ![](/uploads/u1.png) [doc.pdf](/uploads/d.pdf)";
-		const ticket = appTask("t7f3a", { title: "Heatmap vide", type: "bug", status: "a_trier", priority: null, description }, { triaged: false });
+		const ticket = appTask("t7f3a", { title: "Heatmap vide", type: "bug", priority: null, done: false, description }, { triaged: false });
 		const w = world({ "m.md": "" }, [ticket]);
 
 		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, {
