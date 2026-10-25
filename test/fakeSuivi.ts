@@ -70,9 +70,8 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 		const done = c.fields.done ?? now.fields.done;
 		const priority = done ? null : c.fields.priority !== undefined ? c.fields.priority : now.fields.done ? null : now.fields.priority;
 		const projectId = "project_id" in c.fields ? c.fields.project_id : now.fields.project_id;
-		if (!done && priority == null && (c.kind === "project" || projectId === null)) {
-			return { ok: false, error: "Une priorité est requise" };
-		}
+		if (!done && priority == null && c.kind === "project") return { ok: false, error: "Un projet ouvert a besoin d'une priorité" };
+		if (!done && priority == null && projectId == null) return { ok: false, error: "Une tâche ouverte hors projet a besoin d'une priorité" };
 		if (done !== now.fields.done || priority !== now.fields.priority) now.answer = null;
 		if ("priority" in c.fields) now.priority_by = null;
 		if ("due_date" in c.fields) now.due_date_by = null;
