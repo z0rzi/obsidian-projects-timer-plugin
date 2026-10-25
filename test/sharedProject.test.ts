@@ -65,6 +65,8 @@ describe("readSharedProject", () => {
 
 		expect(read("priority: pr")).toEqual({ priority: "pr", done: false });
 		expect(read('priority: "pr"')).toEqual({ priority: "pr", done: false });
+		expect(read("priority: PR")).toEqual({ priority: "pr", done: false });
+		expect(read("priority: Pr")).toEqual({ priority: "pr", done: false });
 		expect(read("priority: 0")).toEqual({ priority: 0, done: false });
 		expect(read("archived: true\npriority: 3")).toEqual({ priority: null, done: true });
 	});

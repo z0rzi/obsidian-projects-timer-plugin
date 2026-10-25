@@ -54,9 +54,9 @@ export function readSharedProject(path: string, content: string): ReadResult | n
 	};
 }
 
-/** A `priority:` value: `pr`, or a number capped at 5; anything else is P5. */
+/** A `priority:` value: `pr` (any case), or a number capped at 5; anything else is P5. */
 function readPriority(value: string | undefined): Priority {
-	if (value === "pr") return "pr";
+	if (value?.toLowerCase() === "pr") return "pr";
 	return /^\d+$/.test(value ?? "") ? (Math.min(Number(value), 5) as Priority) : DEFAULT_PRIORITY;
 }
 
