@@ -100,7 +100,6 @@ describe("kanban type labels", () => {
 			file,
 			line: 0,
 			priority: 2,
-			status: "priority",
 			type,
 			raw: `#${type} p2 Axe faux`,
 		});

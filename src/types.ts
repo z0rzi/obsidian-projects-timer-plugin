@@ -1,4 +1,5 @@
 import { TFile } from "obsidian";
+import type { Priority } from "./remote/api";
 
 const borderLeft = 'border-left: 4px solid var(--card-color);'
 
@@ -11,9 +12,6 @@ export const TASKS_TYPES = [
 
 export type TaskTagLabel = typeof TASKS_TYPES[number]['tag']
 
-/** "a_valider" = `pr` token, shown in the À valider column. */
-export type TaskStatus = "priority" | "a_valider";
-
 export type Task = {
 	id: string;
 	title: string;
@@ -21,8 +19,8 @@ export type Task = {
 	projectFile?: TFile;
 	file: TFile;
 	line: number;
-	priority: number;
-	status: TaskStatus;
+	/** From its token (`p0`–`p5`, `pr` for PR); 1 without one. */
+	priority: Priority;
 	type: TaskTagLabel;
 	blockId?: string;
 	/** Line content when parsed, to check it is unchanged before writing. */
@@ -38,8 +36,8 @@ export type ProjectCardItem = {
 	blockId?: string;
 	/** Done date of a ticked step, first word once its type tag is out (`- [x] #bug 2026-10-24 …`). */
 	doneOn?: string;
-	/** Status token carried by the step itself, replacing the Project's priority. */
-	override?: { priority: number; status: TaskStatus };
+	/** Priority token carried by the step itself, replacing the Project's priority. */
+	override?: Priority;
 	/** Line content when parsed, to check it is unchanged before writing. */
 	raw: string;
 	/** Indented lines under the step, as written (same rule as a Tag task's description). */
@@ -49,9 +47,8 @@ export type ProjectCardItem = {
 export type ProjectCard = {
 	id: string;
 	file: TFile;
-	priority: number;
-	/** `a_valider` for `priority: pr` (its column is to validate), else `priority`. */
-	status: TaskStatus;
+	/** `priority:` frontmatter, `pr` putting the card in the to validate column. */
+	priority: Priority;
 	/** Preview shown on the Project card. */
 	items: ProjectCardItem[];
 	/** Open steps carrying their own token, shown as their own cards. */

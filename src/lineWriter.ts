@@ -1,5 +1,6 @@
 import { splitBlockId } from "./blockId";
-import { DAY_SOURCE, readTypeTag, STATUS_TOKEN_SOURCE, TYPE_TAG_SOURCE } from "./taskParser";
+import type { Priority } from "./remote/api";
+import { DAY_SOURCE, readTypeTag, PRIORITY_TOKEN_SOURCE, TYPE_TAG_SOURCE } from "./taskParser";
 
 /** What the kanban knew about a line when it was loaded; with a block ID, the line is found by it alone. */
 export type LineRef = { line: number; raw: string; blockId?: string };
@@ -9,11 +10,11 @@ export const LineRef = {
 	byId: (blockId: string): LineRef => ({ line: -1, raw: "", blockId }),
 };
 
-/** A Task line's status token: `p0` (En cours) to `p5`, or `pr` (À valider). */
-export type StatusToken = "p0" | "p1" | "p2" | "p3" | "p4" | "p5" | "pr";
+/** A Task line's Priority token: `p0` (En ce moment) to `p5`, or `pr` (À valider). */
+export type PriorityToken = "p0" | "p1" | "p2" | "p3" | "p4" | "p5" | "pr";
 
 /** The token of a Priority: `pr` for PR, else `p<n>` (0–5). */
-export const priorityToken = (priority: number | "pr"): StatusToken => (priority === "pr" ? "pr" : (`p${priority}` as StatusToken));
+export const priorityToken = (priority: Priority): PriorityToken => (priority === "pr" ? "pr" : (`p${priority}` as PriorityToken));
 
 export type WriteResult =
 	| { ok: true; content: string }
@@ -83,15 +84,15 @@ function rewriteLine(content: string, ref: LineRef, rewrite: (line: string) => s
 	return { ok: true, content: lines.join("\n") };
 }
 
-const TAG_AND_TOKEN = new RegExp(`^#\\S+(\\s+(${STATUS_TOKEN_SOURCE})(?=\\s|$))?\\s*`);
+const TAG_AND_TOKEN = new RegExp(`^#\\S+(\\s+(${PRIORITY_TOKEN_SOURCE})(?=\\s|$))?\\s*`);
 /** Checkbox and type tag of a Project step (group 1, kept), then its token (dropped). */
 const CHECKBOX_AND_TOKEN = new RegExp(
-	`^(- \\[[ xX]\\] (?:${TYPE_TAG_SOURCE} )?)(?:(?:${STATUS_TOKEN_SOURCE})(?: |$))?`,
+	`^(- \\[[ xX]\\] (?:${TYPE_TAG_SOURCE} )?)(?:(?:${PRIORITY_TOKEN_SOURCE})(?: |$))?`,
 );
 
 /** Checkbox of a Project step, its type tag (group 1, kept), then its token and done date (dropped). */
 const STEP_HEAD = new RegExp(
-	`^- \\[[ xX]\\] ((?:${TYPE_TAG_SOURCE} )?)(?:(?:${STATUS_TOKEN_SOURCE})(?: |$))?(?:${DAY_SOURCE}(?: |$))?`,
+	`^- \\[[ xX]\\] ((?:${TYPE_TAG_SOURCE} )?)(?:(?:${PRIORITY_TOKEN_SOURCE})(?: |$))?(?:${DAY_SOURCE}(?: |$))?`,
 );
 
 /** Checkbox of a Project step. */
@@ -119,13 +120,13 @@ export function rewriteTaskTag(content: string, ref: LineRef, newTag: string): W
 	});
 }
 
-/** Sets (or with null removes) the status token of a Project step, keeping its type tag, text and block ID. */
-export function rewriteStepToken(content: string, ref: LineRef, token: StatusToken | null): WriteResult {
+/** Sets (or with null removes) the Priority token of a Project step, keeping its type tag, text and block ID. */
+export function rewriteStepToken(content: string, ref: LineRef, token: PriorityToken | null): WriteResult {
 	return rewriteLine(content, ref, (line) => withStepToken(line, token));
 }
 
 /** The step line with `token` (none if null) after its checkbox and type tag; null if not a checkbox line. */
-function withStepToken(line: string, token: StatusToken | null): string | null {
+function withStepToken(line: string, token: PriorityToken | null): string | null {
 	const step = withTypeTagFirst(line);
 	const match = step.match(CHECKBOX_AND_TOKEN);
 	if (!match) return null;
@@ -153,12 +154,12 @@ export function markDone(content: string, ref: LineRef, step: boolean, date: str
 }
 
 /**
- * Sets the status token of a Task line found by `ref`, whatever its kind: after
+ * Sets the Priority token of a Task line found by `ref`, whatever its kind: after
  * the tag of a Tag task (`#task p3 x` → `#task p1 x`), after the checkbox of a
  * Project step and its type tag (adding one to an inheriting step makes it an
  * Override); null removes it from a step. Title and block ID are kept.
  */
-export function setTaskToken(content: string, ref: LineRef, token: StatusToken | null): WriteResult {
+export function setTaskToken(content: string, ref: LineRef, token: PriorityToken | null): WriteResult {
 	return rewriteLine(content, ref, (line) => {
 		const step = withStepToken(line, token);
 		if (step !== null) return step;

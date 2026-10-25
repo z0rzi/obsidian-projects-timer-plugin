@@ -26,7 +26,7 @@ describe("extractCheckboxItems", () => {
 			checked: false,
 			type: "task",
 			blockId: "t91c2",
-			override: { priority: 1, status: "priority" },
+			override: 1,
 			raw: "- [ ] p1 fix the x axis ^t91c2",
 			body: "",
 		});
@@ -36,8 +36,8 @@ describe("extractCheckboxItems", () => {
 		const items = extractCheckboxItems(["- [ ] p0 En cours", "- [ ] pr Export CSV"], 0, 2);
 
 		expect(items.map((i) => i.override)).toEqual([
-			{ priority: 0, status: "priority" },
-			{ priority: 1, status: "a_valider" },
+			0,
+			"pr",
 		]);
 		expect(items.map((i) => i.text)).toEqual(["En cours", "Export CSV"]);
 	});
@@ -49,10 +49,10 @@ describe("extractCheckboxItems", () => {
 			5,
 		);
 
-		expect(items.map((i) => [i.type, i.override?.priority ?? null, i.text])).toEqual([
+		expect(items.map((i) => [i.type, i.override ?? null, i.text])).toEqual([
 			["bug", 2, "Axe faux"],
 			["quick", null, "Relire"],
-			["wait", 1, "Retour JMJ"],
+			["wait", "pr", "Retour JMJ"],
 			["task", null, "Écrire"],
 			["task", null, "#done Pas un type"],
 		]);
@@ -65,12 +65,12 @@ describe("extractCheckboxItems", () => {
 			5,
 		);
 
-		expect(items.map((i) => [i.type, i.override?.priority ?? null, i.override?.status ?? null, i.text])).toEqual([
-			["bug", 1, "a_valider", "Do this"],
-			["bug", 1, "a_valider", "Do this"],
-			["bug", null, null, "Do this p2"],
-			["wait", 1, "priority", "Do this #bug"],
-			["task", null, null, "Do this#bug"],
+		expect(items.map((i) => [i.type, i.override ?? null, i.text])).toEqual([
+			["bug", "pr", "Do this"],
+			["bug", "pr", "Do this"],
+			["bug", null, "Do this p2"],
+			["wait", 1, "Do this #bug"],
+			["task", null, "Do this#bug"],
 		]);
 	});
 
@@ -109,7 +109,7 @@ describe("parseProjectCard Overrides", () => {
 		const card = parseProjectCard({ file, content: content(["- [ ] p1 Titre", "- [ ] Sans token"]) })!;
 
 		expect(card.overrides.map((i) => [i.text, i.override])).toEqual([
-			["Titre", { priority: 1, status: "priority" }],
+			["Titre", 1],
 		]);
 		expect(card.items.map((i) => i.text)).toEqual(["Titre", "Sans token"]);
 	});
@@ -134,5 +134,14 @@ describe("parseProjectCard Overrides", () => {
 
 		expect(card.items).toHaveLength(3);
 		expect(card.overrides.map((i) => i.text)).toEqual(["Cinquième"]);
+	});
+});
+
+describe("parseProjectCard Priority", () => {
+	const file = { path: "2.projects/Heatmap.md", basename: "Heatmap" } as TFile;
+	const priorityOf = (value: string) => parseProjectCard({ file, content: `---\npriority: ${value}\n---\n` })?.priority ?? null;
+
+	it("carries the Project's Priority, pr in any case, and no card without a valid one", () => {
+		expect(["3", "0", "pr", "PR", "Pr", "haute"].map(priorityOf)).toEqual([3, 0, "pr", "pr", "pr", null]);
 	});
 });

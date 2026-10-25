@@ -3,7 +3,7 @@ import type { TicketUrgency } from "../remote/api";
 import { contextText, insertIntoText, type TicketContext } from "../inbox/inboxStore";
 import { defaultPriority, defaultTag, TRIAGE_TAGS, URGENCIES, type TriageChoice } from "../inbox/triage";
 
-const PRIORITIES = [0, 1, 2, 3, 4, 5];
+const PRIORITIES = [0, 1, 2, 3, 4, 5] as const;
 
 const INHERIT = "inherit";
 
@@ -39,7 +39,7 @@ export class TriageModal extends Modal {
 			if (this.item.step) d.addOption(INHERIT, "hériter du projet");
 			for (const p of PRIORITIES) d.addOption(String(p), p === 0 ? "p0 (doing now)" : `p${p}`);
 			d.setValue(String(this.choice.priority ?? INHERIT)).onChange(
-				(v) => (this.choice.priority = v === INHERIT ? null : Number(v)),
+				(v) => (this.choice.priority = PRIORITIES.find((p) => String(p) === v) ?? null),
 			);
 		});
 		new Setting(contentEl).addButton((b) =>

@@ -2,7 +2,7 @@ import type { TFile } from "obsidian";
 import { splitBlockId } from "../blockId";
 import { extractCheckboxItems, findTasksHeadingSection } from "../projectCards";
 import type { Priority, PushedTaskType } from "../remote/api";
-import { parseTasks, readIndentedBody, type StatusToken } from "../taskParser";
+import { parseTasks, readIndentedBody } from "../taskParser";
 
 /**
  * What the Client app sees of one Task line and its indented body (shared as
@@ -35,10 +35,9 @@ export interface LocalTask {
 const PRIVATE = /(^|\s)#private(\s|$)/;
 const DONE_LINE = /^#done(?=\s|$)(?:\s+(\d{4}-\d{2}-\d{2})(?=\s|$))?\s*(.*)$/;
 
-/** The Priority a status token gives an open line; no token = none (a step inherits). */
-function fromToken(token: StatusToken | null | undefined): Pick<LocalTask, "priority" | "done"> {
-	if (!token) return { priority: null, done: false };
-	return { priority: token.status === "a_valider" ? "pr" : (token.priority as Priority), done: false };
+/** An open line at the Priority of its token; no token = none (a step inherits). */
+function fromToken(priority: Priority | undefined): Pick<LocalTask, "priority" | "done"> {
+	return { priority: priority ?? null, done: false };
 }
 
 const TAB_WIDTH = 4;
@@ -81,7 +80,7 @@ export function readTagTasks(path: string, content: string, projectPath: string 
 	const out: LocalTask[] = [];
 	for (const t of parseTasks(lines, { path } as TFile, null)) {
 		if (PRIVATE.test(t.raw)) continue;
-		const mapped = fromToken({ priority: t.priority, status: t.status });
+		const mapped = fromToken(t.priority);
 		out.push({
 			path,
 			line: t.line,

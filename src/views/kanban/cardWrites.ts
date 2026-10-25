@@ -4,9 +4,10 @@ import {
 	rewriteStepToken,
 	rewriteTaskTag,
 	setStepDone,
-	type StatusToken,
+	type PriorityToken,
 	type WriteResult,
 } from "../../lineWriter";
+import type { Priority } from "../../remote/api";
 import type { ProjectCard, ProjectCardItem, Task } from "../../types";
 import { vaultFiles } from "../../sync/vaultFiles";
 import { localDay } from "../../localDate";
@@ -23,7 +24,7 @@ export class CardWrites {
 		return this.line(task.file, "Failed to update task tag", (content) => rewriteTaskTag(content, task, newTag));
 	}
 
-	stepToken(file: TFile, item: ProjectCardItem, token: StatusToken | null): Promise<boolean> {
+	stepToken(file: TFile, item: ProjectCardItem, token: PriorityToken | null): Promise<boolean> {
 		return this.line(file, "Failed to update project step", (content) => rewriteStepToken(content, item, token));
 	}
 
@@ -36,7 +37,7 @@ export class CardWrites {
 	}
 
 	/** Sets the Project's `priority:` (0–5, or `pr` for the to validate column). */
-	async projectPriority(card: ProjectCard, priority: number | "pr"): Promise<boolean> {
+	async projectPriority(card: ProjectCard, priority: Priority): Promise<boolean> {
 		try {
 			await this.app.fileManager.processFrontMatter(card.file, (fm: Record<string, unknown>) => {
 				fm.priority = priority;

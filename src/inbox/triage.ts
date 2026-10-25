@@ -1,10 +1,13 @@
-import type { TaskStateFields, TicketUrgency, TriageTaskType } from "../remote/api";
+import type { Priority, TaskStateFields, TicketUrgency, TriageTaskType } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import { deindent } from "../sync/sharedTask";
 import { priorityToken } from "../lineWriter";
 import { readIndentedBody } from "../taskParser";
 import { descriptionForVault, type AppDescriptionDeps } from "./appDescription";
 import { findTasksHeadingSection } from "../projectCards";
+
+/** A Priority Triage may set: PR is never set by Triage. */
+type TriagePriority = Exclude<Priority, "pr">;
 
 /** Tags "Insérer ici" offers, as the vault writes them. */
 export const TRIAGE_TAGS: { type: TriageTaskType; label: string }[] = [
@@ -20,7 +23,7 @@ export function defaultTag(type: string): TriageTaskType {
 }
 
 /** The Urgency as the Client answered it, and the Priority it suggests at Triage (P0 stays the Developer's choice). */
-export const URGENCIES: Record<TicketUrgency, { label: string; priority: number }> = {
+export const URGENCIES: Record<TicketUrgency, { label: string; priority: TriagePriority }> = {
 	bloquant: { label: "Bloquant", priority: 1 },
 	genant: { label: "Gênant", priority: 2 },
 	quand_possible: { label: "Quand vous pourrez", priority: 3 },
@@ -30,15 +33,15 @@ export const URGENCIES: Record<TicketUrgency, { label: string; priority: number 
  * Priority the dialog proposes first: the one the Client's Urgency suggests,
  * else p3, or the Project's (null) for a Project step.
  */
-export function defaultPriority(step: boolean, urgency: TicketUrgency | null | undefined): number | null {
+export function defaultPriority(step: boolean, urgency: TicketUrgency | null | undefined): TriagePriority | null {
 	if (urgency) return URGENCIES[urgency].priority;
 	return step ? null : 3;
 }
 
 export interface TriageChoice {
 	type: TriageTaskType;
-	/** 0 (En cours) to 5; null = inherit the Project's (Project step only). */
-	priority: number | null;
+	/** 0 (En ce moment) to 5; null = inherit the Project's (Project step only). */
+	priority: TriagePriority | null;
 }
 
 export interface TriageDeps extends AppDescriptionDeps {

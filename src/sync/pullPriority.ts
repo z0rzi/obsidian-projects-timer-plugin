@@ -5,7 +5,7 @@ import type { VaultFiles } from "./runPull";
 
 /**
  * Writes an app priority into the vault: `priority:` frontmatter of a Project,
- * the status token of a Task line found by its block ID (an inheriting
+ * the Priority token of a Task line found by its block ID (an inheriting
  * Project step gains the token and becomes an Override; null removes it).
  */
 export async function writeRemotePriority(

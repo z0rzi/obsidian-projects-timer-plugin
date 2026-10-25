@@ -41,19 +41,18 @@ describe("parseTasks status token", () => {
 
 	it("reads pr as awaiting validation", () => {
 		const task = parseOne("#task pr Titre");
-		expect(task.status).toBe("a_valider");
+		expect(task.priority).toBe("pr");
 		expect(task.title).toBe("Titre");
 	});
 
 	it("does not read an uppercase PR as awaiting validation", () => {
 		const task = parseOne("#task PR de refacto");
-		expect(task.status).toBe("priority");
 		expect(task.priority).toBe(1);
 		expect(task.title).toBe("PR de refacto");
 	});
 
-	it("marks priority-token tasks with the priority status", () => {
-		expect(parseOne("#task p3 Titre").status).toBe("priority");
+	it("reads a priority token as its Priority", () => {
+		expect(parseOne("#task p3 Titre").priority).toBe(3);
 	});
 });
 
@@ -100,7 +99,7 @@ describe("parseTasks block ID", () => {
 		const task = parseOne("#task pr Export CSV ^t04be");
 		expect(task.title).toBe("Export CSV");
 		expect(task.blockId).toBe("t04be");
-		expect(task.status).toBe("a_valider");
+		expect(task.priority).toBe("pr");
 		expect(task.raw).toBe("#task pr Export CSV ^t04be");
 	});
 });
