@@ -76,7 +76,7 @@ describe.skipIf(!url || !token)("Push against a running Suivi", () => {
 
 		files.set(path, files.get(path)!.replace("priority: 2", "priority: 1"));
 		const second = await plan();
-		expect(second).toMatchObject([{ group: "changed", diffs: [{ field: "priority", from: 2, to: 1 }] }]);
+		expect(second).toMatchObject([{ group: "changed", diffs: [{ field: "priority", from: "P2", to: "P1" }] }]);
 		expect(await runPush(second, deps)).toEqual({ applied: 1, failed: [] });
 
 		const rejected = await remote.push([{ op: "update", kind: "project", id: id!, fields: { created_by: "x" } as never }]);

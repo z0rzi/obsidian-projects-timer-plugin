@@ -65,7 +65,7 @@ describe("runPush", () => {
 
 		expect(w.app.received.at(-1)).toMatchObject([{ op: "update", kind: "project", fields: { priority: 1 }, expected: { priority: 2 } }]);
 		expect(await w.plan()).toMatchObject([
-			{ group: "changed", title: "B", diffs: [{ field: "priority", from: 2, to: "pr" }] },
+			{ group: "changed", title: "B", diffs: [{ field: "priority", from: "P2", to: "À valider" }] },
 		]);
 	});
 
@@ -144,7 +144,7 @@ describe("runPush: due_date", () => {
 			w.files.set("2.projects/Widget.md", w.files.get("2.projects/Widget.md")!.replace(from, to));
 
 		edit("priority: 2", "priority: 2\ndue_date: 2027-01");
-		expect(await w.plan()).toMatchObject([{ group: "changed", diffs: [{ field: "due_date", from: null, to: "2027-01" }] }]);
+		expect(await w.plan()).toMatchObject([{ group: "changed", diffs: [{ field: "due_date", from: "(none)", to: "2027-01" }] }]);
 		await w.push();
 		edit("due_date: 2027-01", "due_date: 2027-02");
 		await w.push();

@@ -1,7 +1,5 @@
 import { App, Modal, Setting } from "obsidian";
-import type { Priority } from "../remote/api";
 import type { Conflict } from "../sync/compareState";
-import { itemLabel } from "../sync/itemLabel";
 import type { PendingConflict } from "../sync/conflicts";
 import type { PendingChange } from "../sync/pushPlan";
 import { conflictButtons } from "../views/inboxPinned";
@@ -16,18 +14,6 @@ const GROUPS: { group: PendingChange["group"]; heading: string }[] = [
 
 /** Never-pushed done lines without a date, listed apart in a collapsed group. */
 const isUndated = (c: PendingChange) => c.group === "new" && "undated" in c && c.undated === true;
-
-/** A Project field value as the modal shows it; Priority and Done read as the app's words. */
-function show(field: string, value: string | number | boolean | null): string {
-	if (field === "due_date") return value === null ? "(none)" : String(value);
-	if (field === "done") return value ? "Livré" : "Ouvert";
-	if (field === "priority") return itemLabel("project", { priority: value as Priority | null, done: false });
-	if (field === "description") {
-		const s = String(value).replace(/\s+/g, " ").trim();
-		return s ? `“${s.length > 60 ? `${s.slice(0, 60)}…` : s}”` : "(empty)";
-	}
-	return String(value);
-}
 
 /**
  * Lists pending changes grouped new / restored / changed (old → new) /
@@ -112,13 +98,7 @@ export class PushModal extends Modal {
 		const desc = setting.descEl;
 		if ("detail" in change) desc.createDiv({ text: change.detail });
 		if (change.group === "changed") {
-			for (const d of change.diffs) {
-				// Task diffs come ready to show.
-				const text = isTask
-					? `${d.field}: ${d.from} → ${d.to}`
-					: `${d.field}: ${show(d.field, d.from)} → ${show(d.field, d.to)}`;
-				desc.createDiv({ text });
-			}
+			for (const d of change.diffs) desc.createDiv({ text: `${d.field}: ${d.from} → ${d.to}` });
 		}
 	}
 

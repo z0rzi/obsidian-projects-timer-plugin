@@ -59,7 +59,7 @@ describe("planProjectPush", () => {
 				fields: now.fields,
 				diffs: [
 					{ field: "title", from: "Widget", to: "Widget été" },
-					{ field: "priority", from: 2, to: "pr" },
+					{ field: "priority", from: "P2", to: "À valider" },
 				],
 				change: {
 					op: "update",
@@ -105,7 +105,7 @@ describe("planProjectPush", () => {
 		const app = appWith({ t7f3a: { path: "2.projects/Widget.md", fields } });
 
 		expect(planProjectPush([local({ suiviId: "t7f3a", fields: { priority: null, done: true } })], app)).toMatchObject([
-			{ diffs: [{ field: "done", from: false, to: true }], change: { fields: { done: true }, expected: { done: false } } },
+			{ diffs: [{ field: "done", from: "P2", to: "Livré" }], change: { fields: { done: true }, expected: { done: false } } },
 		]);
 	});
 
@@ -114,7 +114,10 @@ describe("planProjectPush", () => {
 		app.projects.t7f3a!.current = { ...fields, priority: null, done: true };
 
 		expect(planProjectPush([local({ suiviId: "t7f3a" })], app)).toMatchObject([
-			{ change: { fields: { priority: 2, done: false }, expected: { priority: null, done: true } } },
+			{
+				diffs: [{ field: "done", from: "Livré", to: "P2" }],
+				change: { fields: { priority: 2, done: false }, expected: { priority: null, done: true } },
+			},
 		]);
 	});
 });
