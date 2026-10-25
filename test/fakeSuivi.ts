@@ -48,6 +48,9 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 			const id = c.id ?? `ap${String(next++).padStart(3, "0")}`;
 			const fields = { ...(c.kind === "task" ? { done_on: null } : {}), ...c.fields, ...(c.fields.done ? { priority: null } : {}) } as Record<string, unknown>;
 			if (c.kind === "project" && !fields.done && fields.priority == null) return { ok: false, error: "Un projet ouvert a besoin d'une priorité" };
+			if (c.kind === "task" && !fields.done && fields.priority == null && fields.project_id == null) {
+				return { ok: false, error: "Une tâche ouverte hors projet a besoin d'une priorité" };
+			}
 			const now = held.get(id);
 			if (now && (now.kind !== c.kind || Object.entries(c.fields).some(([k, v]) => now.fields[k] !== v))) {
 				return { ok: false, error: `Id ${id} déjà pris` };
@@ -67,7 +70,7 @@ export function fakeSuivi(items: ItemState[] = [], refuse: (c: PushChange) => st
 		const done = c.fields.done ?? now.fields.done;
 		const priority = done ? null : c.fields.priority !== undefined ? c.fields.priority : now.fields.done ? null : now.fields.priority;
 		const projectId = "project_id" in c.fields ? c.fields.project_id : now.fields.project_id;
-		if (!done && priority == null && (c.kind === "project" || (now.fields.done && projectId === null))) {
+		if (!done && priority == null && (c.kind === "project" || projectId === null)) {
 			return { ok: false, error: "Une priorité est requise" };
 		}
 		if (done !== now.fields.done || priority !== now.fields.priority) now.answer = null;

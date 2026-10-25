@@ -76,8 +76,9 @@ export interface TaskFields {
   /**
    * Null = inherit the Project's Priority, PR included (a Project step
    * without token). Null once Done: Done work has no Priority, and one pushed
-   * with Done is not kept. A Push reopening a Task outside any Project
-   * (`project_id` null) sends one; a Task in a Project may inherit.
+   * with Done is not kept. An open Task outside any Project (`project_id`
+   * null) has one: a Push creating, reopening or moving it out of its Project
+   * sends one, and can't clear it; a Task in a Project may inherit.
    */
   priority: Priority | null;
   /** App id of the Project, null for a standalone Task. */
