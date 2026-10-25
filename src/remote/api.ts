@@ -51,7 +51,7 @@ export interface ProjectFields {
 
 /**
  * Task type codes; the app shows them as Tâche, Bug, Rapide, En attente,
- * Amélioration, Idée. The last two only come from the Client. A Project step
+ * Amélioration, Idée. The last two only come from Nouvelle demande (Client or Developer). A Project step
  * is not a type but the `step` flag: a step has a type like any Task.
  */
 export const TASK_TYPES = ["task", "bug", "quick", "wait", "amelioration", "idea"] as const;
@@ -325,9 +325,9 @@ export interface InboxNotification {
 }
 
 /**
- * An Inbox À trier entry: an item the Client proposed that waits for Triage
+ * An Inbox À trier entry: an item the Client or the Developer proposed that waits for Triage
  * (not Triaged yet, no Priority): Bug and Amélioration Tickets (triaged as a Task) and
- * Ideas the Client launched (`type: "idea"`, triaged as a Project). It leaves
+ * launched Ideas (`type: "idea"`, triaged as a Project). It leaves
  * the list once triaged, so there is nothing to mark read.
  */
 export interface InboxTicket {
@@ -347,7 +347,7 @@ export interface InboxTicket {
    * question existed.
    */
   urgency: TicketUrgency | null;
-  /** The Project the Client thinks it concerns (a suggestion; Triage decides). Null: « Je ne sais pas », or an Idea. */
+  /** The Project its author thinks it concerns (a suggestion; Triage decides). Null: « Je ne sais pas », or an Idea. */
   project_id: string | null;
 }
 
@@ -493,7 +493,7 @@ interface ItemStateCommon {
   archived: boolean;
   /**
    * Triaged or pushed: a vault note should carry it. False for a Ticket or an
-   * Idea not Triaged yet (still with the Client, or in the Inbox's to_triage).
+   * Idea not Triaged yet (still in the Demandes, or in the Inbox's to_triage).
    */
   triaged: boolean;
   /** Null when the Priority or Done doesn't come from an Answer, or that Answer was acknowledged. */
