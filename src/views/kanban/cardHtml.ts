@@ -52,7 +52,7 @@ export function cardHtml(id: string, title: string, description: string, type: T
 		${typeLabelHtml(type)}
 		<span>${highlightedTitle}</span>
 		<br>
-		<small>${escapeHtml(description).replace(/\n/g, "<br/>")}</small>
+		<small class="kanban-card-desc">${escapeHtml(description).replace(/\n/g, "<br/>")}</small>
 		<span class="kanban-card-actions">
 			<span class="kanban-done-btn" data-task-id="${escapeHtml(id)}">${DONE_ICON}</span>
 			<span class="kanban-play-btn" data-task-id="${escapeHtml(id)}">${PLAY_ICON}</span>
@@ -78,7 +78,7 @@ export function overrideCardHtml(card: ProjectCard, item: ProjectCardItem, badge
 		${badgeHtml(badgeOf(badges, item.blockId))}
 		${typeLabelHtml(item.type)}
 		${stepItemHtml(card, item, "", false)}
-		<small>${escapeHtml(item.body.trim()).replace(/\n/g, "<br/>")}</small>
+		<small class="kanban-card-desc">${escapeHtml(item.body.trim()).replace(/\n/g, "<br/>")}</small>
 		<small style="color: var(--text-faint)">${escapeHtml(card.file.basename)}</small>
 		`;
 }

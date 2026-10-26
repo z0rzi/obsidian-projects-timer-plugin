@@ -109,6 +109,15 @@
 	margin-top: 4px;
 }
 
+/* A long body is cut after a few lines; the full text stays in the note */
+.tasks-kanban-view-container .kanban-item small.kanban-card-desc {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 6;
+	line-clamp: 6;
+	overflow: hidden;
+}
+
 /* Title of the card */
 .tasks-kanban-view-container .kanban-item span { 
 	color: var(--text-normal, #e0e0e0); 
