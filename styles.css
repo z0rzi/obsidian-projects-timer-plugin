@@ -324,7 +324,7 @@
 .suivi-deck [data-urgency="genant"] { --urgency-color: var(--suivi-genant); --urgency-text: var(--text-on-accent); }
 .suivi-deck [data-urgency="plus_tard"] { --urgency-color: var(--suivi-plus-tard); --urgency-text: var(--text-muted); }
 
-/* Layout: the strip, the Ticket (left, scrolling on its own) and its fields (right), the legend; never scrolled away */
+/* Layout: the strip, the Ticket (left, scrolling on its own) and its fields (right), the legend right under them; never scrolled away */
 .suivi-deck {
 	container: suivi-deck / inline-size;
 	display: flex;
@@ -337,7 +337,7 @@
 }
 
 .suivi-deck-body {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
 	min-height: 0;
 	display: flex;
 	gap: 24px;
@@ -377,7 +377,7 @@
 
 .suivi-deck-legend {
 	border-top: 1px solid var(--background-modifier-border);
-	margin-top: 16px;
+	margin-top: 32px;
 	padding-top: 8px;
 	display: flex;
 	flex-wrap: wrap;

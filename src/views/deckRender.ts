@@ -180,7 +180,7 @@ export function fieldRows(state: DeckState): DeckFieldRow[] {
 	return DECK_FIELDS.map((field) => ({ field, label: FIELD_LABELS[field], current: field === state.field, ...rows[field] }));
 }
 
-/** The Ticket's legend at the bottom, one line: moves and actions; the type and Priority keys are on their chips, `p` and `o` on their rows. */
+/** The Ticket's legend under the content, one line: moves and actions; the type and Priority keys are on their chips, `p` and `o` on their rows. */
 export const DECK_LEGEND: { keys: DeckKey[]; label: string }[] = [
 	{ keys: ["j", "k"], label: "champ" },
 	{ keys: ["h", "l"], label: "valeur" },

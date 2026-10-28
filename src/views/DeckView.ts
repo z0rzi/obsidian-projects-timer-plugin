@@ -54,7 +54,7 @@ export interface DeckViewDeps extends CommitDeps {
  * Ticket, scrolling on its own: title and urgency badge, who sent it and when,
  * the description, its images as thumbnails (full size on a click); right,
  * the rows of the line, each chip with its key, the Client's marked, and the
- * card's recorded decision; bottom, the keys. The day's first session opens
+ * card's recorded decision; under them, the keys. The day's first session opens
  * on the Sweep list, full width: its lines by note, the focused one open in
  * its note (read once per note when the list opens), its own legend. Past the
  * last card, the end screen lists the decisions; « Tout écrire » writes them
