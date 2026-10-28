@@ -3,11 +3,16 @@ import type { ProjectCard, ProjectCardItem, TaskTagLabel } from "../../types";
 const PLAY_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
 const DONE_ICON = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
 
+/** Zzz button of a card's hover actions: writes `pz` on its line or frontmatter. `data` = its data attributes. */
+function zzzButtonHtml(data: string): string {
+	return `<span class="kanban-zzz-btn" ${data} aria-label="Mettre au frigo">Zzz</span>`;
+}
+
 /** Marker on a Project card's step line whose item has unread Inbox entries; styled in styles.css. */
 const UNREAD_DOT = '<span class="suivi-unread-dot" aria-label="Unread Inbox entries"></span>';
 
 /** Card label per type; a plain task has none. */
-const TYPE_LABELS: Partial<Record<TaskTagLabel, string>> = { bug: "BUG", quick: "RAPIDE", wait: "ATTENTE" };
+const TYPE_LABELS: Partial<Record<TaskTagLabel, string>> = { bug: "BUG", quick: "RAPIDE", wait: "ATTENTE", idea: "IDÉE" };
 
 /** Small type label in the type's colour (styles.css), empty for a task. */
 function typeLabelHtml(type: TaskTagLabel): string {
@@ -41,7 +46,7 @@ export function badgeOf(badges: Map<string, string>, itemId: string | undefined)
 	return itemId && text ? { itemId, text } : undefined;
 }
 
-/** Card of a Tag task: unread badge, type label, title (`[x]` highlighted), body, done and play buttons. */
+/** Card of a Tag task: unread badge, type label, title (`[x]` highlighted), body, Zzz, done and play buttons. */
 export function cardHtml(id: string, title: string, description: string, type: TaskTagLabel, badge?: CardBadge): string {
 	const highlightedTitle = escapeHtml(title).replace(
 		/\[(.+?)\]/g,
@@ -54,6 +59,7 @@ export function cardHtml(id: string, title: string, description: string, type: T
 		<br>
 		<small class="kanban-card-desc">${escapeHtml(description).replace(/\n/g, "<br/>")}</small>
 		<span class="kanban-card-actions">
+			${zzzButtonHtml(`data-task-id="${escapeHtml(id)}"`)}
 			<span class="kanban-done-btn" data-task-id="${escapeHtml(id)}">${DONE_ICON}</span>
 			<span class="kanban-play-btn" data-task-id="${escapeHtml(id)}">${PLAY_ICON}</span>
 		</span>
@@ -72,7 +78,7 @@ function stepItemHtml(card: ProjectCard, item: ProjectCardItem, extraClass: stri
 	`;
 }
 
-/** Card of an Override: unread badge, type label, the step itself, its body, with its Project's name. */
+/** Card of an Override: unread badge, type label, the step itself, its body, with its Project's name; Zzz on hover. */
 export function overrideCardHtml(card: ProjectCard, item: ProjectCardItem, badges: Map<string, string>): string {
 	return `
 		${badgeHtml(badgeOf(badges, item.blockId))}
@@ -80,6 +86,9 @@ export function overrideCardHtml(card: ProjectCard, item: ProjectCardItem, badge
 		${stepItemHtml(card, item, "", false)}
 		<small class="kanban-card-desc">${escapeHtml(item.body.trim()).replace(/\n/g, "<br/>")}</small>
 		<small style="color: var(--text-faint)">${escapeHtml(card.file.basename)}</small>
+		<span class="kanban-card-actions">
+			${zzzButtonHtml(`data-project-id="${escapeHtml(card.id)}" data-line="${item.line}"`)}
+		</span>
 		`;
 }
 
@@ -95,6 +104,7 @@ export function projectCardHtml(card: ProjectCard, badges: Map<string, string>, 
 		<span style="font-weight: bold;">${escapeHtml(card.file.basename)}</span>
 		${itemsHtml}
 		<span class="kanban-card-actions">
+			${zzzButtonHtml(`data-project-id="${escapeHtml(card.id)}"`)}
 			<span class="kanban-play-btn" data-project-id="${escapeHtml(card.id)}">${PLAY_ICON}</span>
 		</span>
 		`;

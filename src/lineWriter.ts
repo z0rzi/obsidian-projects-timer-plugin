@@ -10,11 +10,15 @@ export const LineRef = {
 	byId: (blockId: string): LineRef => ({ line: -1, raw: "", blockId }),
 };
 
-/** A Task line's Priority token: `p0` (En ce moment) to `p5`, or `pr` (À valider). */
-export type PriorityToken = "p0" | "p1" | "p2" | "p3" | "p4" | "p5" | "pr";
+/** A Task line's Priority token: `p0` (En ce moment) to `p5`, `pr` (À valider) or `pz` (En hibernation). */
+export type PriorityToken = "p0" | "p1" | "p2" | "p3" | "p4" | "p5" | "pr" | "pz";
 
-/** The token of a Priority: `pr` for PR, else `p<n>` (0–5). */
-export const priorityToken = (priority: Priority): PriorityToken => (priority === "pr" ? "pr" : (`p${priority}` as PriorityToken));
+/** The token of a Priority: `pr` for PR, `pz` for PZ, else `p<n>` (0–5). Rapide (`pq`) has none. */
+export const priorityToken = (priority: Exclude<Priority, "pq">): PriorityToken =>
+	typeof priority === "number" ? (`p${priority}` as PriorityToken) : priority;
+
+/** The token a line at `priority` carries; null for Rapide, written as no token on a `#quick` Tag task. */
+export const lineToken = (priority: Priority): PriorityToken | null => (priority === "pq" ? null : priorityToken(priority));
 
 export type WriteResult =
 	| { ok: true; content: string }
@@ -167,6 +171,23 @@ export function setTaskToken(content: string, ref: LineRef, token: PriorityToken
 		if (!tag || token === null) return null;
 		const rest = line.replace(TAG_AND_TOKEN, "");
 		return rest ? `${tag} ${token} ${rest}` : `${tag} ${token}`;
+	});
+}
+
+/** A `#quick` Tag task line, its token (dropped) and the rest (group 1, kept). */
+const QUICK_AND_TOKEN = new RegExp(`^#quick(?=\\s|$)(?:\\s+(?:${PRIORITY_TOKEN_SOURCE})(?=\\s|$))?\\s*(.*)$`);
+
+/**
+ * Sets the Priority of a Task line found by `ref`: its token (`setTaskToken`;
+ * null = inherit, a step's token removed), or for Rapide (`pq`) no token on a
+ * `#quick` Tag task, the only line that can be Rapide.
+ */
+export function setTaskPriority(content: string, ref: LineRef, priority: Priority | null): WriteResult {
+	if (priority !== "pq") return setTaskToken(content, ref, priority === null ? null : priorityToken(priority));
+	return rewriteLine(content, ref, (line) => {
+		const match = line.match(QUICK_AND_TOKEN);
+		if (!match) return null;
+		return match[1] ? `#quick ${match[1]}` : "#quick";
 	});
 }
 

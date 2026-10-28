@@ -10,6 +10,7 @@ const projects: ProjectLinks = {
 	"2.projects/Widget.md": { id: "p0002", title: "Widget" },
 	"2.projects/Nouveau.md": { title: "Nouveau" },
 	"2.projects/Secret.md": { hidden: true, title: "Secret" },
+	"2.projects/Livré.md": { doneUnsent: true, title: "Livré" },
 };
 
 const task = (over: Partial<LocalTask> = {}): LocalTask => ({
@@ -46,6 +47,14 @@ describe("planTaskPush", () => {
 
 	it("never offers the Tasks of a hidden (prive) Project", () => {
 		expect(plan([task({ projectPath: "2.projects/Secret.md" })]).changes).toEqual([]);
+	});
+
+	it("refuses, on its line, a Task linked to a Done Project never sent", () => {
+		const held = { t7f3a: { path: "1.meetings/m.md", fields } };
+		const linked = task({ blockId: "t7f3a", title: "Widget saison v2", projectPath: "2.projects/Livré.md" });
+		expect(plan([linked], held).changes).toEqual([
+			{ group: "error", key: "error:1.meetings/m.md:3", path: "1.meetings/m.md", title: "Widget saison v2", error: "lié à un projet archivé jamais envoyé : Livré" },
+		]);
 	});
 
 	it("waits for a Project pushed in the same Push", () => {

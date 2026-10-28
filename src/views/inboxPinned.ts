@@ -1,4 +1,4 @@
-import { insertIntoText, type InboxEntry } from "../inbox/inboxStore";
+import type { InboxEntry } from "../inbox/inboxStore";
 import type { Conflict } from "../sync/compareState";
 import type { UnplacedItem } from "../sync/unplaced";
 
@@ -18,12 +18,6 @@ export interface UnplacedActions {
 
 /** What the buttons of the Inbox's pinned entries do. */
 export interface PinnedActions {
-	/** "Insérer ici" on an entry À trier. */
-	triage: (entry: InboxEntry) => void;
-	/** « Insérer dans <Projet> » on a Ticket À trier whose Project is in the vault. */
-	insertInto: (entry: InboxEntry) => void;
-	/** "Nouveau projet" on a launched Idea À trier. */
-	newProject: (entry: InboxEntry) => void;
 	/** A conflict's button. */
 	pick: (conflict: Conflict, choice: "mine" | "theirs") => void;
 	unplaced: UnplacedActions;
@@ -36,7 +30,7 @@ function insertButton(el: HTMLElement, label: string, onClick: () => void) {
 	insert.onclick = onClick;
 }
 
-/** The buttons of a Ticket À trier, an Unplaced item or a conflict, into its entry `el`. */
+/** The buttons of an Unplaced item or a conflict, into its entry `el`. */
 export function drawPinnedButtons(el: HTMLElement, entry: InboxEntry, actions: PinnedActions) {
 	const toCursor = "Écrire cette Tâche au curseur de la note ouverte";
 	const fromTemplate = "Créer la note du Projet depuis le modèle";
@@ -54,15 +48,5 @@ export function drawPinnedButtons(el: HTMLElement, entry: InboxEntry, actions: P
 		insertButton(el, item.kind === "project" ? fromTemplate : toCursor, () => actions.unplaced.insert(item));
 		el.createEl("button", { text: "Retirer de l'app", attr: { "aria-label": "Archiver dans l'app : le Client ne le voit plus" } }).onclick =
 			() => actions.unplaced.remove([item]);
-	} else if (entry.kind === "ticket" && entry.ticketType === "idea") {
-		el.createEl("button", { text: "Nouveau projet", attr: { "aria-label": fromTemplate } }).onclick = () => actions.newProject(entry);
-	} else if (entry.kind === "ticket") {
-		insertButton(el, toCursor, () => actions.triage(entry));
-		const project = entry.context?.project;
-		// A private Project is refused, as at the cursor.
-		if (project && !project.private) {
-			el.createEl("button", { text: insertIntoText(project.title), attr: { "aria-label": "Écrire cette Tâche en première étape du Projet" } }).onclick =
-				() => actions.insertInto(entry);
-		}
 	}
 }

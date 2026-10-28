@@ -1,93 +1,158 @@
-import type { Priority, TaskStateFields, TicketUrgency, TriageTaskType } from "../remote/api";
-import type { Remote } from "../remote/remote";
-import { deindent } from "../sync/sharedTask";
-import { priorityToken } from "../lineWriter";
+import type { TaskStateFields, TriagePriority, TriageTaskType } from "../remote/api";
+import { RemoteError, type Remote } from "../remote/remote";
+import { deindent, readTagTasks } from "../sync/sharedTask";
+import { lineToken } from "../lineWriter";
+import { appendToSection } from "../noteSections";
 import { readIndentedBody } from "../taskParser";
 import { descriptionForVault, type AppDescriptionDeps } from "./appDescription";
-import { findTasksHeadingSection } from "../projectCards";
+import { noteProject, projectOfLink, type ProjectRules } from "../sync/projectLink";
 
-/** A Priority Triage may set: PR is never set by Triage. */
-type TriagePriority = Exclude<Priority, "pr">;
-
-/** Tags "Insérer ici" offers, as the vault writes them. */
+/** Tags « Insérer ici » writes, as the vault writes them. */
 export const TRIAGE_TAGS: { type: TriageTaskType; label: string }[] = [
 	{ type: "task", label: "#task" },
 	{ type: "bug", label: "#bug" },
 	{ type: "quick", label: "#quick" },
 	{ type: "wait", label: "#wait" },
+	{ type: "idea", label: "#idea" },
 ];
 
-/** Tag the dialog proposes first for an item of the app's `type`. */
+/** Tag an Unplaced Task of the app's `type` is written with. */
 export function defaultTag(type: string): TriageTaskType {
 	return TRIAGE_TAGS.some((t) => t.type === type) ? (type as TriageTaskType) : "task";
 }
 
-/** The Urgency as the Client answered it, and the Priority it suggests at Triage (P0 stays the Developer's choice). */
-export const URGENCIES: Record<TicketUrgency, { label: string; priority: TriagePriority }> = {
-	bloquant: { label: "Bloquant", priority: 1 },
-	genant: { label: "Gênant", priority: 2 },
-	quand_possible: { label: "Quand vous pourrez", priority: 3 },
-};
-
-/**
- * Priority the dialog proposes first: the one the Client's Urgency suggests,
- * else p3, or the Project's (null) for a Project step.
- */
-export function defaultPriority(step: boolean, urgency: TicketUrgency | null | undefined): TriagePriority | null {
-	if (urgency) return URGENCIES[urgency].priority;
-	return step ? null : 3;
-}
-
 export interface TriageChoice {
 	type: TriageTaskType;
-	/** 0 (En ce moment) to 5; null = inherit the Project's (Project step only). */
-	priority: TriagePriority | null;
+	/** 0 (En ce moment) to 5, `pz` (the Frigo), or `pq` (Rapide, a `quick` only). */
+	priority: TriagePriority;
+	/** The Project note the Task belongs to (`id` null: not pushed yet), linked as its body's first line; null for none. */
+	project: { path: string; id: string | null } | null;
+	/** The Zone's id, null for none; absent: the one the Client suggested stays. */
+	zone?: number | null;
 }
 
 export interface TriageDeps extends AppDescriptionDeps {
 	remote: Pick<Remote, "triage" | "acknowledge">;
-	/**
-	 * The note the line goes into, its Project's app id (null = standalone) and whether the
-	 * line is a Project step (cursor in a Project note's Tasks section), or why there is none.
-	 */
-	target(): { path: string; projectId: string | null; step: boolean } | { error: string };
+	/** Path of today's Daily note, where the line goes. */
+	dailyNote: string;
+	/** The heading (`## Triage`) whose section the line ends. */
+	heading: string;
+	/** What a missing Daily note starts from: the plugin's template, "" for none. */
+	template(): Promise<string>;
+	/** Writes `edit` of the note at `path` (null: missing, it is created); returns the text written. */
+	write(path: string, edit: (content: string | null) => string): Promise<string>;
+	/** The link text Obsidian writes for note `path` from `sourcePath`: its name when unique, else its path. */
+	linkText(path: string, sourcePath: string): string;
+	/** How the Push resolves Project links, to read the line back as it will. */
+	projects: ProjectRules;
+}
+
+/** Where a cursor insert (« Insérer ici » on an Unplaced Task) goes: the note, and whether it is a Project step. */
+export interface CursorDeps extends AppDescriptionDeps {
+	remote: Pick<Remote, "acknowledge">;
+	/** The note the line goes into and whether the line is a Project step (cursor in a Project note's Tasks section), or why there is none. */
+	target(): { path: string; step: boolean } | { error: string };
 	/** Writes the line (and its body lines) at the cursor of that note; throws when it can't. */
 	insert(text: string): void | Promise<void>;
 }
 
-/** `missingImages`: app images left as app links because they couldn't be copied into the vault. */
-export type TriageResult = { ok: true; line: string; missingImages: number } | { ok: false; error: string };
+/**
+ * `missingImages`: app images left as app links because they couldn't be copied into the vault. `path`: the note
+ * written. `stale`: the app no longer has the item À trier as shown (409 or 404: withdrawn, edited or triaged meanwhile),
+ * nothing written.
+ * `triaged`: the app did triage it, the note or the base failed after.
+ */
+export type TriageResult =
+	| { ok: true; line: string; path: string; missingImages: number }
+	| { ok: false; error: string; stale?: true; triaged?: true };
+
+/** The app's answer for an item that is no longer À trier as shown: 409 (Triaged or edited meanwhile) or 404 (withdrawn: archived). */
+export function notToTriage(e: unknown): boolean {
+	return e instanceof RemoteError && (e.status === 409 || e.status === 404);
+}
 
 /**
- * "Insérer ici": the app turns the item into a Task first (the call most
- * likely to fail), then the Tag task line `#<type> p<n> <title> ^<id>` (or the
- * Project step `- [ ] #<type> p<n> <title> ^<id>`, no token when inheriting)
- * goes at the cursor with the Description as its body, and its base is sent
- * to the app as the vault reads it back, so the next Push sees no change. The
- * same app item stays: description and comments are kept.
+ * Triage: the app turns the item into a Task first (the call most likely to
+ * fail), then the Tag task line `#<type> p<n> <title> ^<id>` (no token for a
+ * Rapide) goes at the end of the `deps.heading` section of today's Daily
+ * note, with the Project's link as its body's first line and the Description
+ * below. Its base is sent to the app as the Push reads the note back, so the
+ * next Push sees no change. The same app item stays: description and comments
+ * are kept.
  */
 export async function runTriage(
-	item: { id: string; title: string },
+	item: { id: string; title: string; changed_at?: string },
 	choice: TriageChoice,
 	deps: TriageDeps,
 ): Promise<TriageResult> {
-	const target = deps.target();
-	if ("error" in target) return { ok: false, error: target.error };
 	let response;
 	try {
 		response = await deps.remote.triage(item.id, {
 			as: "task",
 			type: choice.type,
-			step: target.step,
 			priority: choice.priority,
-			project_id: target.projectId,
+			project_id: choice.project?.id ?? null,
+			...(choice.zone !== undefined ? { zone_id: choice.zone } : {}),
+			// The Ticket as shown: the app answers 409 when its author edited it since.
+			...(item.changed_at !== undefined ? { expected: item.changed_at } : {}),
 		});
 	} catch (e) {
-		return { ok: false, error: e instanceof Error ? e.message : String(e) };
+		return { ok: false, error: e instanceof Error ? e.message : String(e), ...(notToTriage(e) ? { stale: true as const } : {}) };
 	}
-	if (response.as === "project") return { ok: false, error: "L'app en a fait un Projet, pas une Tâche." };
-	const tagAndToken = choice.priority === null ? `#${choice.type}` : `#${choice.type} ${priorityToken(choice.priority)}`;
-	return writeTask(item, `${target.step ? "- [ ] " : ""}${tagAndToken}`, response.fields, target.path, deps);
+	const path = deps.dailyNote;
+	const token = lineToken(choice.priority);
+	const line = `${token === null ? `#${choice.type}` : `#${choice.type} ${token}`} ${oneLine(item.title)} ^${item.id}`;
+	const { text: description, missing } = await descriptionForVault(response.fields.description, deps);
+	const link = choice.project ? [`\t[[${deps.linkText(choice.project.path, path)}]]`] : [];
+	const written = [line, ...link, ...taskBody(description)].join("\n");
+	let content: string;
+	try {
+		const template = await deps.template();
+		content = await deps.write(path, (now) => appendToSection(now ?? fillTemplate(template, path), deps.heading, written));
+	} catch (e) {
+		return { ok: false, error: notWritten(e), triaged: true };
+	}
+	// The base as the next Push reads it back from the vault, so it compares equal.
+	const read = readTagTasks(path, content, noteProject(deps.projects, path, content), projectOfLink(deps.projects, path)).find(
+		(t) => t.blockId === item.id,
+	);
+	const fields = { ...response.fields, title: read?.title ?? oneLine(item.title), description: read?.description ?? "" };
+	const sent = await sendBase({ id: item.id }, { path, fields }, line, missing, deps);
+	return sent.ok ? sent : { ...sent, triaged: true };
+}
+
+/** The title on one line, as a Task line holds it. */
+function oneLine(title: string): string {
+	return title.replace(/\s+/g, " ").trim();
+}
+
+function notWritten(e: unknown): string {
+	const error = e instanceof Error ? e.message : String(e);
+	return `triée dans l'app, mais pas écrite (${error}) : le prochain Pull la proposera à insérer`;
+}
+
+/** Sends the base of a line just written, acknowledging the Answer `item.answer`, if any. */
+async function sendBase(
+	item: { id: string; answer?: number },
+	base: { path: string; fields: object },
+	line: string,
+	missingImages: number,
+	deps: { remote: Pick<Remote, "acknowledge"> },
+): Promise<TriageResult> {
+	try {
+		const answer = item.answer !== undefined ? { answer: item.answer } : {};
+		await deps.remote.acknowledge([{ id: item.id, base, ...answer }]);
+	} catch (e) {
+		const error = e instanceof Error ? e.message : String(e);
+		return { ok: false, error: `insérée, mais sa base n'a pas été envoyée (${error}) : le prochain Push proposera sa description` };
+	}
+	return { ok: true, line, path: base.path, missingImages };
+}
+
+/** A new Daily note's text from the template: `{{title}}` and `{{date}}` are the note's name, as the core Daily notes fill them. */
+function fillTemplate(template: string, path: string): string {
+	const name = path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/, "");
+	return template.replace(/\{\{\s*(title|date)\s*\}\}/g, name);
 }
 
 /**
@@ -100,7 +165,7 @@ export async function runTriage(
  */
 export function insertUnplacedTask(
 	item: { id: string; fields: TaskStateFields; answer?: number },
-	deps: Omit<TriageDeps, "remote"> & { remote: Pick<Remote, "acknowledge"> },
+	deps: CursorDeps,
 ): Promise<TriageResult> {
 	const target = deps.target();
 	if ("error" in target) return Promise.resolve({ ok: false, error: target.error });
@@ -110,8 +175,8 @@ export function insertUnplacedTask(
 	let head: string;
 	if (fields.done) head = target.step ? `- [x] ${tag}${date}` : `#done${date}`;
 	else {
-		const token = fields.priority === null ? "" : ` ${priorityToken(fields.priority)}`;
-		head = `${target.step ? "- [ ] " : ""}${tag}${token}`;
+		const token = fields.priority === null ? null : lineToken(fields.priority);
+		head = `${target.step ? "- [ ] " : ""}${tag}${token === null ? "" : ` ${token}`}`;
 	}
 	return writeTask({ id: item.id, title: fields.title, answer: item.answer }, head, fields, target.path, deps);
 }
@@ -127,28 +192,20 @@ async function writeTask(
 	head: string,
 	fields: { description: string },
 	path: string,
-	deps: Pick<TriageDeps, "insert" | "localImage" | "appUrl"> & { remote: Pick<Remote, "acknowledge"> },
+	deps: CursorDeps,
 ): Promise<TriageResult> {
-	const title = item.title.replace(/\s+/g, " ").trim();
+	const title = oneLine(item.title);
 	const line = `${head} ${title} ^${item.id}`;
 	const { text: body, missing } = await descriptionForVault(fields.description, deps);
 	const written = [line, ...taskBody(body)];
 	try {
 		await deps.insert(written.join("\n"));
 	} catch (e) {
-		const error = e instanceof Error ? e.message : String(e);
-		return { ok: false, error: `triée dans l'app, mais pas écrite (${error}) : le prochain Pull la proposera à insérer` };
+		return { ok: false, error: notWritten(e) };
 	}
 	// The base as the next Push reads it back from the vault, so it compares equal.
 	const description = deindent(readIndentedBody(written, 0).join("\n"));
-	try {
-		const answer = item.answer !== undefined ? { answer: item.answer } : {};
-		await deps.remote.acknowledge([{ id: item.id, base: { path, fields: { ...fields, title, description } }, ...answer }]);
-	} catch (e) {
-		const error = e instanceof Error ? e.message : String(e);
-		return { ok: false, error: `insérée, mais sa base n'a pas été envoyée (${error}) : le prochain Push proposera sa description` };
-	}
-	return { ok: true, line, missingImages: missing };
+	return sendBase(item, { path, fields: { ...fields, title, description } }, line, missing, deps);
 }
 
 /** The Description as Task body lines: one tab in, blank lines empty, none at the edges. */
@@ -175,36 +232,4 @@ export function placeLine(lines: string[], cursor: number, newLine: string): { f
 	}
 	const end = { line: cursor, ch: current.length };
 	return { from: end, to: end, text: `\n${newLine}${tail}` };
-}
-
-/**
- * « Insérer dans <Projet> »'s target: a step of the Project note whose `lines` will be
- * edited, or why not when they have no Tasks heading (checked before the app is called).
- */
-export function firstStepTarget(lines: string[], project: { id: string; path: string; title: string }): ReturnType<TriageDeps["target"]> {
-	if (!findTasksHeadingSection(lines)) return { error: `${project.title} n'a pas de titre « Tasks » : ajoutez-le, puis réessayez.` };
-	return { path: project.path, projectId: project.id, step: true };
-}
-
-/**
- * Where « Insérer dans <Projet> » writes a step (`newLine` and its body lines)
- * as the first of the Project note's Tasks section: before its first non-blank
- * line (a blank line right under the heading is kept), on its blank line when
- * the section holds nothing, after the heading when it ends the note. `line`
- * is where the step's line lands. Null without a Tasks heading.
- */
-export function placeFirstStep(lines: string[], newLine: string): { from: Pos; to: Pos; text: string; line: number } | null {
-	const section = findTasksHeadingSection(lines);
-	if (!section) return null;
-	const { start, end } = section;
-	if (start >= lines.length) {
-		const at = { line: start - 1, ch: lines[start - 1]!.length };
-		return { from: at, to: at, text: `\n${newLine}`, line: start };
-	}
-	const first = lines.slice(start, end).findIndex((l) => l.trim());
-	if (first === -1 && start < end) {
-		return { from: { line: start, ch: 0 }, to: { line: start, ch: lines[start]!.length }, text: newLine, line: start };
-	}
-	const at = { line: first === -1 ? start : start + first, ch: 0 };
-	return { from: at, to: at, text: `${newLine}\n`, line: at.line };
 }

@@ -3,16 +3,22 @@ import type {
 	AcknowledgeResponse,
 	ActivityResponse,
 	ApiError,
+	ArchiveTicketRequest,
+	ArchiveTicketResponse,
 	Comment,
 	CommentResponse,
 	CommentsResponse,
 	EventsResponse,
 	InboxResponse,
+	LaunchRequest,
+	LaunchResponse,
 	MarkReadResponse,
 	PushChange,
 	PushResponse,
 	PushResult,
 	ItemState,
+	KeepRequest,
+	KeepResponse,
 	StateResponse,
 	UploadResponse,
 	TriageRequest,
@@ -27,6 +33,8 @@ export interface Remote {
 	push(changes: PushChange[]): Promise<PushResult[]>;
 	/** Every Project and Task of the app, archived ones included, with its base. */
 	state(): Promise<ItemState[]>;
+	/** The whole `GET /api/state`: the Items (with `kept_until`), the Zones (in the Developer's order, for the Zone pickers) and `deck_at`, for a Deck session. */
+	fullState(): Promise<StateResponse>;
 	/** Sets the base of Items the vault now agrees on (all or nothing). */
 	acknowledge(items: AcknowledgedItem[]): Promise<void>;
 	/** Thread of a Project or Task, oldest first. */
@@ -52,6 +60,12 @@ export interface Remote {
 	image(path: string): Promise<{ data: ArrayBuffer; type: string }>;
 	/** Turns an item À trier into a Task; returns its shared fields as the app now has them. */
 	triage(itemId: string, as: TriageRequest): Promise<TriageResponse>;
+	/** « Archiver » in the Deck: the item À trier `itemId` archived, `comment` (null: none) added to its thread first. */
+	archiveTicket(itemId: string, comment: string | null): Promise<void>;
+	/** Enter on a Sweep item: the Task `itemId` kept until `until` (`YYYY-MM-DD`), no event. */
+	keep(itemId: string, until: string | null): Promise<void>;
+	/** « Lancer en projet »: the Triaged Idea `itemId` becomes a Project, same id, with the new note's fields and base. */
+	launch(itemId: string, request: LaunchRequest): Promise<LaunchResponse>;
 	/** Checks the URL and the token with a cheap authenticated call (an empty page of events). */
 	checkConnection(): Promise<void>;
 }
@@ -152,6 +166,10 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		async state() {
 			return (await call<StateResponse>("GET", "/state")).items;
 		},
+		async fullState() {
+			const state = await call<StateResponse>("GET", "/state");
+			return { items: state.items, zones: state.zones ?? [], deck_at: state.deck_at ?? null };
+		},
 		async acknowledge(items) {
 			await call<AcknowledgeResponse>("POST", "/state/acknowledge", { items });
 		},
@@ -193,6 +211,15 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		},
 		async triage(itemId, as) {
 			return call<TriageResponse>("POST", `/items/${encodeURIComponent(itemId)}/triage`, as);
+		},
+		async archiveTicket(itemId, comment) {
+			await call<ArchiveTicketResponse>("POST", `/items/${encodeURIComponent(itemId)}/archiver`, { comment } satisfies ArchiveTicketRequest);
+		},
+		async keep(itemId, until) {
+			await call<KeepResponse>("POST", `/items/${encodeURIComponent(itemId)}/garder`, { until } satisfies KeepRequest);
+		},
+		async launch(itemId, request) {
+			return call<LaunchResponse>("POST", `/items/${encodeURIComponent(itemId)}/lancer`, request);
 		},
 		async checkConnection() {
 			await call<EventsResponse>("GET", `/events?since=${Number.MAX_SAFE_INTEGER}`);

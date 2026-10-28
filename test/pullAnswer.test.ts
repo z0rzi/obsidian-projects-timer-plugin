@@ -60,6 +60,17 @@ describe("Pull: Answers on Tasks", () => {
 		expect(await w.plan()).toEqual([]);
 	});
 
+	it("À reprendre on a Rapide: back to Rapide, the line loses its token, nothing left to push", async () => {
+		const quick: TaskFields = { ...tagTask, title: "Marge", type: "quick", description: "" };
+		const w = pushWorld({ [meeting]: "#quick pr Marge ^q1abc" }, [
+			appTask("q1abc", { ...quick, priority: "pq" }, { base: { path: meeting, fields: quick }, answer: { id: 1, answer: "a_reprendre", at: AT, by: "jmj" } }),
+		]);
+		expect((await w.pull()).applied).toBe(1);
+		expect(w.files.get(meeting)).toBe("#quick Marge ^q1abc");
+		expect(w.app.held.get("q1abc")!.answer).toBeNull();
+		expect(await w.plan()).toEqual([]);
+	});
+
 	it("a vault that already holds the Answer only acknowledges it", async () => {
 		const w = world({ item: "t7f3a", answer: "a_reprendre" });
 		w.files.set(meeting, "#task p0 Heatmap ^t7f3a\n\tnotes");

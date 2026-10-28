@@ -20,6 +20,12 @@ export interface ProjectsTimerSettings {
 	timeSourceLocation: string;
 	projectTemplate: string;
 	tasksKanbanFile: string;
+	/** Template of today's Daily note when Triage has to create it; "" = none (an empty note). The note's path comes from the core Daily notes settings. */
+	triageTemplate: string;
+	/** Heading of the Daily note section Triage appends its lines to. */
+	triageHeading: string;
+	/** The Sweep's age in days: the first Deck session of the day offers the Tag tasks of Daily notes older than that, and keeps one that long. */
+	sweepAge: number;
 	hoursPerDay: number;
 	daysPerWeek: number;
 	hourlyRate: number;
@@ -34,6 +40,9 @@ export const DEFAULT_SETTINGS: ProjectsTimerSettings = {
 	timeSourceLocation: "",
 	projectTemplate: "",
 	tasksKanbanFile: "",
+	triageTemplate: "",
+	triageHeading: "## Triage",
+	sweepAge: 7,
 	hoursPerDay: 8,
 	daysPerWeek: 5,
 	hourlyRate: 0,
@@ -123,7 +132,7 @@ export class ProjectsTimerSettingTab extends PluginSettingTab {
 
 		this.addPathSetting(
 			"Projects location",
-			"The directory which contains the project files",
+			"The directory which contains the project files: a note directly in it is a Project note, and a link to it on a Task line, or alone on the first line of the Task's body, attaches the Task to that Project",
 			"Projects/",
 			this.plugin.settings.projectsLocation,
 			async (value) => {
@@ -147,7 +156,7 @@ export class ProjectsTimerSettingTab extends PluginSettingTab {
 
 		this.addPathSetting(
 			"Project template",
-			"The file to be used as the template for new projects",
+			"The file to be used as the template for new projects (« Lancer en projet » on an #idea line)",
 			"Templates/Project.md",
 			this.plugin.settings.projectTemplate,
 			async (value) => {
@@ -168,6 +177,47 @@ export class ProjectsTimerSettingTab extends PluginSettingTab {
 			},
 			false,
 		);
+
+		this.addPathSetting(
+			"Triage daily note template",
+			"The file today's daily note is created from when Triage writes into it and it doesn't exist yet; empty for an empty note. The note's folder and name come from the core Daily notes settings",
+			"Templates/Daily.md",
+			this.plugin.settings.triageTemplate,
+			async (value) => {
+				this.plugin.settings.triageTemplate = value;
+				await this.plugin.saveSettings();
+			},
+			false,
+		);
+
+		new Setting(this.containerEl)
+			.setName("Triage heading")
+			.setDesc("The heading of today's daily note under which Triage writes its Tasks, added at the end of the note when missing")
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_SETTINGS.triageHeading)
+					.setValue(this.plugin.settings.triageHeading)
+					.onChange(async (value) => {
+						this.plugin.settings.triageHeading = value.trim() || DEFAULT_SETTINGS.triageHeading;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(this.containerEl)
+			.setName("Sweep age (days)")
+			.setDesc(
+				"The first Deck session of the day starts with the Tag tasks of daily notes older than this, open, not at pz, p0 or p1 and not kept; Enter keeps one this many days",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder(String(DEFAULT_SETTINGS.sweepAge))
+					.setValue(String(this.plugin.settings.sweepAge))
+					.onChange(async (value) => {
+						const days = parseInt(value);
+						this.plugin.settings.sweepAge = days > 0 ? days : DEFAULT_SETTINGS.sweepAge;
+						await this.plugin.saveSettings();
+					}),
+			);
 
 		new Setting(this.containerEl)
 			.setName("Hours per day")
@@ -213,7 +263,7 @@ export class ProjectsTimerSettingTab extends PluginSettingTab {
 
 		new Setting(this.containerEl)
 			.setName("Suivi URL")
-			.setDesc("Address of the Client app. Push (on demand) sends Project and Task titles, descriptions, statuses and priorities there; Pull and the Inbox fetch the Client's changes and Notifications on startup and every 5 minutes; the comments panel reads and sends comments while open. See the README's Network use section.")
+			.setDesc("Address of the Client app. Push (on demand, and after a Deck session for what the Sweep wrote) sends Project and Task titles, descriptions, types, priorities and Done there; Pull and the Inbox fetch the Client's changes and Notifications on startup and every 5 minutes, and the Inbox's « Hors du vault » inserts or archives an Item; the comments panel reads and sends comments while open; the Deck reads the state and the items to triage, then triages (downloading its images) or archives each Ticket; the Sweep keeps a Task; « Lancer en projet » sends the new project note. See the README's Network use section.")
 			.addText((text) =>
 				text
 					.setPlaceholder("https://suivi.mbz-dev.com")

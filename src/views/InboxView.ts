@@ -1,7 +1,7 @@
 import { Component, ItemView, MarkdownRenderer, setIcon, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
-import { contextParts, type InboxEntry, type InboxState, type InboxStore } from "../inbox/inboxStore";
+import { type InboxEntry, type InboxState, type InboxStore } from "../inbox/inboxStore";
 import type { ActivityEntry, EventType } from "../remote/api";
 import type { Conflict } from "../sync/compareState";
 import type { UnplacedItem } from "../sync/unplaced";
@@ -47,6 +47,29 @@ export function nothingToHandle(state: InboxState): boolean {
 	);
 }
 
+/**
+ * The button opening the Deck, « Trier (3) »; « Trier » with no Ticket À
+ * trier, the Deck then holding only the Sweep (first session of the day).
+ */
+export function triageButton(state: InboxState): string {
+	return state.toTriage.length === 0 ? "Trier" : `Trier (${state.toTriage.length})`;
+}
+
+/** The Inbox's pinned sections that have entries: « Hors du vault » (counting the Items of its bulk entry), « Conflits ». */
+export function pinnedSections(state: InboxState): { id: string; title: string; entries: InboxEntry[]; bulk: UnplacedItem[] }[] {
+	return [
+		{ id: "unplaced", title: "Hors du vault", entries: state.unplaced, bulk: state.unplacedBulk },
+		{ id: "conflicts", title: "Conflits", entries: state.conflicts, bulk: [] },
+	]
+		.filter(({ entries, bulk }) => entries.length + bulk.length > 0)
+		.map((s) => ({ ...s, title: `${s.title} (${s.entries.length + s.bulk.length})` }));
+}
+
+/** The header's Frigo count, « Frigo (12) »; null before a Pull gave it. */
+export function frigoLabel(state: InboxState): string | null {
+	return state.frigo === null ? null : `Frigo (${state.frigo})`;
+}
+
 /** Lucide icon of each event type. */
 const TYPE_ICONS: Record<EventType, string> = {
 	"project.created": "folder-plus",
@@ -56,11 +79,13 @@ const TYPE_ICONS: Record<EventType, string> = {
 	"ticket.created": "ticket",
 	"idea.launched": "lightbulb",
 	"item.triaged": "inbox",
+	"item.launched": "folder-plus",
 	"item.answered": "circle-check",
 	"comment.created": "message-square",
 	"comment.edited": "message-square",
 	"comment.deleted": "message-square-x",
 	"push.completed": "upload",
+	"bundle.launched": "package",
 };
 
 /** What opening something in the Inbox goes to; `thread` also opens its comment thread. */
@@ -68,8 +93,7 @@ export type OpenInboxItem = (item: InboxEntry["item"] | undefined, title: string
 
 /**
  * The Developer's pane, two views toggled in its header (kept in the view
- * state). The Inbox: Tickets À trier ("Insérer ici", « Insérer dans <Projet> », launched Ideas "Nouveau
- * projet"), Unplaced items (« Insérer ici », « Retirer de l'app », from 5 one
+ * state). The Inbox: « Trier (n) » opening the Deck on the Tickets À trier (« Trier », the Sweep only, without any), Unplaced items (« Insérer ici », « Retirer de l'app », from 5 one
  * entry opening a modal) and conflicts (each button settles one at once), then the unread feed entries; « Lu » or opening
  * one takes it out. The Activity: the whole feed, read entries dimmed. Both
  * newest first, grouped by day. Opening is delegated (`openItem`); filtering,
@@ -90,12 +114,8 @@ export class InboxView extends ItemView {
 		private readonly openItem: OpenInboxItem,
 		private readonly appUrl: () => string,
 		fetchImage: ConstructorParameters<typeof AppImages>[0],
-		/** "Insérer ici" on an entry À trier. */
-		private readonly triage: (entry: InboxEntry) => void = () => {},
-		/** « Insérer dans <Projet> » on a Ticket À trier. */
-		private readonly insertInto: (entry: InboxEntry) => void = () => {},
-		/** "Nouveau projet" on a launched Idea À trier. */
-		private readonly newProject: (entry: InboxEntry) => void = () => {},
+		/** « Trier (n) »: opens the Deck. */
+		private readonly openDeck: () => void = () => {},
 		/** A conflict's button. */
 		private readonly pick: (conflict: Conflict, choice: "mine" | "theirs") => void = () => {},
 		private readonly unplaced: UnplacedActions = { insert: () => {}, remove: () => {} },
@@ -188,17 +208,13 @@ export class InboxView extends ItemView {
 		if (state.more) feed.createEl("button", { text: "Charger plus" }).onclick = () => void this.store.loadMore();
 	}
 
-	/** The Inbox's pinned sections, each drawn only when it has entries; « Hors du vault » counts the Items of its bulk entry. */
+	/** « Trier (n) » (« Trier » without Tickets), opening the Deck, then the pinned sections that have entries. */
 	private drawPinned(root: HTMLElement, state: InboxState) {
-		const sections = [
-			{ id: "to-triage", title: "À trier", entries: state.toTriage, bulk: [] },
-			{ id: "unplaced", title: "Hors du vault", entries: state.unplaced, bulk: state.unplacedBulk },
-			{ id: "conflicts", title: "Conflits", entries: state.conflicts, bulk: [] },
-		];
-		for (const { id, title, entries, bulk } of sections) {
-			const count = entries.length + bulk.length;
-			if (count === 0) continue;
-			const section = this.section(root, id, `${title} (${count})`);
+		const section = root.createDiv({ cls: "suivi-inbox-section", attr: { "data-section": "to-triage" } });
+		const label = state.toTriage.length > 0 ? "Trier les tickets un par un dans le Deck" : "Ouvrir le Deck : balayage des notes quotidiennes";
+		section.createEl("button", { text: triageButton(state), cls: "mod-cta", attr: { "aria-label": label } }).onclick = () => this.openDeck();
+		for (const { id, title, entries, bulk } of pinnedSections(state)) {
+			const section = this.section(root, id, title);
 			if (bulk.length > 0) this.renderUnplacedBulk(section, bulk);
 			for (const entry of entries) this.renderPinned(section, entry);
 		}
@@ -222,7 +238,7 @@ export class InboxView extends ItemView {
 		this.render(this.store.current);
 	}
 
-	/** Title, Inbox / Activité toggle, Push and Pull, item filter (its button clears it) and "Tout marquer comme lu". */
+	/** Title, Frigo count, Inbox / Activité toggle, Push and Pull, item filter (its button clears it) and "Tout marquer comme lu". */
 	private drawHeader(root: HTMLElement, state: InboxState) {
 		const header = root.createDiv({ cls: "suivi-inbox-header" });
 		header.style.display = "flex";
@@ -230,6 +246,8 @@ export class InboxView extends ItemView {
 		header.style.gap = "4px";
 		header.style.alignItems = "center";
 		header.createEl("h4", { text: "Suivi inbox" }).style.flexGrow = "1";
+		const frigo = frigoLabel(state);
+		if (frigo) header.createEl("span", { text: frigo, cls: "suivi-inbox-frigo", attr: { "aria-label": "Cartes au frigo dans l'app" } });
 		for (const { mode, label } of MODES) {
 			const button = header.createEl("button", { text: label });
 			if (mode === this.mode) button.addClass("mod-cta");
@@ -268,27 +286,15 @@ export class InboxView extends ItemView {
 		return el;
 	}
 
-	/** A Ticket À trier, an Unplaced item or a conflict, with its buttons. */
+	/** An Unplaced item or a conflict, with its buttons. */
 	private renderPinned(parent: HTMLElement, entry: InboxEntry) {
 		const el = this.entryBox(parent, entry.kind);
 		this.link(el, entry.title, () => this.openItem(entry.item, entry.title, entry.kind !== "conflict"));
-		if (entry.context) this.renderContext(el, entry.context);
 		const meta = [entry.by, entry.at && DATE.format(new Date(entry.at))].filter(Boolean).join(" · ");
 		if (meta) el.createDiv({ text: meta, cls: "suivi-inbox-meta" }).style.color = "var(--text-faint)";
 		const detail = entry.detail.length > EXCERPT ? `${entry.detail.slice(0, EXCERPT)}…` : entry.detail;
 		el.createDiv({ text: detail, cls: "suivi-inbox-detail" }).style.whiteSpace = "pre-wrap";
-		drawPinnedButtons(el, entry, { triage: this.triage, insertInto: this.insertInto, newProject: this.newProject, pick: this.pick, unplaced: this.unplaced });
-	}
-
-	/** « Projet : <title> · <Urgency> », the title a link to the Project note when it is in the vault. */
-	private renderContext(el: HTMLElement, context: NonNullable<InboxEntry["context"]>) {
-		const line = el.createDiv({ cls: "suivi-inbox-context" });
-		const { project } = context;
-		const { before, label, after } = contextParts(context);
-		line.appendText(before);
-		if (project) this.link(line, label, () => this.openItem({ kind: "project", id: project.id, title: project.title }, project.title, false));
-		else line.appendText(label);
-		line.appendText(after);
+		drawPinnedButtons(el, entry, { pick: this.pick, unplaced: this.unplaced });
 	}
 
 	/**

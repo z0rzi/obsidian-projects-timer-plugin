@@ -4,12 +4,14 @@ import type { Priority } from "./remote/api";
 import { Task, TaskTagLabel, TASKS_TYPES } from "./types";
 
 const DEFAULT_PRIORITY = 1;
+/** Priority of a `#quick` Tag task without token: Rapide, never ranked. */
+const QUICK_PRIORITY = "pq";
 const PRIORITY_TOKEN = /^p([0-5])$/;
-/** Priority token of a line at PR (À valider). */
-const PR_TOKEN = "pr";
+/** Priority tokens that are words: PR (À valider) and PZ (En hibernation). `pq` is never a token. */
+const WORD_TOKENS = ["pr", "pz"] as const;
 
-/** Regex source of the Priority token: lowercase `p0`-`p5` or `pr`. */
-export const PRIORITY_TOKEN_SOURCE = "p[0-5]|pr";
+/** Regex source of the Priority token: lowercase `p0`-`p5`, `pr` or `pz`. */
+export const PRIORITY_TOKEN_SOURCE = "p[0-5]|pr|pz";
 
 /** Regex source of a day, `YYYY-MM-DD`. */
 export const DAY_SOURCE = "\\d{4}-\\d{2}-\\d{2}";
@@ -22,16 +24,17 @@ export function readPriorityToken(text: string): { priority: Priority | null; re
 	const [firstWord = "", ...others] = text.split(" ");
 	const match = PRIORITY_TOKEN.exec(firstWord);
 	if (match) return { priority: +match[1]! as Priority, rest: others.join(" ") };
-	if (firstWord === PR_TOKEN) return { priority: "pr", rest: others.join(" ") };
+	const word = WORD_TOKENS.find((t) => t === firstWord);
+	if (word) return { priority: word, rest: others.join(" ") };
 	return { priority: null, rest: text };
 }
 
-/** Regex source of a Project step's type tag: `#task`, `#bug`, `#quick` or `#wait`. */
+/** Regex source of a Project step's type tag: `#task`, `#bug`, `#quick`, `#wait` or `#idea`. */
 export const TYPE_TAG_SOURCE = `#(?:${TASKS_TYPES.map((t) => t.tag).join("|")})`;
 
 /**
  * Type tag of a Project step = first whole word of `text`, wherever it sits,
- * that is `#task`, `#bug`, `#quick` or `#wait` (later ones stay text). Returns
+ * that is `#task`, `#bug`, `#quick`, `#wait` or `#idea` (later ones stay text). Returns
  * the type ("task" if absent) and `text` without that word, one space left
  * where it was.
  */
@@ -74,7 +77,8 @@ export function indentedBodyEnd(lines: string[], at: number, end = lines.length)
 
 /**
  * Tag tasks: a line starting with `#<type> ` is a Task, its indented body
- * (`readIndentedBody`) is its description.
+ * (`readIndentedBody`) is its description. Without token a `#quick` is
+ * Rapide (`pq`), any other type P1.
  */
 export function parseTasks(
 	lines: string[],
@@ -94,7 +98,7 @@ export function parseTasks(
 			title,
 			...(blockId ? { blockId } : {}),
 			raw: line,
-			priority: priority ?? DEFAULT_PRIORITY,
+			priority: priority ?? (taskType.tag === "quick" ? QUICK_PRIORITY : DEFAULT_PRIORITY),
 			file,
 			projectFile: projectFile ?? undefined,
 			description: readIndentedBody(lines, lineNr).join("\n"),

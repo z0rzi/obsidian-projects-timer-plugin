@@ -8,11 +8,12 @@ import type { LocalTask } from "./sharedTask";
 
 /**
  * How Tasks reach their Project, by Project note path. No `id` = a Project
- * pushed for the first time in this Push. `hidden` = prive, or archived and
- * never pushed: its Tasks stay in the vault. `unreadable` = its file couldn't
- * be read this time: its Tasks are left as they are in the app.
+ * pushed for the first time in this Push. `hidden` = prive: its Tasks stay in
+ * the vault. `doneUnsent` = archived and never pushed: its Tasks are refused
+ * on their line. `unreadable` = its file couldn't be read this time: its Tasks
+ * are left as they are in the app.
  */
-export type ProjectLinks = Record<string, { id?: string; title: string; hidden?: boolean; unreadable?: boolean }>;
+export type ProjectLinks = Record<string, { id?: string; title: string; hidden?: boolean; doneUnsent?: boolean; unreadable?: boolean }>;
 
 /** A field change as shown in the Push modal. */
 export interface TaskDiff {
@@ -61,11 +62,15 @@ export type PendingTaskChange =
 const DONE_OFFERED_MS = 30 * 24 * 60 * 60_000;
 const FIELDS = ["title", "type", "step", "priority", "done", "project_id", "done_on", "description"] as const;
 
+/** The app's refusal of a `#quick` Tag task with a rank: a Rapide is `pq` (no token) or `pz`. */
+const RAPIDE_UNRANKED = "Une tâche rapide n'a pas de priorité";
+
 const TYPE_LABELS: Record<string, string> = {
 	task: "Tâche",
 	bug: "Bug",
 	quick: "Tâche rapide",
 	wait: "En attente",
+	idea: "Idée",
 };
 
 /**
@@ -73,7 +78,8 @@ const TYPE_LABELS: Record<string, string> = {
  * block ID is the app Task of that id wherever it now lives (a moved line is
  * a change); an id the app doesn't know is created keeping it, one it holds
  * archived is restored, a Project's id or a block ID not in the app's format
- * is an error. Lines never pushed and done more than 30 days ago stay in the
+ * is an error, as is a line linked to a Project archived and never pushed
+ * (that Project is not created). Lines never pushed and done more than 30 days ago stay in the
  * vault; done ones without a date are « Terminées sans date », ticked unless
  * the app holds no base for any Item of this vault (a first Push). App Tasks
  * no line carries are not offered (Unplaced).
@@ -101,6 +107,18 @@ export function planTaskPush(
 		const error = (message: string) =>
 			changes.push({ group: "error", key: `error:${t.path}:${t.line}`, path: t.path, title: t.title, error: message });
 
+		if (t.projectError) {
+			error(t.projectError);
+			continue;
+		}
+		if (link?.doneUnsent) {
+			error(`lié à un projet archivé jamais envoyé : ${link.title}`);
+			continue;
+		}
+		if (t.type === "quick" && !t.step && typeof t.priority === "number") {
+			error(RAPIDE_UNRANKED);
+			continue;
+		}
 		if (id) {
 			if (!APP_ID.test(id)) {
 				error("id de bloc non reconnu");

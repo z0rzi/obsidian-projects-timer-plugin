@@ -21,8 +21,8 @@ import { pickConflict } from "../src/sync/conflicts";
 import { planPush, readVaultItems } from "../src/sync/planPush";
 import { runPull } from "../src/sync/runPull";
 import { InboxStore } from "../src/inbox/inboxStore";
-import { placeLine, runTriage } from "../src/inbox/triage";
-import { runNewProject } from "../src/inbox/newProject";
+import { runTriage, type TriageDeps } from "../src/inbox/triage";
+import { runLaunchIdea } from "../src/inbox/launchIdea";
 
 const url = process.env.SUIVI_E2E_URL ?? "";
 const token = process.env.SUIVI_E2E_TOKEN ?? "";
@@ -182,7 +182,7 @@ describe.skipIf(!url || !token || !clientSession)("Pull against a running Suivi"
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const read = () => {
 			const notes = [...files].map(([path, content]) => ({ path, content }));
-			return readVaultItems(notes.filter((n) => n.path === projectPath), notes, () => null);
+			return readVaultItems(notes.filter((n) => n.path === projectPath), notes, { getFirstLinkpathDest: () => null });
 		};
 		const plan = async () => planPush(read(), await fetchAppItems(remote), new Date());
 		const pull = () => runPull({ remote, files: vault, vault: read() });
@@ -287,33 +287,26 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 		const entry = store.current.toTriage.find((e) => e.item.id === id)!;
 		expect(entry).toMatchObject({ kind: "ticket", ticketType: "bug", detail: "Rien ne s'affiche ![](/uploads/x.png)" });
 
-		const note = ["# Réunion", "", "suite"];
-		const result = await runTriage(entry.item, { type: "bug", priority: 2 }, {
-			remote,
-			target: () => ({ path: "1.meetings/r.md", projectId: null, step: false }),
-			appUrl: url,
-			insert: (line) => {
-				const at = placeLine(note, 1, line);
-				note.splice(1, 1, ...at.text.split("\n"));
-			},
-		});
-		expect(result).toEqual({ ok: true, line: `#bug p2 ${title} ^${id}`, missingImages: 1 });
-		expect(note).toEqual(["# Réunion", `#bug p2 ${title} ^${id}`, `\tRien ne s'affiche ![](${url.replace(/\/+$/, "")}/uploads/x.png)`, "", "suite"]);
-
+		const notes = new Map([["1.meetings/2026-10-27.md", "# Réunion\n\nsuite\n"]]);
+		const result = await runTriage(entry.item, { type: "bug", priority: 2, project: null }, dailyNoteDeps(remote, notes));
+		expect(result).toEqual({ ok: true, line: `#bug p2 ${title} ^${id}`, path: "1.meetings/2026-10-27.md", missingImages: 1 });
+		expect(notes.get("1.meetings/2026-10-27.md")).toBe(
+			`# Réunion\n\nsuite\n\n## Triage\n#bug p2 ${title} ^${id}\n\tRien ne s'affiche ![](${url.replace(/\/+$/, "")}/uploads/x.png)\n`,
+		);
 		await store.refresh();
 		expect(store.current.toTriage.some((e) => e.item.id === id)).toBe(false);
 		expect((await remote.comments(id)).map((c) => c.body)).toEqual(["Je regarde"]);
 
 		// The next Push sees the line as already pushed.
-		const local = readTagTasks("1.meetings/r.md", note.join("\n"), null);
+		const local = readTagTasks("1.meetings/2026-10-27.md", notes.get("1.meetings/2026-10-27.md")!, null);
 		expect(planTaskPush(local, {}, appItems(await remote.state()), { now: new Date() })).toEqual([]);
 		// Triaging twice is refused.
-		expect(await runTriage(entry.item, { type: "bug", priority: 2 }, noopDeps(remote))).toMatchObject({ ok: false });
+		expect(await runTriage(entry.item, { type: "bug", priority: 2, project: null }, noopDeps(remote))).toMatchObject({ ok: false });
 	});
 });
 
 describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi", () => {
-	it("JMJ's Idée waits in the app until launched; Nouveau projet creates the file and the same item becomes a Project", async () => {
+	it("JMJ's Nouveau chantier is À trier, Triaged as an #idea, then « Lancer en projet » makes the same item a Project", async () => {
 		const remote = createHttpRemote({ url, token }, fetchTransport);
 		const jmj = { cookie: `suivi_session=${clientSession}`, "content-type": "application/x-www-form-urlencoded" };
 
@@ -329,29 +322,23 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 		await remote.comment(id, "Bonne idée");
 
 		const store = new InboxStore(remote, () => {});
-		const inToTriage = async () => {
-			await store.refresh();
-			return store.current.toTriage.find((e) => e.item.id === id);
-		};
-		expect(await inToTriage()).toBeUndefined();
+		await store.refresh();
+		expect(store.current.toTriage.find((e) => e.item.id === id)).toMatchObject({ kind: "ticket", ticketType: "idea" });
+		await remote.triage(id, { as: "task", type: "idea", priority: "pz", project_id: null });
 
-		const launch = await fetch(`${url}/idees/${id}/lancer`, { method: "POST", headers: jmj, redirect: "manual" });
-		expect(launch.status).toBe(303);
-		const entry = (await inToTriage())!;
-		expect(entry).toMatchObject({ kind: "ticket", ticketType: "idea", detail: "Voir les flux" });
-
-		const vault = new Map<string, string>();
-		const result = await runNewProject(entry.item, { priority: 4 }, {
+		const daily = "1.meetings/2026-10-20.md";
+		const vault = new Map<string, string>([[daily, `#idea pz ${title} ^${id}\n\tVoir les flux\n`]]);
+		const result = await runLaunchIdea({ path: daily, content: vault.get(daily)! }, 0, {
 			remote,
 			folder: "2.projects",
 			template: async () => "---\npriority: 5\n---\n\n# Time usage\n---\n```project\n```\n\n# Tasks\n---",
 			exists: (p) => vault.has(p),
 			create: async (p, c) => void vault.set(p, c),
-			appUrl: url,
+			process: async (p, edit) => void vault.set(p, edit(vault.get(p)!)),
 		});
 		const path = `2.projects/${title}.md`;
 		expect(result).toEqual({ ok: true, path });
-		expect(await inToTriage()).toBeUndefined();
+		expect(vault.get(daily)).toBe("");
 		expect((await remote.comments(id)).map((c) => c.body)).toEqual(["Bonne idée"]);
 
 		// The next Push sees the file as already pushed.
@@ -359,19 +346,16 @@ describe.skipIf(!url || !token || !clientSession)("Ideas against a running Suivi
 		expect(read).toMatchObject({ ok: true, project: { suiviId: id } });
 		expect(planProjectPush([(read as { project: SharedProject }).project], appItems(await remote.state()))).toEqual([]);
 
-		const ideas = await (await fetch(`${url}/demandes`, { headers: jmj })).text();
-		expect(ideas).toContain(`href="/projets/${id}?depuis=demandes"`);
-		expect(ideas).toContain("Lancée");
+		const demandes = await (await fetch(`${url}/demandes`, { headers: jmj })).text();
+		expect(demandes).toContain(`href="/projets/${id}?depuis=demandes"`);
 	});
 });
 
 
-function noopDeps(remote: ReturnType<typeof createHttpRemote>) {
+function noopDeps(remote: ReturnType<typeof createHttpRemote>): TriageDeps {
 	return {
-		remote,
-		target: () => ({ path: "x.md", projectId: null, step: false }),
-		appUrl: url,
-		insert: () => {
+		...dailyNoteDeps(remote, new Map()),
+		write: () => {
 			throw new Error("must not write");
 		},
 	};

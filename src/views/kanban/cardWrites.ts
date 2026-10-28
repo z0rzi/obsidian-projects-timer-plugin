@@ -36,7 +36,7 @@ export class CardWrites {
 		return this.line(card.file, "Failed to update task checkbox", (content) => setStepDone(content, item, date));
 	}
 
-	/** Sets the Project's `priority:` (0–5, or `pr` for the to validate column). */
+	/** Sets the Project's `priority:` (0–5, `pr` for the to validate column, `pz` for Zzz). */
 	async projectPriority(card: ProjectCard, priority: Priority): Promise<boolean> {
 		try {
 			await this.app.fileManager.processFrontMatter(card.file, (fm: Record<string, unknown>) => {

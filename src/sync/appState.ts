@@ -1,4 +1,4 @@
-import type { ItemState, ProjectFields, StateAnswer, TaskFields, TaskStateFields } from "../remote/api";
+import { PRIORITIES, type ItemState, type ProjectFields, type StateAnswer, type TaskFields, type TaskStateFields } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import { dueMonthOf } from "../dueDate";
 
@@ -45,7 +45,7 @@ export interface AppItems {
 /**
  * The state of `GET /api/state` by id. An Item without a base takes its
  * current fields as its base (path unknown: ""); a Task's then may hold
- * values only the app sets (`amelioration`), which the Push simply replaces.
+ * values only the app sets, which the Push simply replaces.
  */
 export function appItems(items: ItemState[]): AppItems {
 	const out: AppItems = { projects: {}, tasks: {}, withBase: new Set(items.filter((i) => i.base !== null).map((i) => i.id)) };
@@ -75,7 +75,33 @@ function baseFields(fields: ProjectFields): ProjectFields {
 	return { ...fields, due_date: due_date === null ? null : dueMonthOf(due_date) };
 }
 
-/** Fetches the app's state (`GET /api/state`) by id. */
+/**
+ * Fetches the app's state (`GET /api/state`) by id, for the Push and the Pull
+ * alike. A state carrying a Priority this plugin does not know is refused
+ * whole: written into the vault, it would become a token like `ppz`.
+ */
 export async function fetchAppItems(remote: Pick<Remote, "state">): Promise<AppItems> {
-	return appItems(await remote.state());
+	const items = await remote.state();
+	const unknown = items.flatMap((i) => [i.fields.priority, (i.base?.fields as { priority?: unknown } | undefined)?.priority]).find(
+		(p) => p !== undefined && p !== null && !(PRIORITIES as readonly unknown[]).includes(p),
+	);
+	if (unknown !== undefined) {
+		throw new Error(`Suivi uses a Priority this plugin does not know (${JSON.stringify(unknown)}): update the plugin before pushing or pulling.`);
+	}
+	return appItems(items);
+}
+
+/**
+ * The Frigo's card count, by the app's rule (`/frigo`): open Projects at PZ,
+ * and open Tasks at PZ by their own Priority outside them; a step at PZ in a
+ * Project at PZ is folded into its card, one in a Done Project gone with it.
+ */
+export function frigoCount(app: AppItems): number {
+	const atPz = (i: AppProject | AppTask) => !i.archived && !i.current.done && i.current.priority === "pz";
+	const projects = Object.values(app.projects).filter(atPz).length;
+	const tasks = Object.values(app.tasks).filter((t) => {
+		const project = t.current.project_id === null ? undefined : app.projects[t.current.project_id];
+		return atPz(t) && !(project && (project.current.done || atPz(project)));
+	}).length;
+	return projects + tasks;
 }

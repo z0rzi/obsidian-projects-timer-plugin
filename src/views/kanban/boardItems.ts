@@ -1,5 +1,6 @@
+import { noteDate } from "../../noteDate";
 import { TASKS_TYPES, type ProjectCard, type ProjectCardItem, type Task } from "../../types";
-import { emptyBoards, OVERRIDE_CARD_STYLE, priorityBoardId, type BoardDef } from "./boards";
+import { emptyBoards, OVERRIDE_CARD_STYLE, priorityBoardId, RAPIDES_BOARD_ID, type BoardDef } from "./boards";
 import { badgeOf, cardHtml, overrideCardHtml, projectCardHtml } from "./cardHtml";
 
 export type StepRef = { card: ProjectCard; item: ProjectCardItem };
@@ -26,9 +27,12 @@ export function boardSnapshot(tasks: Task[], projectCards: ProjectCard[], badges
 
 /**
  * The boards with their jKanban items: Tag tasks (`task-<id>`, by type
- * order), Project cards (`project-<id>`) and Overrides (`step-<n>`, returned
- * in `steps`). `badges`: badge text by app id of the items with unread
- * entries; `suiviIdOf` gives a Project note's app id for its badge.
+ * order; the Rapides oldest note first, not draggable), Project cards
+ * (`project-<id>`) and Overrides (`step-<n>`, returned in `steps`). Work at
+ * PZ is not shown: Tag tasks and Overrides at PZ, Projects at PZ with their
+ * inheriting steps and their Rapides; an Override at a rank of its own stays.
+ * `badges`: badge text by app id of the items with unread entries;
+ * `suiviIdOf` gives a Project note's app id for its badge.
  */
 export function fillBoards(
 	tasks: Task[],
@@ -37,15 +41,21 @@ export function fillBoards(
 	suiviIdOf: (path: string) => string | undefined,
 ): { boards: BoardDef[]; steps: Map<string, StepRef> } {
 	const boards = emptyBoards();
-	const boardOf = (id: string) => boards.find((b) => b.id === id);
+	const boardOf = (id: string | null) => (id === null ? undefined : boards.find((b) => b.id === id));
 	const typeOrder = TASKS_TYPES.map((t) => t.tag);
-	const sorted = [...tasks].sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type));
+	const frozen = new Set(projectCards.filter((c) => c.priority === "pz").map((c) => c.file.path));
+	const shown = tasks.filter((t) => !(t.priority === "pq" && t.projectFile && frozen.has(t.projectFile.path)));
+	const sorted = [...shown].sort((a, b) =>
+		a.priority === "pq" && b.priority === "pq" ? byNoteDate(a, b) : typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type),
+	);
 
 	for (const task of sorted) {
-		boardOf(priorityBoardId(task.priority))?.items.push({
+		const boardId = priorityBoardId(task.priority);
+		boardOf(boardId)?.items.push({
 			id: `task-${task.id}`,
 			title: cardHtml(String(task.id), task.title, task.description.trim(), task.type, badgeOf(badges, task.blockId)),
 			type: task.type,
+			...(boardId === RAPIDES_BOARD_ID ? { class: ["not-draggable"] } : {}),
 		});
 	}
 
@@ -68,4 +78,14 @@ export function fillBoards(
 		}
 	}
 	return { boards, steps };
+}
+
+/** Oldest note first (`noteDate`), then by creation time, then by line. */
+function byNoteDate(a: Task, b: Task): number {
+	return (
+		noteDate(a.file).localeCompare(noteDate(b.file)) ||
+		(a.file.stat?.ctime ?? 0) - (b.file.stat?.ctime ?? 0) ||
+		a.file.path.localeCompare(b.file.path) ||
+		a.line - b.line
+	);
 }

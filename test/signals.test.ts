@@ -34,6 +34,14 @@ describe("toastText", () => {
 		);
 	});
 
+	it("names PR, PZ and Rapide in a priority change, « hérité » for a step that had none", () => {
+		const item = { kind: "task" as const, id: "t7f3a", title: "Export" };
+		const change = (from: unknown, to: unknown) => toastText(entry({ type: "item.updated", item, field: "priority", from, to }));
+		expect(change(2, "pz")).toBe("P2 → Au frigo sur Export");
+		expect(change("pz", "pq")).toBe("Au frigo → Rapide sur Export");
+		expect(change(null, "pr")).toBe("hérité → À valider sur Export");
+	});
+
 	it("shows an Échéance change with the app's wording", () => {
 		const item = { kind: "project" as const, id: "p1abc", title: "Prix SPOTS" };
 		const change = entry({
@@ -57,6 +65,11 @@ describe("toastText", () => {
 		expect(toastText(entry({ type: "item.answered", item, answer: "a_reprendre" }))).toBe(
 			"JMJ : À reprendre sur Prix SPOTS",
 		);
+	});
+
+	it("announces a Bundle the Client launched, about no one item, in the app's words", () => {
+		const launched = entry({ type: "bundle.launched", label: "Lot « T1 2027 » lancé en P2 (12 éléments)", item: undefined });
+		expect(toastText(launched)).toBe("JMJ : Lot « T1 2027 » lancé en P2 (12 éléments)");
 	});
 
 	it("falls back to the app's label for other events", () => {

@@ -19,7 +19,9 @@ import {
 	ProjectsTimerSettingTab,
 } from "./settings";
 import { Activity, ProjectCard, Task, TimeSource } from "./types";
-import { parseTasks } from "./taskParser";
+import { parseTasks, readIndentedBody } from "./taskParser";
+import { noteProject, projectOfLink, taskProject } from "./sync/projectLink";
+import { projectRules } from "./sync/taskProject";
 import { localDay } from "./localDate";
 import { parseProjectCard } from "./projectCards";
 import { AddActivityModal } from "./ui/AddActivityModal";
@@ -807,22 +809,15 @@ export default class ProjectsTimerPlugin extends Plugin {
 		const content = await this.app.vault.cachedRead(file);
 		const lines = content.split("\n");
 
-		const props = this.parseFileProperties(lines);
-		let projectFile: TFile | null = null;
-		if (props.project) {
-			projectFile = this.findFileFromLink(props.project);
-		}
-		if (!projectFile) {
-			// Checking if this file is a project file
-			for (const line of lines) {
-				if (line.startsWith("```project")) {
-					projectFile = file;
-					break;
-				}
-			}
-		}
-
-		return parseTasks(lines, file, projectFile);
+		// The Push's rule: the line's link, its bare-link first body line, then the note's Project.
+		const rules = projectRules(this.app, this.settings);
+		const noteProjectPath = noteProject(rules, file.path, content);
+		const projectOf = projectOfLink(rules, file.path);
+		return parseTasks(lines, file, null).map((task) => {
+			const projectPath = taskProject(task.raw, readIndentedBody(lines, task.line), projectOf).projectPath ?? noteProjectPath;
+			const projectFile = projectPath ? this.app.vault.getFileByPath(projectPath) : null;
+			return projectFile ? { ...task, projectFile } : task;
+		});
 	}
 
 	private async reloadAllTasks() {
@@ -906,26 +901,6 @@ export default class ProjectsTimerPlugin extends Plugin {
 			startLine,
 			lineEnd,
 		};
-	}
-
-	private parseFileProperties(
-		contentLines: string[],
-	): Record<string, string> {
-		if (contentLines[0] !== "---") return {};
-		const props = {} as Record<string, string>;
-
-		for (const contentLine of contentLines) {
-			const colonIdx = contentLine.indexOf(":");
-			if (colonIdx < 0) continue;
-			const key = contentLine.slice(0, colonIdx).trim();
-			let value = contentLine.slice(colonIdx + 1).trim();
-			if (value.startsWith('"') && value.endsWith('"')) {
-				value = value.slice(1, -1);
-			}
-			props[key] = value;
-		}
-
-		return props;
 	}
 
 	async addActivityToFile(

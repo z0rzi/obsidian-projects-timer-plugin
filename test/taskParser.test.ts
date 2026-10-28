@@ -111,3 +111,27 @@ describe("readTypeTag", () => {
 		expect(readTypeTag("Do  #bug")).toEqual({ type: "bug", rest: "Do" });
 	});
 });
+
+describe("parseTasks PZ and Rapide", () => {
+	it("reads pz as PZ", () => {
+		const task = parseOne("#bug pz Plantage rare");
+		expect(task.priority).toBe("pz");
+		expect(task.title).toBe("Plantage rare");
+	});
+
+	it("reads a #quick line without token as Rapide, any other type without token as P1", () => {
+		expect(parseOne("#quick Renommer le bouton").priority).toBe("pq");
+		expect(parseOne("#task Renommer le bouton").priority).toBe(1);
+	});
+
+	it("reads a #quick line's rank as written, for the Push to refuse it", () => {
+		expect(parseOne("#quick p2 Renommer").priority).toBe(2);
+		expect(parseOne("#quick pz Renommer").priority).toBe("pz");
+	});
+
+	it("never reads pq as a token", () => {
+		const task = parseOne("#quick pq Renommer");
+		expect(task.priority).toBe("pq");
+		expect(task.title).toBe("pq Renommer");
+	});
+});

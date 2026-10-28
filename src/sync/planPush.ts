@@ -2,6 +2,7 @@ import type { AppItems } from "./appState";
 import { compareState } from "./compareState";
 import { withConflicts } from "./conflicts";
 import { planProjectPush, type PendingChange } from "./pushPlan";
+import { noteProject, projectOfLink, type LinkResolver, type ProjectRules } from "./projectLink";
 import { readSharedProject, type SharedProject } from "./sharedProject";
 import { readProjectSteps, readTagTasks, type LocalTask } from "./sharedTask";
 import { planTaskPush, type ProjectLinks } from "./taskPlan";
@@ -24,11 +25,14 @@ export interface VaultItems {
 
 /**
  * Reads the shared Projects of `projectNotes` (the notes directly in the
- * projects folder), their steps, and the Tag tasks of `notes`, linked to the
- * Project note `projectOf` gives (null = standalone).
+ * projects folder), their steps, and the Tag tasks of `notes`, each linked to
+ * the Project note its line, its first body line or its note names, links
+ * resolved by `links` (Obsidian's resolver); none = standalone.
  */
-export function readVaultItems(projectNotes: Note[], notes: Note[], projectOf: (note: Note) => string | null): VaultItems {
+export function readVaultItems(projectNotes: Note[], notes: Note[], links: LinkResolver): VaultItems {
 	const vault: VaultItems = { projects: [], links: {}, tasks: [], skipped: [] };
+	const projectPaths = new Set(projectNotes.map((n) => n.path));
+	const rules: ProjectRules = { links, isProject: (path) => projectPaths.has(path) };
 	const steps: LocalTask[] = [];
 	for (const { path, content } of projectNotes) {
 		const result = readSharedProject(path, content);
@@ -42,7 +46,7 @@ export function readVaultItems(projectNotes: Note[], notes: Note[], projectOf: (
 			const p = result.project;
 			vault.projects.push(p);
 			if (p.fields.done && !p.suiviId) {
-				vault.links[path] = { title, hidden: true };
+				vault.links[path] = { title, doneUnsent: true };
 				continue;
 			}
 			vault.links[path] = { title, ...(p.suiviId ? { id: p.suiviId } : {}) };
@@ -50,7 +54,9 @@ export function readVaultItems(projectNotes: Note[], notes: Note[], projectOf: (
 		}
 	}
 	for (const note of notes) {
-		if (/^#\w/m.test(note.content)) vault.tasks.push(...readTagTasks(note.path, note.content, projectOf(note)));
+		if (!/^#\w/m.test(note.content)) continue;
+		const { path, content } = note;
+		vault.tasks.push(...readTagTasks(path, content, noteProject(rules, path, content), projectOfLink(rules, path)));
 	}
 	vault.tasks.push(...steps);
 	return vault;

@@ -1,7 +1,6 @@
 import type { App, TFile } from "obsidian";
 import type { ProjectsTimerSettings } from "../settings";
 import { readVaultItems, type Note, type VaultItems } from "./planPush";
-import { tagTaskProject } from "./taskProject";
 
 /**
  * The vault as the Push and the Pull compare it with the app: Project notes
@@ -14,8 +13,5 @@ export async function readVault(app: App, settings: ProjectsTimerSettings): Prom
 	const all = app.vault.getMarkdownFiles().filter((f) => f.path !== settings.projectTemplate);
 	const notes = await Promise.all(all.map(note));
 	const projectNotes = notes.filter((_, i) => all[i]!.parent?.path === folder);
-	return readVaultItems(projectNotes, notes, (n) => {
-		const file = app.vault.getFileByPath(n.path);
-		return file ? tagTaskProject(app, file, n.content) : null;
-	});
+	return readVaultItems(projectNotes, notes, app.metadataCache);
 }

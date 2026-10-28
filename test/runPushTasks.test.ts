@@ -19,6 +19,23 @@ describe("runPush with Tasks", () => {
 		expect(await w.plan()).toEqual([]);
 	});
 
+	it("pushes an #idea line as a Task of type idea at its token, « Idée » in the review", async () => {
+		const w = pushWorld({ "m.md": "#idea pz Carte des flux\n\tUne carte\n#idea Tableau\n" });
+
+		expect(await w.plan()).toMatchObject([
+			{ group: "new", title: "Carte des flux", detail: "Idée · Au frigo" },
+			{ group: "new", title: "Tableau", detail: "Idée · P1" },
+		]);
+		expect(await w.push()).toEqual({ applied: 2, failed: [] });
+		expect(w.app.received).toMatchObject([
+			[
+				{ op: "create", kind: "task", fields: { type: "idea", priority: "pz", description: "Une carte" } },
+				{ op: "create", kind: "task", fields: { type: "idea", priority: 1 } },
+			],
+		]);
+		expect(await w.plan()).toEqual([]);
+	});
+
 	it("shares the body (image uploaded) and keeps the vault text as the base", async () => {
 		const w = pushWorld({ "m.md": "#task p2 Widget\n\tVoir ![[capture.png]]\n\t`![[pas une image]]`\n" });
 

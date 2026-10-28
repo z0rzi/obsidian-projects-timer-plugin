@@ -4,10 +4,12 @@ import type { Priority } from "./remote/api";
 const borderLeft = 'border-left: 4px solid var(--card-color);'
 
 export const TASKS_TYPES = [
-	{ tag: "quick", color: "#f7d522", css: borderLeft },
+	{ tag: "quick", color: "#d4a72c", css: borderLeft },
 	{ tag: "bug", color: "#b82626", css: borderLeft },
 	{ tag: "task", color: "", css: "" },
 	{ tag: "wait", color: "var(--text-faint)", css: 'opacity: 0.6; border: 2px dashed var(--card-color); font-style: italic;' },
+	// An Idea (ADR 0009), usually at PZ: the app's Idée teal.
+	{ tag: "idea", color: "#0f6e66", css: borderLeft },
 ] as const;
 
 export type TaskTagLabel = typeof TASKS_TYPES[number]['tag']
@@ -19,7 +21,7 @@ export type Task = {
 	projectFile?: TFile;
 	file: TFile;
 	line: number;
-	/** From its token (`p0`–`p5`, `pr` for PR); 1 without one. */
+	/** From its token (`p0`–`p5`, `pr` for PR, `pz` for PZ); without one `pq` (Rapide) for a `#quick`, else 1. */
 	priority: Priority;
 	type: TaskTagLabel;
 	blockId?: string;
@@ -47,7 +49,7 @@ export type ProjectCardItem = {
 export type ProjectCard = {
 	id: string;
 	file: TFile;
-	/** `priority:` frontmatter, `pr` putting the card in the to validate column. */
+	/** `priority:` frontmatter, `pr` putting the card in the to validate column, `pz` off the board. */
 	priority: Priority;
 	/** Preview shown on the Project card. */
 	items: ProjectCardItem[];

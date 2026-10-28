@@ -5,7 +5,7 @@ import type { ProjectCard, Task } from "../types";
 import { Subscription } from "rxjs";
 import { localDay } from "../localDate";
 import { readPriorityToken } from "../taskParser";
-import { boardIdToToken, cardTypesCss } from "./kanban/boards";
+import { boardDrop, cardTypesCss } from "./kanban/boards";
 import { boardSnapshot, fillBoards, type StepRef } from "./kanban/boardItems";
 import { CardWrites } from "./kanban/cardWrites";
 import { isDroppedOnCard } from "./kanban/dropTarget";
@@ -23,9 +23,10 @@ export const TASKS_KANBAN_VIEW_TYPE = "tasks-kanban-view";
 let idCounter = 0;
 
 /**
- * Kanban of Tag tasks, Project cards and Overrides by status (À valider,
- * doing, P1–P5). Dragging a card rewrites its line's token (or a Project's
- * frontmatter priority); cards start the footer timer.
+ * Kanban of Tag tasks, Project cards and Overrides by Priority (À valider,
+ * doing, rapides, P1–P5); work at PZ is not shown. Dragging a card rewrites
+ * its line's token (or a Project's frontmatter priority); Zzz writes `pz`
+ * there; cards start the footer timer.
  */
 export class TasksKanbanView extends ItemView {
 	private kanbanInstance: any;
@@ -187,7 +188,7 @@ export class TasksKanbanView extends ItemView {
 			responsivePercentage: false,
 			dragItems: true,
 			dragBoards: false,
-			boards: boards.map((b) => ({ id: b.id, title: b.title, class: b.class, item: b.items })),
+			boards: boards.map((b) => ({ id: b.id, title: b.title, class: b.class, item: b.items, ...(b.dragTo ? { dragTo: b.dragTo } : {}) })),
 			click: (el: HTMLElement) => this.openCard(el.getAttribute("data-eid")),
 			dropEl: (el: HTMLElement, target: HTMLElement) => this.dropCard(el, target),
 		});
@@ -218,31 +219,31 @@ export class TasksKanbanView extends ItemView {
 		const targetBoardId = target.closest(".kanban-board")?.getAttribute("data-id");
 		const eid = el.getAttribute("data-eid");
 		if (!targetBoardId || !eid) return;
+		const drop = boardDrop(targetBoardId);
 
 		const step = this.currentSteps.get(eid);
 		if (step) {
 			const backOnProject = isDroppedOnCard(el, `project-${step.card.id}`, this.lastPointer);
-			const token = backOnProject ? null : boardIdToToken(targetBoardId);
-			if (!backOnProject && !token) return;
+			const token = backOnProject ? null : drop;
+			if (token === "refused") return;
 			if (!(await this.writes.stepToken(step.card.file, step.item, token))) this.putBack();
 			return;
 		}
 
-		const token = boardIdToToken(targetBoardId);
-		if (!token) return;
+		if (drop === "refused") return;
 
 		if (eid.startsWith("project-")) {
 			const card = this.currentProjectCards.get(eid.replace("project-", ""));
 			if (!card) return;
-			await this.writes.projectPriority(card, readPriorityToken(token).priority!);
+			await this.writes.projectPriority(card, readPriorityToken(drop).priority!);
 			return;
 		}
 
 		const task = this.currentTasks.get(eid.replace("task-", ""));
-		if (task) await this.writes.taskTag(task, `${task.type ? `#${task.type}` : "#task"} ${token}`);
+		if (task) await this.writes.taskTag(task, `${task.type ? `#${task.type}` : "#task"} ${drop}`);
 	}
 
-	/** Unread badge, play, done, step checkbox and step clicks inside cards (before jKanban's own click). */
+	/** Unread badge, Zzz, play, done, step checkbox and step clicks inside cards (before jKanban's own click). */
 	private onCardButton(evt: MouseEvent) {
 		const target = evt.target as HTMLElement;
 		const hit = (selector: string) => target.closest<HTMLElement>(selector);
@@ -253,6 +254,12 @@ export class TasksKanbanView extends ItemView {
 		if (badge) {
 			evt.stopPropagation();
 			this.plugin.inbox?.openOnItem(badge.getAttribute("data-item-id") ?? "");
+			return;
+		}
+		const zzz = hit(".kanban-zzz-btn");
+		if (zzz) {
+			evt.stopPropagation();
+			void this.freeze(zzz);
 			return;
 		}
 		const projectPlay = hit("span.kanban-play-btn[data-project-id]");
@@ -280,6 +287,21 @@ export class TasksKanbanView extends ItemView {
 			const task = taskOf(el);
 			if (task) void this.writes.taskTag(task, `#done ${localDay()}`);
 		}
+	}
+
+	/** Zzz: `pz` on the Tag task's line, the Override's line, or the Project's frontmatter. */
+	private async freeze(button: HTMLElement) {
+		const task = this.currentTasks.get(button.getAttribute("data-task-id") ?? "");
+		if (task) {
+			await this.writes.taskTag(task, `#${task.type} pz`);
+			return;
+		}
+		const card = this.currentProjectCards.get(button.getAttribute("data-project-id") ?? "");
+		if (!card) return;
+		const line = button.getAttribute("data-line");
+		const step = line === null ? undefined : card.overrides.find((item) => item.line === +line);
+		if (step) await this.writes.stepToken(card.file, step, "pz");
+		else if (line === null) await this.writes.projectPriority(card, "pz");
 	}
 
 	private openFileAtLine(file: TFile, line?: number) {

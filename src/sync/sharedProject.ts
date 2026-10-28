@@ -16,15 +16,16 @@ export type ReadResult =
 /** The YAML spellings of null, read by `readFrontmatter` as plain strings. */
 const YAML_NULL = new Set(["null", "Null", "NULL", "~"]);
 
-/** Priority pushed for an open Project without a valid `priority:`. */
+/** Priority pushed for an open Project without a `priority:`. */
 const DEFAULT_PRIORITY = 5;
 
 /**
  * Reads the shared fields of a Project note: title (file name), the
- * `# Description` section, `priority:` (`0`–`5` or `pr`), `archived:` (Done,
- * then no Priority) and `due_date:` frontmatter; `status:` means nothing here.
- * Returns null for `prive: true` Projects, which never leave the vault. A
- * due_date that isn't a month (`YYYY-MM`) is an error naming the note.
+ * `# Description` section, `priority:` (`0`–`5`, `pr` or `pz`), `archived:`
+ * (Done, then no Priority) and `due_date:` frontmatter; `status:` means
+ * nothing here. Returns null for `prive: true` Projects, which never leave
+ * the vault. A due_date that isn't a month (`YYYY-MM`), or a `priority:` that
+ * is none of those, is an error naming the note.
  */
 export function readSharedProject(path: string, content: string): ReadResult | null {
 	const lines = content.split("\n");
@@ -37,6 +38,7 @@ export function readSharedProject(path: string, content: string): ReadResult | n
 	if (dueDate !== null && !isDueMonth(dueDate)) return refuse(`Invalid due_date "${dueDate}" in ${path}`);
 
 	const priority = done ? null : readPriority(fm.priority);
+	if (priority === undefined) return refuse(`Invalid priority "${fm.priority}" in ${path}`);
 
 	return {
 		ok: true,
@@ -54,10 +56,16 @@ export function readSharedProject(path: string, content: string): ReadResult | n
 	};
 }
 
-/** A `priority:` value: `pr` (any case), or a number capped at 5; anything else is P5. */
-function readPriority(value: string | undefined): Priority {
-	if (value?.toLowerCase() === "pr") return "pr";
-	return /^\d+$/.test(value ?? "") ? (Math.min(Number(value), 5) as Priority) : DEFAULT_PRIORITY;
+/**
+ * A `priority:` value: `pr` or `pz` (any case), or a number capped at 5; P5
+ * when absent or empty; undefined for anything else (`pq` included: a
+ * Project is never Rapide).
+ */
+function readPriority(value: string | undefined): Priority | undefined {
+	if (!value || YAML_NULL.has(value)) return DEFAULT_PRIORITY;
+	const word = value.toLowerCase();
+	if (word === "pr" || word === "pz") return word;
+	return /^\d+$/.test(value) ? (Math.min(Number(value), 5) as Priority) : undefined;
 }
 
 /** Raw `key: value` strings of the frontmatter (quotes stripped, no type coercion). */

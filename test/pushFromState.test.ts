@@ -1,10 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { runTriage } from "../src/inbox/triage";
+import { runTriage, type TriageDeps } from "../src/inbox/triage";
 import { PluginData } from "../src/sync/pluginData";
-import { appProject, appTask, pushWorld as world } from "./fakeSuivi";
+import { appProject, appTask, fakeLinks, pushWorld as world } from "./fakeSuivi";
 import { localDay } from "../src/localDate";
 
 const widget = "2.projects/Widget.md";
+
+/** Triage's deps over the world's notes: today's Daily note is `1.meetings/2026-10-20.md`, links by name. */
+function triageDeps(w: ReturnType<typeof world>): TriageDeps {
+	return {
+		remote: w.app.remote,
+		dailyNote: "1.meetings/2026-10-20.md",
+		heading: "## Triage",
+		template: async () => "",
+		async write(path, edit) {
+			const content = edit(w.files.get(path) ?? null);
+			w.files.set(path, content);
+			return content;
+		},
+		linkText: (path) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/, ""),
+		projects: { links: fakeLinks(() => [...w.files.keys()]), isProject: (p) => p.startsWith("2.projects/") },
+		appUrl: "https://suivi.test",
+		localImage: async () => "u1.png",
+	};
+}
 
 describe("Push planned against the app's state", () => {
 	it("creates the Items of a vault with ids in an empty app, keeping their ids", async () => {
@@ -98,6 +117,75 @@ describe("Push planned against the app's state", () => {
 		expect(await w.plan()).toMatchObject([{ group: "error", title: "Heatmap", error: "id de bloc non reconnu" }]);
 	});
 
+	describe("a Task linked to a Done Project never sent", () => {
+		const livre = "2.projects/Livré.md";
+		const done = "---\narchived: true\n---\n# Tasks\n- [ ] Export\n";
+		const base = { path: "m.md", fields: { title: "Heatmap", type: "task", step: false, priority: 3, done: false, project_id: null, description: "" } };
+		const refused = (path: string, title: string) => ({
+			group: "error",
+			key: expect.stringMatching(new RegExp(`^error:${path}:\\d+$`)),
+			path,
+			title,
+			error: "lié à un projet archivé jamais envoyé : Livré",
+		});
+
+		it("is refused on its line, by its line's link or its body's first line, and nothing is sent", async () => {
+			const w = world(
+				{ [livre]: done, "m.md": "#task p2 Heatmap v2 [[Livré]] ^t7f3a\n#bug p1 Export\n  [[Livré]]\n" },
+				[appTask("t7f3a", { title: "Heatmap", priority: 3 }, { base })],
+			);
+
+			const pending = await w.plan();
+			expect(pending).toEqual([refused("m.md", "Heatmap v2 [[Livré]]"), refused("m.md", "Export")]);
+			expect(await w.push(pending)).toEqual({ applied: 0, failed: [] });
+			expect(w.app.received.flat()).toEqual([]);
+			expect(w.app.held.get("t7f3a")!.fields).toMatchObject({ title: "Heatmap", priority: 3 });
+		});
+
+		it("is refused when its note names that Project, or is that Project note; the note's steps stay out", async () => {
+			const w = world({
+				[livre]: "---\narchived: true\n---\n#task p2 Heatmap\n# Tasks\n- [ ] Export\n",
+				"m.md": "---\nproject: \"[[Livré]]\"\n---\n#task p2 Legend\n",
+			});
+
+			expect(await w.plan()).toEqual([refused(livre, "Heatmap"), refused("m.md", "Legend")]);
+		});
+
+		it("is pushed once the link is gone", async () => {
+			const w = world({ [livre]: done, "m.md": "#task p2 Heatmap v2 [[Livré]] ^t7f3a\n" }, [appTask("t7f3a", { title: "Heatmap", priority: 3 }, { base })]);
+			w.files.set("m.md", "#task p2 Heatmap v2 ^t7f3a\n");
+
+			await w.push();
+
+			expect(w.app.held.get("t7f3a")!.fields).toMatchObject({ title: "Heatmap v2", priority: 2 });
+			expect(await w.plan()).toEqual([]);
+		});
+
+		it("is pushed with its Project once that Project is un-archived", async () => {
+			const w = world({ [livre]: done, "m.md": "#task p2 Heatmap v2 [[Livré]] ^t7f3a\n" }, [appTask("t7f3a", { title: "Heatmap", priority: 3 }, { base })]);
+			w.files.set(livre, "---\npriority: 2\n---\n# Tasks\n- [ ] Export\n");
+
+			await w.push();
+
+			const projectId = w.files.get(livre)!.match(/suivi_id: ([a-z0-9]{5})\n/)![1];
+			expect(w.app.held.get("t7f3a")!.fields).toMatchObject({ title: "Heatmap v2 [[Livré]]", priority: 2, project_id: projectId });
+			expect(await w.plan()).toEqual([]);
+		});
+
+		it("unlike one linked to a private Project, left out silently, or to a Done Project the app holds, pushed", async () => {
+			const w = world(
+				{
+					"2.projects/Secret.md": "---\nprive: true\n---\n",
+					[widget]: "---\nsuivi_id: p0002\narchived: true\n---\n",
+					"m.md": "#task p2 Heatmap [[Secret]]\n#task p2 Legend [[Widget]]\n",
+				},
+				[appProject("p0002", { title: "Widget", done: true, priority: null })],
+			);
+
+			expect(await w.plan()).toMatchObject([{ group: "new", title: "Legend [[Widget]]", fields: { project_id: "p0002" } }]);
+		});
+	});
+
 	it("never offers an app Item that no note carries", async () => {
 		const w = world({ "m.md": "" }, [appTask("t7f3a", { title: "Heatmap" }), appProject("p0002", { title: "Widget" })]);
 
@@ -130,21 +218,33 @@ describe("Push planned against the app's state", () => {
 		expect(await w.plan()).toEqual([]);
 	});
 
-	it("triages a Ticket with an image and a PDF, then finds nothing to push", async () => {
+	it("triages a Ticket with an image and a PDF into today's Daily note, then finds nothing to push", async () => {
 		const description = "Voir ![](/uploads/u1.png) [doc.pdf](/uploads/d.pdf)";
 		const ticket = appTask("t7f3a", { title: "Heatmap vide", type: "bug", priority: null, done: false, description }, { triaged: false });
-		const w = world({ "m.md": "" }, [ticket]);
+		const w = world({ "1.meetings/2026-10-20.md": "" }, [ticket]);
 
-		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2 }, {
-			remote: w.app.remote,
-			target: () => ({ path: "m.md", projectId: null, step: false }),
-			insert: (text) => w.files.set("m.md", `${text}\n`),
-			appUrl: "https://suivi.test",
-			localImage: async () => "u1.png",
-		});
+		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, { type: "bug", priority: 2, project: null }, triageDeps(w));
 
 		expect(result).toMatchObject({ ok: true });
-		expect(w.files.get("m.md")).toBe("#bug p2 Heatmap vide ^t7f3a\n\tVoir ![[u1.png]] [doc.pdf](https://suivi.test/uploads/d.pdf)\n");
+		expect(w.files.get("1.meetings/2026-10-20.md")).toBe(
+			"## Triage\n#bug p2 Heatmap vide ^t7f3a\n\tVoir ![[u1.png]] [doc.pdf](https://suivi.test/uploads/d.pdf)\n",
+		);
+		expect(await w.plan()).toEqual([]);
+	});
+
+	it("triages a Ticket into a Project by a body link, then finds nothing to push; the meeting note stays as it was", async () => {
+		const ticket = appTask("t7f3a", { title: "Heatmap vide", type: "bug", priority: null, done: false, description: "Rien ne s'affiche" }, { triaged: false });
+		const project = appProject("p0002", { title: "Widget", priority: 2, done: false }, { base: { path: widget, fields: { title: "Widget", description: "", priority: 2, done: false, due_date: null } } });
+		const meeting = "1.meetings/2026-10-20 Réunion.md";
+		const w = world({ [widget]: "---\nsuivi_id: p0002\npriority: 2\n---\n", [meeting]: "## Triage\n", "1.meetings/2026-10-20.md": "# Lundi\n" }, [ticket, project]);
+		expect(await w.plan()).toEqual([]);
+
+		const choice = { type: "bug" as const, priority: "pz" as const, project: { path: widget, id: "p0002" }, zone: 3 };
+		expect(await runTriage({ id: "t7f3a", title: "Heatmap vide" }, choice, triageDeps(w))).toMatchObject({ ok: true });
+
+		expect(w.files.get("1.meetings/2026-10-20.md")).toBe("# Lundi\n\n## Triage\n#bug pz Heatmap vide ^t7f3a\n\t[[Widget]]\n\tRien ne s'affiche\n");
+		expect(w.files.get(meeting)).toBe("## Triage\n");
+		expect(w.app.held.get("t7f3a")!.fields).toMatchObject({ project_id: "p0002", priority: "pz", zone_id: 3 });
 		expect(await w.plan()).toEqual([]);
 	});
 
