@@ -22,10 +22,14 @@ export function withAppUrls(body: string, appUrl: string, images: ReadonlyMap<st
 	return withAbsoluteAppLinks(withImages, appUrl);
 }
 
+/** An app path (`/uploads/…`) as an absolute URL of the app at `appUrl`. */
+export function appLink(path: string, appUrl: string): string {
+	return `${appUrl.trim().replace(/\/+$/, "")}${path}`;
+}
+
 /** `text` with each link target starting with a single `/` (`](/uploads/…)`, `](/taches/…)`) made absolute against the app URL. */
 export function withAbsoluteAppLinks(text: string, appUrl: string): string {
-	const base = appUrl.trim().replace(/\/+$/, "");
-	return text.replace(/(\]\()(\/(?!\/)[^)\s]*)/g, (_m, open: string, path: string) => `${open}${base}${path}`);
+	return text.replace(/(\]\()(\/(?!\/)[^)\s]*)/g, (_m, open: string, path: string) => `${open}${appLink(path, appUrl)}`);
 }
 
 /** Code spans and fenced blocks: a Mention is never inside them. */

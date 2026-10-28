@@ -164,7 +164,7 @@ describe("runPush: due_date", () => {
 		const note = { path: "2.projects/Widget.md", content: dated("2027-01-15") };
 		const w = pushWorld({ [note.path]: note.content });
 
-		expect(readVaultItems([note], [note], () => null).skipped).toEqual([
+		expect(readVaultItems([note], [note], { getFirstLinkpathDest: () => null }).skipped).toEqual([
 			'Push skips Widget: Invalid due_date "2027-01-15" in 2.projects/Widget.md',
 		]);
 		expect(await w.plan()).toEqual([]);

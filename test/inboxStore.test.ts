@@ -52,6 +52,7 @@ const ticket: InboxTicket = {
 	created_at: "2026-10-20T10:00:00.000Z",
 	author_email: "jmj@edf.fr",
 	urgency: "genant",
+	requested_priority: null,
 	project_id: null,
 };
 
@@ -153,6 +154,16 @@ describe("Inbox feed", () => {
 		]);
 		store.dropConflict("t7f3a:answer");
 		expect(store.current.conflicts.map((c) => c.key)).toEqual(["ct7f3a:priority"]);
+	});
+});
+
+describe("Inbox Frigo count", () => {
+	it("is unknown until a Pull gives it, then the count the Pull's state holds", async () => {
+		const { store } = storeOn(fakeApp([]));
+		await store.refresh();
+		expect(store.current.frigo).toBeNull();
+		store.setFrigo(12);
+		expect(store.current.frigo).toBe(12);
 	});
 });
 

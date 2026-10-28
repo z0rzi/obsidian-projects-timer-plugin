@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ItemView } from "obsidian";
-import { feedLines, nothingToHandle, InboxView } from "../src/views/InboxView";
+import { feedLines, frigoLabel, nothingToHandle, InboxView, pinnedSections, triageButton } from "../src/views/InboxView";
 import { conflictButtons } from "../src/views/inboxPinned";
 import type { Conflict } from "../src/sync/compareState";
 import type { InboxEntry, InboxState, InboxStore } from "../src/inbox/inboxStore";
@@ -35,6 +35,7 @@ const state = (patch: Partial<InboxState>): InboxState => ({
 	item: null,
 	unread: 0,
 	more: false,
+	frigo: null,
 	...patch,
 });
 
@@ -87,5 +88,34 @@ describe("InboxView", () => {
 		const c = { mine: { label: "P0" }, theirs: { label: "P1", by: "jmj" } } as Conflict;
 		expect(conflictButtons(c).map((b) => b.text)).toEqual(["P0 (moi)", "P1 (jmj)"]);
 		expect(conflictButtons({ ...c, theirs: { ...c.theirs, by: null } }).map((b) => b.text)).toEqual(["P0 (moi)", "P1 (Client)"]);
+	});
+});
+
+describe("Inbox header Frigo count", () => {
+	it("reads « Frigo (n) » once a Pull gave the count, nothing before", () => {
+		expect(frigoLabel(state({ frigo: 12 }))).toBe("Frigo (12)");
+		expect(frigoLabel(state({ frigo: 0 }))).toBe("Frigo (0)");
+		expect(frigoLabel(state({}))).toBeNull();
+	});
+});
+
+describe("Inbox « Trier (n) »", () => {
+	it("replaces À trier with one button counting the Tickets", () => {
+		expect(triageButton(state({ toTriage: [ticket, { ...ticket, key: "t10" }] }))).toBe("Trier (2)");
+	});
+
+	it("reads « Trier » without a count when no Ticket waits, so the Sweep keeps an entry", () => {
+		expect(triageButton(state({}))).toBe("Trier");
+	});
+
+	it("keeps the Unplaced items and the conflicts pinned, the Tickets no longer listed", () => {
+		const unplaced = { ...ticket, key: "u1", kind: "unplaced" as const };
+		const conflict = { ...ticket, key: "c1", kind: "conflict" as const };
+		const sections = pinnedSections(state({ toTriage: [ticket], unplaced: [unplaced], conflicts: [conflict] }));
+		expect(sections.map((s) => [s.id, s.title, s.entries])).toEqual([
+			["unplaced", "Hors du vault (1)", [unplaced]],
+			["conflicts", "Conflits (1)", [conflict]],
+		]);
+		expect(pinnedSections(state({ toTriage: [ticket] }))).toEqual([]);
 	});
 });

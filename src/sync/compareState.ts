@@ -4,7 +4,7 @@ import type { AcknowledgedItem, ItemAnswer, Priority, PushChange } from "../remo
 import type { AppItems, AppProject, AppTask, Base } from "./appState";
 import type { VaultItems } from "./planPush";
 import { itemLabel } from "./itemLabel";
-import { answeredProject, answeredTask, holdsAnswer } from "./pullAnswer";
+import { answeredProject, answeredTask, holdsAnswer, reprendrePriority } from "./pullAnswer";
 import type { SharedProject } from "./sharedProject";
 import type { LocalTask } from "./sharedTask";
 
@@ -211,7 +211,7 @@ function taskUnits(t: LocalTask, item: AppTask): Unit[] {
 	const answer = item.answer;
 	if (answer) {
 		const doneOn = localDay(new Date(answer.at));
-		const same = holdsAnswer(answer.answer, t);
+		const same = holdsAnswer(answer.answer, t, reprendrePriority(base));
 		const { priority, done, done_on } = answeredTask(base, answer.answer, same ? (t.doneOn ?? null) : doneOn);
 		const vault = { priority: t.priority, done: t.done, ...(t.done ? { done_on: t.doneOn ?? null } : {}) };
 		return [

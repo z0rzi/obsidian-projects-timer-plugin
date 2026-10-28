@@ -71,6 +71,16 @@ describe("readSharedProject", () => {
 		expect(read("archived: true\npriority: 3")).toEqual({ priority: null, done: true });
 	});
 
+	it("reads priority: pz as PZ, and refuses a value it does not know instead of reading P5", () => {
+		const r = (fm: string) => readSharedProject("p/X.md", note(`${fm}\nsuivi_id: t7f3a`, ""));
+
+		expect(r("priority: pz")).toMatchObject({ ok: true, project: { fields: { priority: "pz" } } });
+		expect(r("priority: PZ")).toMatchObject({ ok: true, project: { fields: { priority: "pz" } } });
+		for (const value of ["pq", "haute", "p2", "-1"]) {
+			expect(r(`priority: ${value}`)).toEqual({ ok: false, path: "p/X.md", suiviId: "t7f3a", error: `Invalid priority "${value}" in p/X.md` });
+		}
+	});
+
 	it("ignores the status: key of a Project note, whatever its value", () => {
 		const r = readSharedProject("p/X.md", note("status: Fini\npriority: 2", ""));
 

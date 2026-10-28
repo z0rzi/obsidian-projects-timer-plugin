@@ -3,8 +3,12 @@ import type { ActivityEntry } from "../remote/api";
 
 const ANSWERS: Record<NonNullable<ActivityEntry["answer"]>, string> = { valide: "Validé", a_reprendre: "À reprendre" };
 
-/** `P2`, or "hérité" for a Project step that had no priority of its own. */
-const priorityLabel = (value: unknown) => (typeof value === "number" ? `P${value}` : "hérité");
+/** Labels of the Priorities that are not ranks. */
+const WORD_LABELS: Record<string, string> = { pr: "À valider", pz: "Au frigo", pq: "Rapide" };
+
+/** `P2`, « À valider », « Au frigo », « Rapide », or "hérité" for a Project step that had no priority of its own. */
+const priorityLabel = (value: unknown) =>
+	typeof value === "number" ? `P${value}` : (typeof value === "string" && WORD_LABELS[value]) || "hérité";
 
 /** An Échéance as the app words it, « mars 2027 »; « retirée » for none. */
 const dueDateBadge = (value: unknown) => (typeof value === "string" ? dueDateLabel(value) : "retirée");
@@ -31,6 +35,9 @@ export function toastText(entry: ActivityEntry): string {
 		case "item.answered":
 			if (entry.answer) return `${actorName(entry.actor)} : ${ANSWERS[entry.answer]} sur ${title}`;
 			break;
+		case "bundle.launched":
+			// About no one item: the app's label names the Bundle, the Priority and how many items moved.
+			return `${actorName(entry.actor)} : ${entry.label}`;
 	}
 	return title ? `${entry.label} : ${title}` : entry.label;
 }

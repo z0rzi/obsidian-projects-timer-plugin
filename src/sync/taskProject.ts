@@ -1,12 +1,16 @@
-import { parseLinktext, type App, type TFile } from "obsidian";
+import type { App } from "obsidian";
+import type { ProjectsTimerSettings } from "../settings";
+import type { ProjectRules } from "./projectLink";
 
-/** Project of a Tag task in `file`: the `project:` frontmatter link, else the file itself if it has a `project` block. */
-export function tagTaskProject(app: App, file: TFile, content: string): string | null {
-	const link = app.metadataCache.getFileCache(file)?.frontmatter?.project;
-	if (typeof link === "string" && link.trim()) {
-		const linkpath = parseLinktext(link.replace(/^\[\[|\]\]$/g, "").split("|")[0]!.trim()).path;
-		const target = app.metadataCache.getFirstLinkpathDest(linkpath, file.path);
-		if (target) return target.path;
-	}
-	return content.split("\n").some((l) => l.startsWith("```project")) ? file.path : null;
+/**
+ * The Push's rule for Project links, as Obsidian resolves them: a Project note
+ * sits directly in the projects folder (not in a subfolder) and is not the
+ * Project template.
+ */
+export function projectRules(app: App, settings: Pick<ProjectsTimerSettings, "projectsLocation" | "projectTemplate">): ProjectRules {
+	const folder = settings.projectsLocation.replace(/\/+$/, "");
+	return {
+		links: app.metadataCache,
+		isProject: (path) => path !== settings.projectTemplate && path.slice(0, Math.max(0, path.lastIndexOf("/"))) === folder,
+	};
 }

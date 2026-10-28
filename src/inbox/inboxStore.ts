@@ -2,7 +2,6 @@ import type { ActivityEntry, InboxTicket, TaskType, TicketUrgency } from "../rem
 import type { Remote } from "../remote/remote";
 import type { Conflict } from "../sync/compareState";
 import { unplacedDetail, type UnplacedItem } from "../sync/unplaced";
-import { URGENCIES } from "./triage";
 
 /** A pinned line of the Inbox view: a Ticket À trier, an Unplaced item or a conflict. */
 export interface InboxEntry {
@@ -16,12 +15,8 @@ export interface InboxEntry {
 	/** Client who did it, ISO date. */
 	by?: string;
 	at?: string;
-	/** `ticket`: the app type of the item to triage (bug, amelioration, idea). */
+	/** `ticket`: the app type of the item to triage (bug, quick, task, idea). */
 	ticketType?: TaskType;
-	/** `ticket` (not an Idea): what the Client said it concerns. */
-	context?: TicketContext;
-	/** `ticket`: the Client's Urgency, which suggests the Priority at Triage. */
-	urgency?: TicketUrgency | null;
 	/** `conflict`: what its buttons settle. */
 	conflict?: Conflict;
 	/** `unplaced`: the Item « Insérer ici » and « Retirer de l'app » act on. */
@@ -46,6 +41,8 @@ export interface InboxState {
 	unread: number;
 	/** Older entries are left to load ("Charger plus"). */
 	more: boolean;
+	/** Cards in the Frigo at the last Pull; null before one. */
+	frigo: number | null;
 	/** Last failure, ready for display (loading or marking read). */
 	error?: string;
 }
@@ -53,9 +50,11 @@ export interface InboxState {
 /** An item of the feed, by app id, with its title for the view. */
 export type InboxItemFilter = { id: string; title: string };
 
+/** The Client's answer to « À quel point ça gêne ? », in his words. */
+export const URGENCY_LABELS: Record<TicketUrgency, string> = { bloquant: "Bloquant", genant: "Gênant", plus_tard: "Pour plus tard" };
+
 const TICKET_LABELS: Partial<Record<TaskType, string>> = {
 	bug: "Bug",
-	amelioration: "Amélioration",
 	idea: "Idée",
 };
 
@@ -67,49 +66,11 @@ export interface VaultProject {
 	private: boolean;
 }
 
-/** The vault's Project notes by `suivi_id:`, read once per rebuild (one vault scan). */
-export type VaultProjects = () => Map<string, VaultProject>;
-
-/** What the Client said a Ticket concerns. */
-export interface TicketContext {
-	/** The Client's Project, when it is in the vault. */
-	project?: VaultProject;
-	/** Its title, « je ne sais pas » or « (introuvable dans le vault) ». */
-	projectLabel: string;
-	urgencyLabel?: string;
-}
-
-/** The context of a Ticket, nothing for an Idea. */
-function ticketContext(t: InboxTicket, projects: Map<string, VaultProject>): TicketContext | undefined {
-	if (t.type === "idea") return undefined;
-	const project = t.project_id === null ? undefined : projects.get(t.project_id);
-	const projectLabel = project?.title ?? (t.project_id === null ? "je ne sais pas" : "(introuvable dans le vault)");
-	return { ...(project ? { project } : {}), projectLabel, ...(t.urgency ? { urgencyLabel: URGENCIES[t.urgency].label } : {}) };
-}
-
-/** « Projet : <title> · <Urgency> » in three parts, so the view can make the Project's label a link. */
-export function contextParts(context: TicketContext): { before: string; label: string; after: string } {
-	return { before: "Projet : ", label: context.projectLabel, after: context.urgencyLabel ? ` · ${context.urgencyLabel}` : "" };
-}
-
-/** « Projet : <title> · <Urgency> », as a Ticket's context reads. */
-export function contextText(context: TicketContext): string {
-	const { before, label, after } = contextParts(context);
-	return before + label + after;
-}
-
-/** « Insérer dans <Projet> », the button and dialog that write a Ticket as the first step of that Project. */
-export function insertIntoText(projectTitle: string): string {
-	return `Insérer dans ${projectTitle}`;
-}
-
-function ticketEntry(t: InboxTicket, projects: Map<string, VaultProject>): InboxEntry {
+function ticketEntry(t: InboxTicket): InboxEntry {
 	return {
 		key: `t${t.id}`,
 		kind: "ticket",
 		ticketType: t.type,
-		context: ticketContext(t, projects),
-		urgency: t.urgency,
 		item: { kind: "task", id: t.id, title: t.title },
 		title: `${TICKET_LABELS[t.type] ?? t.type}: ${t.title}`,
 		detail: t.description,
@@ -154,7 +115,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * putting the entry back on failure.
  */
 export class InboxStore {
-	private state: InboxState = { status: "idle", toTriage: [], unplaced: [], unplacedBulk: [], conflicts: [], feed: [], item: null, unread: 0, more: false };
+	private state: InboxState = { status: "idle", toTriage: [], unplaced: [], unplacedBulk: [], conflicts: [], feed: [], item: null, unread: 0, more: false, frigo: null };
 	private tickets: InboxTicket[] = [];
 	private entries: ActivityEntry[] = [];
 	/** `before` of the next page, null when nothing is older. */
@@ -164,6 +125,7 @@ export class InboxStore {
 	private item: InboxItemFilter | null = null;
 	private conflicts: Conflict[] = [];
 	private unplaced: UnplacedItem[] = [];
+	private frigo: number | null = null;
 	/** Ids of Unplaced items kept in the bulk modal: they show one entry each from then on. */
 	private readonly kept = new Set<string>();
 	/** Newest entry id of the previous load, null before the first one. */
@@ -172,7 +134,6 @@ export class InboxStore {
 	constructor(
 		private readonly remote: Remote,
 		private readonly onChange: (state: InboxState) => void,
-		private readonly vaultProjects: VaultProjects = () => new Map(),
 	) {}
 
 	get current(): InboxState {
@@ -213,6 +174,12 @@ export class InboxStore {
 	/** Shows the Unplaced items the last Pull found. */
 	setUnplaced(items: UnplacedItem[]): void {
 		this.unplaced = items;
+		this.rebuild();
+	}
+
+	/** Shows the Frigo's card count of the last Pull's state. */
+	setFrigo(count: number): void {
+		this.frigo = count;
 		this.rebuild();
 	}
 
@@ -283,10 +250,9 @@ export class InboxStore {
 	private build(): InboxState {
 		const fresh = this.unplaced.filter((i) => !this.kept.has(i.id));
 		const bulk = fresh.length >= BULK_FROM;
-		const projects = this.tickets.length > 0 ? this.vaultProjects() : new Map<string, VaultProject>();
 		return {
 			status: "ready",
-			toTriage: this.tickets.map((t) => ticketEntry(t, projects)),
+			toTriage: this.tickets.map(ticketEntry),
 			unplaced: (bulk ? this.unplaced.filter((i) => this.kept.has(i.id)) : this.unplaced).map(unplacedEntry),
 			unplacedBulk: bulk ? fresh : [],
 			conflicts: this.conflicts.map(conflictEntry),
@@ -294,6 +260,7 @@ export class InboxStore {
 			item: this.item,
 			unread: this.unreadTotal,
 			more: this.next !== null,
+			frigo: this.frigo,
 		};
 	}
 

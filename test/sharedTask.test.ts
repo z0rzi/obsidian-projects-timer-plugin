@@ -54,6 +54,49 @@ describe("readTagTasks", () => {
 		const tasks = readTagTasks("a.md", "#task p1 Salaire #private\n  montant secret\n#done 2026-10-01 #private Prime\n#task p1 Visible\n  #private dans le corps", null);
 		expect(tasks.map((t) => [t.title, t.description])).toEqual([["Visible", "#private dans le corps"]]);
 	});
+
+	describe("Project link", () => {
+		const projects: Record<string, string> = { "Algorithme Turpe": "2.projects/Algorithme Turpe.md", "Talon Clinique": "2.projects/Talon Clinique.md" };
+		// Only Project notes are given back: a link to any other note is text.
+		const projectOfLink = (linkpath: string) => projects[linkpath.replace(/^2\.projects\//, "")] ?? null;
+		const read = (content: string) => readTagTasks("1.meetings/r.md", content, "2.projects/Note.md", projectOfLink);
+
+		it("takes the line's first link to a Project note, then a bare-link first body line, then the note's Project", () => {
+			const tasks = read(
+				[
+					"#task p1 [[Compte rendu]] puis [[Algorithme Turpe|Turpe]] T1",
+					"  [[Algorithme Turpe#Plan]]",
+					"#task p1 T2",
+					"  [[2.projects/Talon Clinique]]",
+					"  corps, voir [[Algorithme Turpe]]",
+					"#task p1 T3",
+					"  voir [[Talon Clinique]]",
+					"#done 2026-10-01 T4",
+					"\t[[Talon Clinique]]",
+				].join("\n"),
+			);
+			expect(tasks.map((t) => [t.title.slice(-2), t.projectPath, t.description])).toEqual([
+				["T1", "2.projects/Algorithme Turpe.md", ""],
+				["T2", "2.projects/Talon Clinique.md", "corps, voir [[Algorithme Turpe]]"],
+				["T3", "2.projects/Note.md", "voir [[Talon Clinique]]"],
+				["T4", "2.projects/Talon Clinique.md", ""],
+			]);
+		});
+
+		it("keeps a bare-link first body line to a note that is not a Project in the description", () => {
+			const [task] = read("#task p1 T\n  [[Compte rendu]]\n  suite");
+			expect([task!.projectPath, task!.description]).toEqual(["2.projects/Note.md", "[[Compte rendu]]\nsuite"]);
+		});
+
+		it("is an error on a Task linked to two different Project notes", () => {
+			const tasks = read("#task p1 [[Algorithme Turpe]] et [[Talon Clinique]]\n#task p1 [[Algorithme Turpe]] T\n  [[Talon Clinique]]\n#task p1 [[Algorithme Turpe]] U\n  [[2.projects/Algorithme Turpe]]");
+			expect(tasks.map((t) => t.projectError)).toEqual([
+				"lié à deux projets : Algorithme Turpe et Talon Clinique",
+				"lié à deux projets : Algorithme Turpe et Talon Clinique",
+				undefined,
+			]);
+		});
+	});
 });
 
 const projectNote = [

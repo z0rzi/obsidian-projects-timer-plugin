@@ -106,10 +106,15 @@ export function parseFrontmatter(content: string): Record<string, unknown> {
 	return result;
 }
 
-/** A Project's `priority:` as the kanban places its card: a number (P5 column above 5) or `pr` in any case; else null, no card. */
+/**
+ * A Project's `priority:` as the kanban places its card: a number (P5 column
+ * above 5), `pr` or `pz` in any case (a PZ card is not shown, its Overrides
+ * at a rank are); else null, no card.
+ */
 function cardPriority(value: unknown): Priority | null {
 	if (typeof value === "number") return value as Priority;
-	return typeof value === "string" && value.toLowerCase() === "pr" ? "pr" : null;
+	const word = typeof value === "string" ? value.toLowerCase() : "";
+	return word === "pr" || word === "pz" ? word : null;
 }
 
 export function parseProjectCard(params: {

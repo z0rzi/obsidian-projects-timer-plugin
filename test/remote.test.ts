@@ -230,6 +230,55 @@ describe("HTTP remote, triage", () => {
 	});
 });
 
+describe("HTTP remote, « Lancer en projet »", () => {
+	it("posts the Project's fields and base to /api/items/:id/lancer and returns the Project's fields", async () => {
+		const fields = { title: "Carte des flux", description: "", priority: "pz", done: false, due_date: null } as const;
+		const { sent, transport } = fakeTransport(200, { id: "i4k2z", fields });
+		const remote = createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport);
+		const request = { fields, base: { path: "2.projects/Carte des flux.md", fields } };
+
+		expect(await remote.launch("i4k2z", request)).toEqual({ id: "i4k2z", fields });
+		expect(sent[0]).toMatchObject({ url: "https://suivi.test/api/items/i4k2z/lancer", method: "POST", body: JSON.stringify(request) });
+	});
+});
+
+describe("HTTP remote, « Archiver » in the Deck", () => {
+	it("posts the comment to /api/items/:id/archiver, null for none, and keeps the app's 409 status", async () => {
+		const { sent, transport } = fakeTransport(200, { ok: true });
+		const remote = createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport);
+		await remote.archiveTicket("t7f3a", "Doublon");
+		await remote.archiveTicket("t7f3a", null);
+		expect(sent.map((r) => [r.url, r.method, r.body])).toEqual([
+			["https://suivi.test/api/items/t7f3a/archiver", "POST", JSON.stringify({ comment: "Doublon" })],
+			["https://suivi.test/api/items/t7f3a/archiver", "POST", JSON.stringify({ comment: null })],
+		]);
+		const stale = createHttpRemote({ url: "https://suivi.test", token: "tok" }, fakeTransport(409, { error: "Pas à trier : t7f3a" }).transport);
+		await expect(stale.archiveTicket("t7f3a", null)).rejects.toMatchObject({ status: 409 });
+	});
+});
+
+describe("HTTP remote, the Sweep", () => {
+	it("posts a keep to /api/items/:id/garder with its day", async () => {
+		const { sent, transport } = fakeTransport(200, { id: "t7f3a", kept_until: "2026-11-04" });
+		await createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport).keep("t7f3a", "2026-11-04");
+		expect(sent.map((r) => [r.url, r.method, r.body])).toEqual([["https://suivi.test/api/items/t7f3a/garder", "POST", JSON.stringify({ until: "2026-11-04" })]]);
+	});
+
+	it("reads the whole state, deck_at null from an app that sends none", async () => {
+		const { transport } = fakeTransport(200, { items: [], zones: [{ id: 1, name: "Heatmap", path: "" }] });
+		expect(await createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport).fullState()).toEqual({
+			items: [],
+			zones: [{ id: 1, name: "Heatmap", path: "" }],
+			deck_at: null,
+		});
+	});
+
+	it("reads no Zones from an app that sends none", async () => {
+		const { transport } = fakeTransport(200, { items: [] });
+		expect((await createHttpRemote({ url: "https://suivi.test", token: "tok" }, transport).fullState()).zones).toEqual([]);
+	});
+});
+
 describe("HTTP remote, connection test", () => {
 	it("gets an empty page of events, past every event id", async () => {
 		const { sent, transport } = fakeTransport(200, { events: [], cursor: Number.MAX_SAFE_INTEGER });

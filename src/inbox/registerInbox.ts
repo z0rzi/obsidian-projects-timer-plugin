@@ -3,7 +3,7 @@ import type { CommentTarget } from "../comments/commentTarget";
 import { listeners, settingsRemote } from "../remote/settingsRemote";
 import { openView } from "../ui/openView";
 import type { ProjectsTimerSettings } from "../settings";
-import type { AppItems } from "../sync/appState";
+import { frigoCount, type AppItems } from "../sync/appState";
 import type { Conflict } from "../sync/compareState";
 import { pickConflict } from "../sync/conflicts";
 import type { PluginData } from "../sync/pluginData";
@@ -12,14 +12,18 @@ import { vaultFiles } from "../sync/vaultFiles";
 import { INBOX_VIEW_TYPE, InboxView } from "../views/InboxView";
 import { InboxStore, type InboxEntry, type InboxState, type VaultProject } from "./inboxStore";
 import { itemLocation } from "./itemLocation";
-import { firstStepTarget, insertUnplacedTask, placeFirstStep, placeLine, runTriage, type TriageChoice, type TriageDeps } from "./triage";
+import { insertUnplacedTask, placeLine, type CursorDeps, type TriageDeps } from "./triage";
 import { removeFromApp, type UnplacedItem } from "../sync/unplaced";
-import { tagTaskProject } from "../sync/taskProject";
+import { projectRules } from "../sync/taskProject";
+import { noteProject } from "../sync/projectLink";
+import { dailyNotePath, dailyNotesOptions } from "../dailyNote";
 import { findTasksHeadingSection } from "../projectCards";
 import { suiviIdOf } from "../suiviId";
-import { TriageModal } from "../ui/TriageModal";
-import { NewProjectModal } from "../ui/NewProjectModal";
-import { insertUnplacedProject, runNewProject, type NewProjectDeps } from "./newProject";
+import { registerDeck } from "../deck/registerDeck";
+import { obsidianSweep } from "../deck/sweepDeps";
+import { bodySharer } from "../sync/bodySharer";
+import { insertUnplacedProject, type NewProjectDeps } from "./newProject";
+import { runLaunchIdea } from "./launchIdea";
 import { badgeText, toastText } from "./signals";
 
 export interface InboxDeps {
@@ -28,16 +32,17 @@ export interface InboxDeps {
 }
 
 /**
- * Inbox view (command "Open Suivi inbox"): Tickets to triage ("Insérer ici", « Insérer dans <Projet> »), launched Ideas ("Nouveau projet"),
- * the Unplaced items and conflicts of the last Pull and the Activity feed. Reloads from the app after each Pull and toasts the
- * Client's entries that are new since the previous reload; a status bar item shows the unread count. Returns
+ * Inbox view (command "Open Suivi inbox"): « Trier (n) » opening the Deck (`../deck/registerDeck.ts`), the Unplaced
+ * items and conflicts of the last Pull and the Activity feed; and the command « Lancer en projet » on an `#idea`
+ * line. Reloads from the app after each Pull and toasts the Client's entries that are new since the previous reload; a status bar item shows the unread count. Returns
  * the store, `subscribe`, `badges` and `openOnItem` (for the kanban), `pick` (a conflict's buttons) and `afterPull`.
  */
 export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSettings>, deps: InboxDeps) {
 	const { app } = plugin;
 	const remote = settingsRemote(data.settings);
 	const { emit, subscribe } = listeners<InboxState>();
-	const store = new InboxStore(remote, emit, () => {
+	/** The vault's notes with an app id, by that id. */
+	function vaultProjects() {
 		const projects = new Map<string, VaultProject>();
 		for (const note of app.vault.getMarkdownFiles()) {
 			const id = suiviIdOf(app, note.path);
@@ -46,7 +51,8 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 			projects.set(id, { id, path: note.path, title: note.basename, private: fm?.prive === true });
 		}
 		return projects;
-	});
+	}
+	const store = new InboxStore(remote, emit);
 	/** The app's state at the last Pull: the base's note is where an item is looked for first. */
 	let lastState: AppItems | null = null;
 
@@ -84,14 +90,6 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		return app.workspace.getLeavesOfType("markdown").find((leaf) => (leaf.view as MarkdownView).file?.path === path);
 	}
 
-	/** Text of the note at `path` as its editor holds it when open (unsaved edits included), else as saved; null when gone. */
-	async function noteText(path: string): Promise<string | null> {
-		const view = openLeaf(path)?.view;
-		if (view instanceof MarkdownView) return view.editor.getValue();
-		const file = app.vault.getFileByPath(path);
-		return file ? app.vault.read(file) : null;
-	}
-
 	/** The note last edited (the Inbox has focus when its button is clicked). */
 	function noteView(): MarkdownView | null {
 		const leaf = app.workspace.getMostRecentLeaf();
@@ -99,25 +97,24 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 	}
 
 	/**
-	 * Note and Project the line goes to, with the same Project rule as the Push. The cursor
-	 * on the Tasks heading or in its section of a Project note makes the line a Project step.
+	 * Note the line goes to, refused in a private Project's note (by the Push's
+	 * Project rule). The cursor on the Tasks heading or in its section of a
+	 * Project note makes the line a Project step.
 	 */
-	function triageTarget(view: MarkdownView | null): ReturnType<TriageDeps["target"]> {
+	function cursorTarget(view: MarkdownView | null): ReturnType<CursorDeps["target"]> {
 		const file = view?.file;
 		if (!view || !file) return { error: "Ouvrez la note où va la Tâche et placez-y le curseur." };
 		if (file.path === data.settings.projectTemplate) return { error: "C'est le modèle de Projet." };
 		const content = view.editor.getValue();
-		const folder = data.settings.projectsLocation.replace(/\/+$/, "");
-		const section = file.parent?.path === folder ? findTasksHeadingSection(content.split("\n")) : null;
+		const rules = projectRules(app, data.settings);
+		const section = rules.isProject(file.path) ? findTasksHeadingSection(content.split("\n")) : null;
 		const cursor = view.editor.getCursor().line;
 		const step = section !== null && cursor >= section.start - 1 && cursor < section.end;
-		const projectPath = step ? file.path : tagTaskProject(app, file, content);
+		const projectPath = step ? file.path : noteProject(rules, file.path, content);
 		const projectFile = projectPath ? app.vault.getFileByPath(projectPath) : null;
-		if (!projectFile || projectFile.parent?.path !== folder) return { path: file.path, projectId: null, step };
-		const fm = app.metadataCache.getFileCache(projectFile)?.frontmatter as Record<string, unknown> | undefined;
-		if (fm?.prive === true) return { error: `${projectFile.basename} est privé : le Client perdrait cette Tâche.` };
-		// Not pushed yet: the next Push links the Task once the Project has its id.
-		return { path: file.path, projectId: suiviIdOf(app, projectFile.path) ?? null, step };
+		const fm = projectFile ? (app.metadataCache.getFileCache(projectFile)?.frontmatter as Record<string, unknown> | undefined) : undefined;
+		if (projectFile && fm?.prive === true) return { error: `${projectFile.basename} est privé : le Client perdrait cette Tâche.` };
+		return { path: file.path, step };
 	}
 
 	/** Writes `text` at the cursor of `view` as Triage places a Task line. */
@@ -136,81 +133,55 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		return app.metadataCache.fileToLinktext(file, notePath, false);
 	}
 
-	function triage(entry: InboxEntry) {
-		const view = noteView();
-		if (!view) {
-			new Notice("Ouvrez la note où va la Tâche et placez-y le curseur.");
-			return;
-		}
-		const target = triageTarget(view);
-		if ("error" in target) {
-			new Notice(target.error);
-			return;
-		}
-		new TriageModal(app, modalItem(entry, target.step), (choice: TriageChoice) => {
-			void (async () => {
-				await triageWith(entry, choice, target.path, {
-					target: () => target,
-					insert: (line) => insertAtCursor(view, line),
-				});
-				await store.refresh();
-			})();
-		}).open();
+	/** The Project notes a Task may join at Triage: in the projects folder, not private, by title. */
+	function triageProjects(): VaultProject[] {
+		const rules = projectRules(app, data.settings);
+		return [...vaultProjects().values()].filter((p) => rules.isProject(p.path) && !p.private).sort((a, b) => a.title.localeCompare(b.title));
 	}
 
-	/** What the Triage dialog shows of `entry`; `projectTitle` for « Insérer dans <Projet> ». */
-	function modalItem(entry: InboxEntry, step: boolean, projectTitle?: string): ConstructorParameters<typeof TriageModal>[1] {
-		return { title: entry.item.title, type: entry.ticketType ?? "task", step, context: entry.context, projectTitle, urgency: entry.urgency };
+	/** How Triage writes a Ticket into today's Daily note (the Deck's Enter). */
+	function triageDeps(): TriageDeps {
+		const path = dailyNotePath(dailyNotesOptions(app), new Date());
+		return {
+			remote,
+			dailyNote: path,
+			heading: data.settings.triageHeading,
+			template: async () => {
+				const file = data.settings.triageTemplate ? app.vault.getFileByPath(data.settings.triageTemplate) : null;
+				return file ? app.vault.read(file) : "";
+			},
+			write: async (at, edit) => {
+				const file = app.vault.getFileByPath(at);
+				if (file) return app.vault.process(file, (content) => edit(content));
+				const content = edit(null);
+				await ensureFolder(at);
+				await app.vault.create(at, content);
+				return content;
+			},
+			linkText: (target, source) => {
+				const file = app.vault.getFileByPath(target);
+				return file ? app.metadataCache.fileToLinktext(file, source, true) : target.replace(/\.md$/, "");
+			},
+			projects: projectRules(app, data.settings),
+			appUrl: data.settings.suiviUrl,
+			localImage: (url) => copyAppImage(url, path),
+		};
 	}
 
-	/** Runs the Triage of `entry` into the note at `path` and tells how it went. */
-	async function triageWith(entry: InboxEntry, choice: TriageChoice, path: string, where: Pick<TriageDeps, "target" | "insert">) {
-		const result = await data.exclusive(() =>
-			runTriage(entry.item, choice, {
-				remote,
-				...where,
-				appUrl: data.settings.suiviUrl,
-				localImage: (url) => copyAppImage(url, path),
-			}),
-		);
-		if (!result.ok) new Notice(`Échec du tri : ${result.error}`, 10_000);
-		else {
-			new Notice(`Insérée : ${result.line}`);
-			if (result.missingImages > 0) {
-				new Notice(`${result.missingImages} image(s) du ticket non copiée(s) dans le coffre : le lien vers l'app est gardé.`, 10_000);
-			}
-		}
-	}
+	const openDeck = registerDeck(plugin, {
+		remote,
+		triage: triageDeps,
+		projects: triageProjects,
+		exclusive: (task) => data.exclusive(task),
+		finished: () => void store.refresh(),
+		appUrl: () => data.settings.suiviUrl,
+		sweep: () => obsidianSweep(app, data.settings, remote),
+	});
 
-	/**
-	 * « Insérer dans <Projet> »: the Ticket triaged as a step of the Client's Project, written
-	 * first under its Tasks heading, then the cursor put at the end of that line. A note
-	 * without a Tasks heading gets a Notice and nothing is triaged.
-	 */
-	function insertInto(entry: InboxEntry) {
-		const project = entry.context?.project;
-		if (!project) return;
-		new TriageModal(app, modalItem(entry, true, project.title), (choice: TriageChoice) => {
-			void (async () => {
-				const text = await noteText(project.path);
-				if (text === null) return;
-				await triageWith(entry, choice, project.path, {
-					// Checked before the app is called, on the text the note opens with.
-					target: () => firstStepTarget(text.split("\n"), project),
-					// The note is opened only once the app has triaged.
-					insert: async (line) => {
-						const editor = (await openNote(project.path, 0))?.editor;
-						const at = editor && placeFirstStep(editor.getValue().split("\n"), line);
-						if (!editor || !at) throw new Error(`plus de titre « Tasks » dans ${project.title}`);
-						editor.replaceRange(at.text, at.from, at.to);
-						const end = { line: at.line, ch: editor.getLine(at.line).length };
-						editor.setCursor(end);
-						editor.scrollIntoView({ from: end, to: end }, true);
-					},
-				});
-				await store.refresh();
-			})();
-		}).open();
+	/** Creates the folder of the note at `path` when missing (a Daily notes folder not made yet). */
+	async function ensureFolder(path: string) {
+		const folder = path.slice(0, Math.max(0, path.lastIndexOf("/")));
+		if (folder && !app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder);
 	}
 
 	/** Where and how a Project file is created from the template. */
@@ -249,7 +220,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 			const result = await data.exclusive(() =>
 				insertUnplacedTask(item, {
 					remote,
-					target: () => triageTarget(view),
+					target: () => cursorTarget(view),
 					insert: (line) => insertAtCursor(view, line),
 					appUrl: data.settings.suiviUrl,
 					// noteView only returns a view with a file.
@@ -273,18 +244,45 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		}
 	}
 
-	function newProject(entry: InboxEntry) {
-		new NewProjectModal(app, entry.item, (choice) => {
-			void (async () => {
-				const result = await data.exclusive(() => runNewProject(entry.item, choice, projectDeps()));
-				if (result.ok) {
-					new Notice(`Créée : ${result.path}`);
-					await openLine(result.path, 0);
-				} else new Notice(`Échec du nouveau projet : ${result.error}`, 10_000);
-				await store.refresh();
-			})();
-		}).open();
+	/**
+	 * « Lancer en projet » on the `#idea` line at the cursor of `view`: its Project note from the template, the
+	 * same item in the app, the line gone; then the new note opens, as « Insérer ici » of a Project does.
+	 */
+	async function launchIdea(view: MarkdownView) {
+		const file = view.file;
+		if (!file) return;
+		const note = { path: file.path, content: view.editor.getValue() };
+		const deps = projectDeps();
+		const result = await data.exclusive(() =>
+			runLaunchIdea(note, view.editor.getCursor().line, {
+				...deps,
+				remote,
+				process: async (path, edit) => {
+					const target = app.vault.getFileByPath(path);
+					if (!target) throw new Error(`${path} introuvable`);
+					await app.vault.process(target, edit);
+				},
+				shareBody: bodySharer(app, remote),
+				projects: projectRules(app, data.settings),
+			}),
+		);
+		if (!result.ok) {
+			new Notice(`Échec du lancement en projet : ${result.error}`, 10_000);
+			return;
+		}
+		new Notice(`Créée : ${result.path}`);
+		await openLine(result.path, 0);
 	}
+	plugin.addCommand({
+		id: "launch-idea",
+		name: "Lancer en projet",
+		editorCheckCallback: (checking, editor, ctx) => {
+			const view = ctx instanceof MarkdownView ? ctx : null;
+			if (!view?.file || !editor.getLine(editor.getCursor().line).startsWith("#idea ")) return false;
+			if (!checking) void launchIdea(view);
+			return true;
+		},
+	});
 
 	plugin.registerView(
 		INBOX_VIEW_TYPE,
@@ -296,9 +294,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 				(item, title, thread) => void open(item, title, thread),
 				() => data.settings.suiviUrl,
 				(path) => remote.image(path),
-				triage,
-				insertInto,
-				newProject,
+				openDeck,
 				(conflict, choice) => void pick(conflict, choice),
 				{ insert: (item) => void insertUnplaced(item), remove: (items) => void removeUnplaced(items) },
 				{ push: () => runCommand("push-to-suivi"), pull: () => runCommand("pull-from-suivi") },
@@ -351,6 +347,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		lastState = outcome.app;
 		store.setUnplaced(outcome.unplaced);
 		store.setConflicts(outcome.conflicts);
+		store.setFrigo(frigoCount(outcome.app));
 		void store.refresh().then((fresh) => {
 			for (const entry of fresh) new Notice(toastText(entry));
 		});

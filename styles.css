@@ -138,7 +138,8 @@
 }
 
 .tasks-kanban-view-container .kanban-play-btn,
-.tasks-kanban-view-container .kanban-done-btn {
+.tasks-kanban-view-container .kanban-done-btn,
+.tasks-kanban-view-container .kanban-zzz-btn {
 	width: 24px;
 	height: 24px;
 	display: flex;
@@ -151,8 +152,18 @@
 	transition: color 0.15s ease, background 0.15s ease;
 }
 
+/* Zzz is a word, not an icon: a pill as tall as the round buttons. */
+.tasks-kanban-view-container .kanban-zzz-btn {
+	width: auto;
+	padding: 0 8px;
+	border-radius: 12px;
+	font-size: 11px;
+	font-weight: 600;
+}
+
 .tasks-kanban-view-container .kanban-play-btn:hover,
-.tasks-kanban-view-container .kanban-done-btn:hover {
+.tasks-kanban-view-container .kanban-done-btn:hover,
+.tasks-kanban-view-container .kanban-zzz-btn:hover {
 	background: var(--interactive-accent, #5c7cfa);
 	color: #fff;
 }
@@ -258,4 +269,708 @@
 .suivi-inbox-entry.is-mention {
 	box-shadow: inset 3px 0 0 var(--color-orange);
 	padding-left: 6px;
+}
+
+/* ── Deck (« Trier ») ──
+ * Every Deck rule lives here, on the theme's colours: the Deck's code sets no inline style.
+ * The colour vocabulary is defined once on .suivi-deck and picked by data attributes:
+ *   data-priority="p0…p5|pq|pz|pr" → --priority-color   (Priority scale)
+ *   data-urgency="bloquant|genant|plus_tard" → --urgency-color, --urgency-text
+ *   data-type="<tag>" → --type-color (the kanban's, injected by DeckView from TASKS_TYPES; none for #task)
+ *   data-mark="<decision>" on a progress dot (see the strip below)
+ */
+.suivi-deck {
+	/* Priority scale */
+	--suivi-p0: var(--color-red);
+	--suivi-p1: var(--color-orange);
+	--suivi-p2: var(--color-yellow);
+	--suivi-p3: var(--color-green);
+	--suivi-p4: var(--color-cyan);
+	--suivi-p5: var(--text-faint);
+	--suivi-rapide: var(--color-purple);
+	--suivi-frigo: color-mix(in srgb, var(--color-blue) 40%, var(--background-primary));
+	--suivi-pr: var(--interactive-accent);
+	/* Urgency */
+	--suivi-bloquant: var(--color-red);
+	--suivi-genant: var(--color-orange);
+	--suivi-plus-tard: var(--background-modifier-border);
+	/* Messages: information, failure */
+	--suivi-info: var(--color-blue);
+	--suivi-error: var(--text-error);
+	/* A #task, or a type without a colour */
+	--type-color: var(--text-faint);
+}
+
+.suivi-deck [data-priority="p0"] { --priority-color: var(--suivi-p0); }
+.suivi-deck [data-priority="p1"] { --priority-color: var(--suivi-p1); }
+.suivi-deck [data-priority="p2"] { --priority-color: var(--suivi-p2); }
+.suivi-deck [data-priority="p3"] { --priority-color: var(--suivi-p3); }
+.suivi-deck [data-priority="p4"] { --priority-color: var(--suivi-p4); }
+.suivi-deck [data-priority="p5"] { --priority-color: var(--suivi-p5); }
+.suivi-deck [data-priority="pq"] { --priority-color: var(--suivi-rapide); }
+.suivi-deck [data-priority="pz"] { --priority-color: var(--suivi-frigo); }
+.suivi-deck [data-priority="pr"] { --priority-color: var(--suivi-pr); }
+
+.suivi-deck [data-urgency="bloquant"] { --urgency-color: var(--suivi-bloquant); --urgency-text: var(--text-on-accent); }
+.suivi-deck [data-urgency="genant"] { --urgency-color: var(--suivi-genant); --urgency-text: var(--text-on-accent); }
+.suivi-deck [data-urgency="plus_tard"] { --urgency-color: var(--suivi-plus-tard); --urgency-text: var(--text-muted); }
+
+/* Layout: the strip, the Ticket (left, scrolling on its own) and its fields (right), the legend; never scrolled away */
+.suivi-deck {
+	container: suivi-deck / inline-size;
+	display: flex;
+	flex-direction: column;
+}
+
+.suivi-deck-strip,
+.suivi-deck-legend {
+	flex: none;
+}
+
+.suivi-deck-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	gap: 24px;
+	align-items: flex-start;
+}
+
+.suivi-deck-ticket {
+	flex: 3;
+	min-width: 0;
+	align-self: stretch;
+	overflow-y: auto;
+}
+
+.suivi-deck-fields {
+	flex: 2;
+	min-width: 0;
+}
+
+/* Narrow: the field rows above the Ticket, the whole body scrolling */
+@container suivi-deck (max-width: 700px) {
+	.suivi-deck-body {
+		flex-direction: column;
+		align-items: stretch;
+		overflow-y: auto;
+	}
+
+	.suivi-deck-fields {
+		order: -1;
+		flex: none;
+	}
+
+	.suivi-deck-ticket {
+		flex: none;
+		overflow-y: visible;
+	}
+}
+
+.suivi-deck-legend {
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 16px;
+	padding-top: 8px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 16px;
+	color: var(--text-muted);
+}
+
+.suivi-deck-legend kbd {
+	margin-right: 2px;
+}
+
+.suivi-deck-loading {
+	color: var(--text-muted);
+}
+
+/* Progress strip: a dot per card (Sweep, Tickets, a square for the end) */
+.suivi-deck-strip {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 14px;
+	padding-bottom: 8px;
+	margin-bottom: 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.suivi-deck-dots {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 12px;
+}
+
+.suivi-deck-dot-group {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.suivi-deck-dot {
+	--dot-color: var(--text-faint);
+	position: relative;
+	box-sizing: border-box;
+	width: 11px;
+	height: 11px;
+	border-radius: 50%;
+	border: 1.5px solid var(--dot-color);
+	background: transparent;
+}
+
+.suivi-deck-dot-group[data-step="end"] .suivi-deck-dot {
+	border-radius: 2px;
+}
+
+.suivi-deck-dot.is-reached:not(.is-current) {
+	cursor: pointer;
+}
+
+.suivi-deck-dot.is-reached:not(.is-current):hover {
+	transform: scale(1.25);
+}
+
+.suivi-deck-dot.is-current {
+	box-shadow: 0 0 0 2px var(--background-primary), 0 0 0 3.5px var(--interactive-accent);
+}
+
+.suivi-deck-dot[data-mark="written"] { --dot-color: var(--priority-color); background: var(--dot-color); }
+.suivi-deck-dot[data-mark="frigo"] { --dot-color: var(--suivi-frigo); background: var(--dot-color); }
+.suivi-deck-dot[data-mark="archived"] { --dot-color: var(--text-faint); background: var(--dot-color); }
+.suivi-deck-dot[data-mark="skipped"] { --dot-color: var(--text-muted); border-style: dashed; }
+.suivi-deck-dot[data-mark="kept"] {
+	--dot-color: var(--color-green);
+	border-width: 2px;
+	background: color-mix(in srgb, var(--color-green) 35%, transparent);
+}
+.suivi-deck-dot[data-mark="moved"] { --dot-color: var(--color-accent); background: var(--dot-color); }
+
+/* Archived: struck */
+.suivi-deck-dot[data-mark="archived"]::after {
+	content: "";
+	position: absolute;
+	left: -3px;
+	right: -3px;
+	top: 50%;
+	border-top: 1.5px solid var(--text-normal);
+	transform: rotate(-45deg);
+}
+
+.suivi-deck-position {
+	font-weight: 600;
+}
+
+.suivi-deck-tally {
+	color: var(--text-muted);
+}
+
+/* Message line: information in blue (ⓘ), failures only in red */
+.suivi-deck-message.is-info {
+	color: var(--suivi-info);
+}
+
+.suivi-deck-message.is-error {
+	color: var(--suivi-error);
+}
+
+/* The Ticket's side: title and urgency badge, who and when, the description, the images */
+.suivi-deck-ticket-head {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+}
+
+.suivi-deck-ticket-title {
+	flex: 1;
+	margin: 0 0 4px;
+}
+
+.suivi-deck-badge {
+	flex: none;
+	padding: 2px 10px;
+	border-radius: 999px;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+}
+
+.suivi-deck-badge[data-urgency] {
+	background: var(--urgency-color);
+	color: var(--urgency-text);
+}
+
+.suivi-deck-sender {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	padding-bottom: 8px;
+	margin-bottom: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.suivi-deck-images {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.suivi-deck-thumb {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	max-height: 120px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	overflow: hidden;
+	cursor: zoom-in;
+}
+
+.suivi-deck-thumb img {
+	display: block;
+	max-height: 120px;
+	width: auto;
+}
+
+.suivi-deck-image-modal {
+	width: auto;
+	max-width: 95vw;
+}
+
+.suivi-deck-image-modal img {
+	display: block;
+	max-width: 100%;
+	max-height: 85vh;
+	margin: 0 auto;
+}
+
+/* A Zone's path, faded, in the Zone picker */
+.suivi-deck-picker-detail {
+	color: var(--text-faint);
+}
+
+/* The fields' side */
+.suivi-deck-decision {
+	color: var(--text-accent);
+}
+
+/* A field: its label and the row's end on one line, its chips the whole width under them */
+.suivi-deck-field {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas: "label end" "chips chips";
+	align-items: center;
+	gap: 4px 8px;
+	padding: 6px 8px;
+	border-left: 3px solid transparent;
+}
+
+.suivi-deck-field.is-current {
+	border-left-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+
+.suivi-deck-field-label {
+	grid-area: label;
+	font-weight: 600;
+	line-height: 22px;
+}
+
+.suivi-deck-chips {
+	grid-area: chips;
+	min-width: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+/* A chip and, under it, the « client » mark */
+.suivi-deck-chip-slot {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	max-width: 100%;
+}
+
+.suivi-deck-chip {
+	--chip-color: var(--interactive-accent);
+	display: inline-flex;
+	align-items: baseline;
+	gap: 4px;
+	padding: 1px 6px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	color: var(--text-muted);
+	line-height: 18px;
+	white-space: nowrap;
+	max-width: 100%;
+	overflow: hidden;
+}
+
+.suivi-deck-chip[data-priority] {
+	--chip-color: var(--priority-color);
+	border-color: var(--chip-color);
+}
+
+.suivi-deck-chip.has-type {
+	--chip-color: var(--type-color);
+}
+
+/* A type's colour as a dot on its left */
+.suivi-deck-chip.has-type::before {
+	content: "";
+	align-self: center;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--type-color);
+}
+
+.suivi-deck-chip.is-selected {
+	background: var(--chip-color);
+	border-color: var(--chip-color);
+	color: var(--text-on-accent);
+	font-weight: 600;
+}
+
+/* Pale fills: dark text */
+.suivi-deck-chip.is-selected[data-priority="pz"],
+.suivi-deck-chip.is-selected[data-priority="p5"] {
+	color: var(--text-normal);
+}
+
+.suivi-deck-chip.has-type.is-selected::before {
+	background: var(--text-on-accent);
+}
+
+/* #quick's amber fill: dark text and dot, as the pale Priorities */
+.suivi-deck-chip.has-type.is-selected[data-type="quick"] {
+	color: var(--text-normal);
+}
+
+.suivi-deck-chip.has-type.is-selected[data-type="quick"]::before {
+	background: var(--text-normal);
+}
+
+.suivi-deck-chip-detail {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.suivi-deck-chip.is-selected .suivi-deck-chip-detail {
+	color: inherit;
+	opacity: 0.75;
+	font-weight: normal;
+}
+
+.suivi-deck-chip-key {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	opacity: 0.7;
+}
+
+.suivi-deck-chip.is-struck .suivi-deck-chip-label {
+	text-decoration: line-through;
+}
+
+.suivi-deck-chip.is-struck,
+.suivi-deck-chip.is-disabled {
+	border-style: dashed;
+	color: var(--text-faint);
+}
+
+.suivi-deck-client {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-accent);
+	line-height: 1.2;
+}
+
+.suivi-deck-client::before {
+	content: "● ";
+	font-size: 0.7em;
+	vertical-align: middle;
+}
+
+/* The row's end: « modifié », the picker's key */
+.suivi-deck-field-end {
+	grid-area: end;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	line-height: 22px;
+}
+
+.suivi-deck-modified {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-accent);
+	font-style: italic;
+}
+
+/* The lists (the Sweep, the end screen and its report, « Rien à trier ») take the whole width */
+.suivi-deck:not([data-screen="ticket"]) .suivi-deck-fields {
+	display: none;
+}
+
+/* A type as its tag in its colour, with a dot */
+.suivi-deck-type-tag {
+	color: var(--type-color);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	white-space: nowrap;
+}
+
+.suivi-deck-type-tag[data-type]::before {
+	content: "● ";
+}
+
+/* A decision in words, in its dot's colour (`data-mark`, as on the strip) */
+.suivi-deck [data-mark="frigo"] { --mark-color: var(--color-blue); }
+.suivi-deck [data-mark="kept"] { --mark-color: var(--color-green); }
+.suivi-deck [data-mark="moved"] { --mark-color: var(--color-accent); }
+
+.suivi-deck-sweep-decision [data-mark],
+.suivi-deck-end-group {
+	color: var(--mark-color);
+	font-weight: 600;
+}
+
+/* The Sweep list: a header per note, a row per line, the focused one open in its note */
+.suivi-deck-sweep-note {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	margin-top: 12px;
+	padding: 2px 8px;
+	font-weight: 600;
+	color: var(--text-muted);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.suivi-deck-sweep-open {
+	font-weight: normal;
+	white-space: nowrap;
+}
+
+.suivi-deck-sweep-row {
+	padding: 3px 8px 3px 16px;
+	border-left: 3px solid transparent;
+}
+
+.suivi-deck-sweep-row.is-focused {
+	border-left-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+
+.suivi-deck-sweep-head {
+	display: grid;
+	grid-template-columns: 6em minmax(0, 1fr) auto 8em 3.5em minmax(8em, auto);
+	align-items: center;
+	gap: 10px;
+	cursor: pointer;
+}
+
+.suivi-deck-sweep-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The age bar: full at 30 days, its width in tenths (`data-age`) */
+.suivi-deck-age-bar {
+	height: 6px;
+	border-radius: 3px;
+	background: var(--background-modifier-border);
+	overflow: hidden;
+}
+
+.suivi-deck-age-fill {
+	display: block;
+	height: 100%;
+	width: 0;
+	background: var(--text-muted);
+}
+
+.suivi-deck-age-fill[data-age="1"] { width: 10%; }
+.suivi-deck-age-fill[data-age="2"] { width: 20%; }
+.suivi-deck-age-fill[data-age="3"] { width: 30%; }
+.suivi-deck-age-fill[data-age="4"] { width: 40%; }
+.suivi-deck-age-fill[data-age="5"] { width: 50%; }
+.suivi-deck-age-fill[data-age="6"] { width: 60%; }
+.suivi-deck-age-fill[data-age="7"] { width: 70%; }
+.suivi-deck-age-fill[data-age="8"] { width: 80%; }
+.suivi-deck-age-fill[data-age="9"] { width: 90%; }
+.suivi-deck-age-fill[data-age="10"] { width: 100%; }
+
+.suivi-deck-age {
+	color: var(--text-muted);
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.suivi-deck-sweep-decision {
+	display: flex;
+	gap: 8px;
+	white-space: nowrap;
+}
+
+.suivi-deck-not-pushed {
+	color: var(--color-orange);
+}
+
+/* The focused line in its note: the heading, faded neighbours, the line and its body */
+.suivi-deck-sweep-context {
+	margin: 6px 0 4px 6em;
+	padding-left: 10px;
+	border-left: 1px solid var(--background-modifier-border);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+	white-space: pre-wrap;
+}
+
+.suivi-deck-sweep-heading {
+	color: var(--text-muted);
+	font-weight: 600;
+}
+
+.suivi-deck-sweep-faded {
+	color: var(--text-faint);
+}
+
+.suivi-deck-sweep-line {
+	color: var(--text-normal);
+}
+
+.suivi-deck-sweep-continue {
+	margin-top: 12px;
+	padding: 4px 8px 4px 16px;
+	border-left: 3px solid transparent;
+	color: var(--text-accent);
+	cursor: pointer;
+}
+
+.suivi-deck-sweep-continue.is-focused {
+	border-left-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+	font-weight: 600;
+}
+
+/* End screen and report: the Tickets one row each, the Sweep by outcome, each row's result */
+.suivi-deck-end-heading {
+	margin-top: 12px;
+	padding: 2px 8px;
+	font-weight: 600;
+	color: var(--text-muted);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.suivi-deck-end-row {
+	display: grid;
+	grid-template-columns: 6em minmax(0, 1fr) auto minmax(10em, auto) minmax(8em, auto);
+	align-items: center;
+	gap: 10px;
+	padding: 3px 8px 3px 16px;
+	border-left: 3px solid transparent;
+}
+
+.suivi-deck-end-row.is-sweep {
+	grid-template-columns: 8em minmax(0, 1fr);
+}
+
+.suivi-deck-end-row.is-focused {
+	border-left-color: var(--interactive-accent);
+	background: var(--background-modifier-hover);
+}
+
+.suivi-deck-end-title {
+	font-weight: 600;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.suivi-deck-end-none,
+.suivi-deck-end-action {
+	color: var(--text-muted);
+}
+
+.suivi-deck-end-lines {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px 14px;
+}
+
+.suivi-deck-end-line {
+	display: inline-flex;
+	gap: 6px;
+}
+
+/* A row's result: sending, done, information in blue, failure in red */
+.suivi-deck-status {
+	color: var(--text-muted);
+}
+
+.suivi-deck-status[data-tone="done"] {
+	color: var(--color-green);
+}
+
+.suivi-deck-status[data-tone="info"] {
+	color: var(--suivi-info);
+}
+
+.suivi-deck-status[data-tone="error"] {
+	color: var(--suivi-error);
+}
+
+.suivi-deck-end-push {
+	margin-top: 12px;
+	padding: 0 8px;
+}
+
+.suivi-deck-end-buttons {
+	display: flex;
+	gap: 8px;
+	margin-top: 16px;
+	padding: 0 8px;
+}
+
+.suivi-deck-end-buttons button.is-focused {
+	box-shadow: 0 0 0 2px var(--background-primary), 0 0 0 4px var(--interactive-accent);
+}
+
+/* Nothing to triage */
+.suivi-deck-nothing {
+	margin: 15vh auto 0;
+	text-align: center;
+}
+
+.suivi-deck-nothing-line {
+	color: var(--text-muted);
+}
+
+/* Narrow: the age bar goes, its figure stays */
+@container suivi-deck (max-width: 700px) {
+	.suivi-deck-sweep-head {
+		grid-template-columns: 5em minmax(0, 1fr) auto 3.5em auto;
+	}
+
+	.suivi-deck-age-bar {
+		display: none;
+	}
+
+	.suivi-deck-sweep-context {
+		margin-left: 0;
+	}
+
+	.suivi-deck-end-row {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+}
+
+/* The archive's comment modal */
+.suivi-deck-archive-comment {
+	width: 100%;
 }

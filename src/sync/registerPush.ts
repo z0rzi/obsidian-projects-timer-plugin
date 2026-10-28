@@ -1,5 +1,4 @@
-import { Notice, parseLinktext, Plugin, type App } from "obsidian";
-import { UPLOAD_MAX_BYTES } from "../remote/api";
+import { Notice, Plugin } from "obsidian";
 import { obsidianTransport } from "../remote/obsidianTransport";
 import { createHttpRemote, RemoteError, type Remote } from "../remote/remote";
 import type { ProjectsTimerSettings } from "../settings";
@@ -11,7 +10,7 @@ import { planPush } from "./planPush";
 import { readVault } from "./readVault";
 import { vaultFiles } from "./vaultFiles";
 import { runPush, vaultWriters } from "./runPush";
-import { IMAGE_TYPES, shareBody } from "./sharedBody";
+import { bodySharer } from "./bodySharer";
 
 /**
  * Adds the "Push to Suivi" command: fetches the app's state, lists the
@@ -72,17 +71,4 @@ function appHost(url: string): string {
 	} catch {
 		return url;
 	}
-}
-
-/** `shareBody` of a Push: vault images found from the note, uploaded to Suivi (which answers an image it has with its URL). */
-function bodySharer(app: App, remote: Remote) {
-	return (path: string, body: string) =>
-		shareBody(body, async (link) => {
-			const target = app.metadataCache.getFirstLinkpathDest(parseLinktext(link).path, path);
-			if (!target) throw new Error(`image ${link} not found in the vault`);
-			if (!IMAGE_TYPES[target.extension.toLowerCase()]) throw new Error(`${link} is not a PNG, JPEG, GIF or WebP image`);
-			const data = await app.vault.readBinary(target);
-			if (data.byteLength > UPLOAD_MAX_BYTES) throw new Error(`image ${link} is over ${UPLOAD_MAX_BYTES / 1024 / 1024} MB`);
-			return remote.upload(data, target.name);
-		});
 }

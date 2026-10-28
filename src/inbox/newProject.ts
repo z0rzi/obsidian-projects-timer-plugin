@@ -3,13 +3,8 @@ import type { ProjectFields } from "../remote/api";
 import type { Remote } from "../remote/remote";
 import { descriptionForVault, type AppDescriptionDeps } from "./appDescription";
 
-export interface NewProjectChoice {
-	/** 0 (En cours) to 5. */
-	priority: number;
-}
-
 export interface NewProjectDeps extends Pick<AppDescriptionDeps, "appUrl"> {
-	remote: Pick<Remote, "triage" | "acknowledge">;
+	remote: Pick<Remote, "acknowledge">;
 	/** Projects folder (setting), where the file goes. */
 	folder: string;
 	/** Content of the Project template (setting); "" when there is none. */
@@ -23,32 +18,6 @@ export interface NewProjectDeps extends Pick<AppDescriptionDeps, "appUrl"> {
 export type NewProjectResult = { ok: true; path: string } | { ok: false; error: string };
 
 /**
- * "Nouveau projet" on a launched Idea: the app makes the item a Project
- * first (same id, so JMJ's description and comments stay on it), then the
- * Project file is created from the template with `suivi_id:`, priority
- * and the Idea's description, and its base is sent to the app so the
- * next Push sees no change. Nothing is called or written if the file
- * already exists.
- */
-export async function runNewProject(
-	item: { id: string; title: string },
-	choice: NewProjectChoice,
-	deps: NewProjectDeps,
-): Promise<NewProjectResult> {
-	const at = projectPath(item.title, deps);
-	if ("error" in at) return { ok: false, error: at.error };
-
-	let response;
-	try {
-		response = await deps.remote.triage(item.id, { as: "project", priority: choice.priority });
-	} catch (e) {
-		return { ok: false, error: e instanceof Error ? e.message : String(e) };
-	}
-	if (response.as !== "project") return { ok: false, error: "L'app n'en a pas fait un Projet." };
-	return writeProjectNote(at, item.id, response.fields, deps);
-}
-
-/**
  * « Insérer ici » on an Unplaced Project: its file is created from the
  * template with its id and the app's fields now, and its base is sent,
  * acknowledging the Answer its Priority or Done comes from, as the Pull does. Nothing
@@ -56,15 +25,15 @@ export async function runNewProject(
  */
 export function insertUnplacedProject(
 	item: { id: string; fields: ProjectFields; answer?: number },
-	deps: Omit<NewProjectDeps, "remote"> & { remote: Pick<Remote, "acknowledge"> },
+	deps: NewProjectDeps,
 ): Promise<NewProjectResult> {
 	const at = projectPath(item.fields.title, deps);
 	if ("error" in at) return Promise.resolve({ ok: false, error: at.error });
 	return writeProjectNote(at, item.id, item.fields, deps, item.answer);
 }
 
-/** Where the Project file of `title` goes, or why it can't. */
-function projectPath(title: string, deps: Pick<NewProjectDeps, "folder" | "exists">): { path: string; name: string } | { error: string } {
+/** Where the Project file of `title` goes, or why it can't (« Lancer en projet » too). */
+export function projectPath(title: string, deps: Pick<NewProjectDeps, "folder" | "exists">): { path: string; name: string } | { error: string } {
 	const folder = deps.folder.replace(/\/+$/, "");
 	if (!folder) return { error: "Indiquez d'abord le dossier des Projets dans les réglages du plugin." };
 	const name = fileName(title);

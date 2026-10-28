@@ -3,6 +3,7 @@ import { splitBlockId } from "../blockId";
 import { extractCheckboxItems, findTasksHeadingSection } from "../projectCards";
 import type { Priority, PushedTaskType } from "../remote/api";
 import { parseTasks, readIndentedBody } from "../taskParser";
+import { taskProject, type ProjectOfLink } from "./projectLink";
 
 /**
  * What the Client app sees of one Task line and its indented body (shared as
@@ -15,20 +16,29 @@ export interface LocalTask {
 	raw: string;
 	/** `^id` at the end of the line: the app id once pushed. */
 	blockId?: string;
-	/** Project note the Task belongs to (the file itself, or its `project:` frontmatter); null = standalone. */
+	/**
+	 * Project note the Task belongs to: the one its line or bare-link first
+	 * body line names, else the note's (the file itself, or its `project:`
+	 * frontmatter); null = standalone.
+	 */
 	projectPath: string | null;
+	/** Why the Task can't be pushed as written (two Projects named). */
+	projectError?: string;
 	title: string;
 	/** null for a `#done` line: its tag is gone, the type is its base's in the app. */
 	type: PushedTaskType | null;
 	/** A Project step (a checkbox under a Project note's Tasks heading); false for a Tag task. */
 	step: boolean;
-	/** `p0`–`p5` or `pr`; null = inherit the Project's (Project step without token), or Done. */
+	/** `p0`–`p5`, `pr` or `pz`, `pq` for a `#quick` Tag task without token; null = inherit the Project's (Project step without token), or Done. */
 	priority: Priority | null;
 	/** Terminé: a `#done` line or a ticked step. */
 	done: boolean;
 	/** Date of `#done <date>`, or of a done Project step (first word once its type tag is out: `- [x] #bug <date> …`). */
 	doneOn?: string;
-	/** The body with the first body line's indentation removed from every line; "" without body. */
+	/**
+	 * The body with the first body line's indentation removed from every line;
+	 * "" without body. A first line naming the Project is not part of it.
+	 */
 	description: string;
 }
 
@@ -74,24 +84,51 @@ export function deindent(body: string): string {
 		.join("\n");
 }
 
-/** Tag tasks of a file (`#task`, `#bug`, `#quick`, `#wait`, and `#done` lines), minus `#private` ones. */
-export function readTagTasks(path: string, content: string, projectPath: string | null): LocalTask[] {
+/**
+ * The Project and Description of the Tag task on line `at`: what its line or
+ * body names (`taskProject`), else `notePath`.
+ */
+function projectAndBody(lines: string[], at: number, notePath: string | null, projectOf: ProjectOfLink) {
+	const body = readIndentedBody(lines, at);
+	const named = taskProject(lines[at]!, body, projectOf);
+	const rest = named.bodyLink ? body.slice(1) : body;
+	const first = rest.findIndex((line) => line !== "");
+	return {
+		projectPath: named.projectPath ?? notePath,
+		...(named.error ? { projectError: named.error } : {}),
+		description: deindent(first < 0 ? "" : rest.slice(first).join("\n")),
+	};
+}
+
+/**
+ * Tag tasks of a file (`#task`, `#bug`, `#quick`, `#wait`, `#idea`, and `#done` lines),
+ * minus `#private` ones. `projectPath` is the note's Project; `projectOf`
+ * finds the Project note a link of the file targets (none by default: links
+ * are text).
+ */
+export function readTagTasks(
+	path: string,
+	content: string,
+	projectPath: string | null,
+	projectOf: ProjectOfLink = () => null,
+): LocalTask[] {
 	const lines = content.split("\n");
 	const out: LocalTask[] = [];
 	for (const t of parseTasks(lines, { path } as TFile, null)) {
 		if (PRIVATE.test(t.raw)) continue;
 		const mapped = fromToken(t.priority);
+		const { projectPath: project, ...rest } = projectAndBody(lines, t.line, projectPath, projectOf);
 		out.push({
 			path,
 			line: t.line,
 			raw: t.raw,
 			...(t.blockId ? { blockId: t.blockId } : {}),
-			projectPath,
+			projectPath: project,
 			title: t.title.trim(),
 			type: t.type,
 			step: false,
 			...mapped,
-			description: deindent(t.description),
+			...rest,
 		});
 	}
 	lines.forEach((raw, line) => {
@@ -99,19 +136,20 @@ export function readTagTasks(path: string, content: string, projectPath: string 
 		if (!m || PRIVATE.test(raw)) return;
 		const { text, blockId } = splitBlockId(m[2]!);
 		if (!text.trim()) return;
+		const { projectPath: project, ...rest } = projectAndBody(lines, line, projectPath, projectOf);
 		out.push({
 			path,
 			line,
 			raw,
 			...(blockId ? { blockId } : {}),
-			projectPath,
+			projectPath: project,
 			title: text.trim(),
 			type: null,
 			step: false,
 			priority: null,
 			done: true,
 			...(m[1] ? { doneOn: m[1] } : {}),
-			description: deindent(readIndentedBody(lines, line).join("\n")),
+			...rest,
 		});
 	});
 	return out.sort((a, b) => a.line - b.line);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { splitBlockId } from "../src/blockId";
-import { appendBlockId, rewriteStepToken, rewriteTaskTag, setStepDone, setTaskToken } from "../src/lineWriter";
+import { appendBlockId, rewriteStepToken, rewriteTaskTag, setStepDone, setTaskPriority, setTaskToken } from "../src/lineWriter";
 
 describe("splitBlockId", () => {
 	it("strips a trailing block ID from the text", () => {
@@ -219,5 +219,32 @@ describe("appendBlockId", () => {
 	it("refuses a line that already has a block ID", () => {
 		const raw = "#task p2 Titre ^abc";
 		expect(appendBlockId(raw, { line: 0, raw }, "s1")).toEqual({ ok: false, reason: "changed" });
+	});
+});
+
+describe("setTaskPriority with PZ and Rapide", () => {
+	const at = (raw: string) => ({ line: 0, raw });
+
+	it("writes pz on a Tag task, a step and over an older pz", () => {
+		expect(setTaskPriority("#bug p2 Plantage ^t1", at("#bug p2 Plantage ^t1"), "pz")).toEqual({ ok: true, content: "#bug pz Plantage ^t1" });
+		expect(setTaskPriority("- [ ] #bug Axe", at("- [ ] #bug Axe"), "pz")).toEqual({ ok: true, content: "- [ ] #bug pz Axe" });
+		expect(setTaskPriority("#task pz Titre", at("#task pz Titre"), 2)).toEqual({ ok: true, content: "#task p2 Titre" });
+	});
+
+	it("removes the token of a #quick Tag task for Rapide, and leaves one without token as it is", () => {
+		expect(setTaskPriority("#quick pz Renommer ^t2", at("#quick pz Renommer ^t2"), "pq")).toEqual({ ok: true, content: "#quick Renommer ^t2" });
+		expect(setTaskPriority("#quick p3 Renommer", at("#quick p3 Renommer"), "pq")).toEqual({ ok: true, content: "#quick Renommer" });
+		expect(setTaskPriority("#quick Renommer", at("#quick Renommer"), "pq")).toEqual({ ok: true, content: "#quick Renommer" });
+	});
+
+	it("refuses Rapide on any other line: no token there means P1, or inherit", () => {
+		expect(setTaskPriority("#task p3 Titre", at("#task p3 Titre"), "pq")).toEqual({ ok: false, reason: "changed" });
+		expect(setTaskPriority("#quickly p3 Titre", at("#quickly p3 Titre"), "pq")).toEqual({ ok: false, reason: "changed" });
+		expect(setTaskPriority("- [ ] #quick p2 Étape", at("- [ ] #quick p2 Étape"), "pq")).toEqual({ ok: false, reason: "changed" });
+	});
+
+	it("still removes a step's token with null (inherit) and refuses null on a Tag task", () => {
+		expect(setTaskPriority("- [ ] p2 Étape", at("- [ ] p2 Étape"), null)).toEqual({ ok: true, content: "- [ ] Étape" });
+		expect(setTaskPriority("#quick pz Renommer", at("#quick pz Renommer"), null)).toEqual({ ok: false, reason: "changed" });
 	});
 });

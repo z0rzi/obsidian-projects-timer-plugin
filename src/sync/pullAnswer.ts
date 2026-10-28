@@ -1,13 +1,18 @@
-import { markDone, processLineById, setTaskToken } from "../lineWriter";
+import { markDone, processLineById, setTaskPriority } from "../lineWriter";
 import type { ItemAnswer, Priority, ProjectFields, TaskFields } from "../remote/api";
 import type { VaultFiles } from "./runPull";
 import { locateItem, taskLine } from "./locateItem";
 import type { LocalTask } from "./sharedTask";
 
+/** The Priority À reprendre puts a Task at: P0, a Rapide (a `#quick` Tag task) back to Rapide (`pq`). */
+export function reprendrePriority(task: { type: string | null; step: boolean }): 0 | "pq" {
+	return task.type === "quick" && !task.step ? "pq" : 0;
+}
+
 /** A Task's shared fields once the Answer is applied (`doneOn`: the date a Validé Task gets). */
 export function answeredTask(fields: TaskFields, answer: ItemAnswer, doneOn: string | null): TaskFields {
 	const { done_on: _old, ...rest } = fields;
-	return answer === "valide" ? { ...rest, priority: null, done: true, done_on: doneOn } : { ...rest, priority: 0, done: false };
+	return answer === "valide" ? { ...rest, priority: null, done: true, done_on: doneOn } : { ...rest, priority: reprendrePriority(rest), done: false };
 }
 
 /** A Project's shared fields once the Answer is applied. */
@@ -15,10 +20,13 @@ export function answeredProject(fields: ProjectFields, answer: ItemAnswer): Proj
 	return answer === "valide" ? { ...fields, priority: null, done: true } : { ...fields, priority: 0, done: false };
 }
 
-/** Whether a vault item is what the Answer gives: Done for Validé, open at P0 for À reprendre. */
-export function holdsAnswer(answer: ItemAnswer, now: { priority: Priority | null; done: boolean }) {
+/**
+ * Whether a vault item is what the Answer gives: Done for Validé, open at `reprendre` (P0, or Rapide for a
+ * Rapide: `reprendrePriority`) for À reprendre.
+ */
+export function holdsAnswer(answer: ItemAnswer, now: { priority: Priority | null; done: boolean }, reprendre: 0 | "pq" = 0) {
 	if (answer === "valide") return now.done;
-	return !now.done && now.priority === 0;
+	return !now.done && now.priority === reprendre;
 }
 
 /** The Client's Answer to write into the vault (a Pull, or the Client's side of a conflict). */
@@ -51,7 +59,7 @@ function writeProjectAnswer(files: VaultFiles, path: string, answer: ItemAnswer)
 }
 
 async function writeTaskAnswer(files: VaultFiles, path: string, id: string, line: LocalTask, answer: ItemAnswer, date: string) {
-	if (answer === "a_reprendre") await writeP0(files, path, id);
+	if (answer === "a_reprendre") await writeReprendre(files, path, id, reprendrePriority(line));
 	else await writeDone(files, path, id, line, date);
 }
 
@@ -60,7 +68,7 @@ async function writeDone(files: VaultFiles, path: string, id: string, line: Loca
 	await processLineById(files.process, path, id, (now, ref) => markDone(now, ref, line.step, date));
 }
 
-/** Sets the `p0` token of the Task line `^id` (À reprendre). */
-async function writeP0(files: VaultFiles, path: string, id: string): Promise<void> {
-	await processLineById(files.process, path, id, (now, ref) => setTaskToken(now, ref, "p0"));
+/** À reprendre on the Task line `^id`: the `p0` token, or no token on a Rapide (back to Rapide). */
+async function writeReprendre(files: VaultFiles, path: string, id: string, priority: 0 | "pq"): Promise<void> {
+	await processLineById(files.process, path, id, (now, ref) => setTaskPriority(now, ref, priority));
 }
