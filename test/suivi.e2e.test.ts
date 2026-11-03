@@ -291,7 +291,7 @@ describe.skipIf(!url || !token || !clientSession)("Tickets and Triage against a 
 		const result = await runTriage(entry.item, { type: "bug", priority: 2, project: null }, dailyNoteDeps(remote, notes));
 		expect(result).toEqual({ ok: true, line: `#bug p2 ${title} ^${id}`, path: "1.meetings/2026-10-27.md", missingImages: 1 });
 		expect(notes.get("1.meetings/2026-10-27.md")).toBe(
-			`# Réunion\n\nsuite\n\n## Triage\n#bug p2 ${title} ^${id}\n\tRien ne s'affiche ![](${url.replace(/\/+$/, "")}/uploads/x.png)\n`,
+			`# Réunion\n\nsuite\n\n## Triage\n\n#bug p2 ${title} ^${id}\n\tRien ne s'affiche ![](${url.replace(/\/+$/, "")}/uploads/x.png)\n`,
 		);
 		await store.refresh();
 		expect(store.current.toTriage.some((e) => e.item.id === id)).toBe(false);

@@ -62,7 +62,7 @@ A Task belongs to a project by the first link to a project note on its line (`#b
 - **Project template** — Template file for new projects (« Lancer en projet »).
 - **Tasks kanban file** — Optional kanban source file.
 - **Triage daily note template** — The file today's daily note is created from when Triage writes into it and it doesn't exist yet; empty for an empty note. The daily note's folder and name come from the core Daily notes settings.
-- **Triage heading** — The heading of the daily note Triage writes its Tasks under, at the end of its section (default `## Triage`), added at the end of the note when missing.
+- **Triage heading** — The heading of the daily note Triage writes its Tasks under, at the end of its section with a blank line above each (default `## Triage`), added at the end of the note when missing.
 - **Sweep age (days)** — How old a daily note is before the Sweep offers its Tasks, and how long Enter keeps one (default 7).
 - **Hours per day / Days per week** — Your expected schedule.
 - **Hourly rate** — For revenue estimates in the status bar.

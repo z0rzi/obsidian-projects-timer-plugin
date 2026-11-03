@@ -75,7 +75,7 @@ export function notToTriage(e: unknown): boolean {
  * Triage: the app turns the item into a Task first (the call most likely to
  * fail), then the Tag task line `#<type> p<n> <title> ^<id>` (no token for a
  * Rapide) goes at the end of the `deps.heading` section of today's Daily
- * note, with the Project's link as its body's first line and the Description
+ * note, a blank line above it, with the Project's link as its body's first line and the Description
  * below. Its base is sent to the app as the Push reads the note back, so the
  * next Push sees no change. The same app item stays: description and comments
  * are kept.
@@ -104,7 +104,8 @@ export async function runTriage(
 	const line = `${token === null ? `#${choice.type}` : `#${choice.type} ${token}`} ${oneLine(item.title)} ^${item.id}`;
 	const { text: description, missing } = await descriptionForVault(response.fields.description, deps);
 	const link = choice.project ? [`\t[[${deps.linkText(choice.project.path, path)}]]`] : [];
-	const written = [line, ...link, ...taskBody(description)].join("\n");
+	// A blank line above, always, so each triaged Task stands apart.
+	const written = ["", line, ...link, ...taskBody(description)].join("\n");
 	let content: string;
 	try {
 		const template = await deps.template();

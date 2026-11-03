@@ -163,7 +163,7 @@ describe("runTriage into today's Daily note", () => {
 		const result = await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug(), d);
 		expect(result).toEqual({ ok: true, line: "#bug p2 Heatmap vide ^t7f3a", path: today, missingImages: 0 });
 		expect(notes.get(today)).toBe(
-			"# Mardi\n\n## Triage\n#task p3 Avant ^t0aaa\n\tson corps\n#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n## Notes\nrien\n",
+			"# Mardi\n\n## Triage\n#task p3 Avant ^t0aaa\n\tson corps\n\n#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n## Notes\nrien\n",
 		);
 	});
 
@@ -171,35 +171,35 @@ describe("runTriage into today's Daily note", () => {
 		const notes = new Map([[today, "## Triage\n### Matin\n#task p3 Avant ^t0aaa\n"]]);
 		const { d } = deps(notes, {}, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug(), d);
-		expect(notes.get(today)).toBe("## Triage\n### Matin\n#task p3 Avant ^t0aaa\n#bug p2 Heatmap vide ^t7f3a\n");
+		expect(notes.get(today)).toBe("## Triage\n### Matin\n#task p3 Avant ^t0aaa\n\n#bug p2 Heatmap vide ^t7f3a\n");
 	});
 
 	it("writes right under a heading with nothing in its section", async () => {
 		const notes = new Map([[today, "## Triage\n\n## Notes"]]);
 		const { d } = deps(notes, {}, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug(), d);
-		expect(notes.get(today)).toBe("## Triage\n#bug p2 Heatmap vide ^t7f3a\n\n## Notes");
+		expect(notes.get(today)).toBe("## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n\n## Notes");
 	});
 
 	it("appends the heading at the end of a note without it", async () => {
 		const notes = new Map([[today, "# Mardi\nréunion\n\n"]]);
 		const { d } = deps(notes, { heading: "## À faire" }, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug(), d);
-		expect(notes.get(today)).toBe("# Mardi\nréunion\n\n## À faire\n#bug p2 Heatmap vide ^t7f3a\n");
+		expect(notes.get(today)).toBe("# Mardi\nréunion\n\n## À faire\n\n#bug p2 Heatmap vide ^t7f3a\n");
 	});
 
 	it("creates a missing note from the template, its {{date}} and {{title}} filled", async () => {
 		const notes = new Map<string, string>();
 		const { d } = deps(notes, { template: async () => "---\ntags: daily\n---\n# {{title}}\nDate : {{date}}\n" }, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug(), d);
-		expect(notes.get(today)).toBe("---\ntags: daily\n---\n# 2026-10-27\nDate : 2026-10-27\n\n## Triage\n#bug p2 Heatmap vide ^t7f3a\n");
+		expect(notes.get(today)).toBe("---\ntags: daily\n---\n# 2026-10-27\nDate : 2026-10-27\n\n## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n");
 	});
 
 	it("creates a missing note with only the heading and the line without a template", async () => {
 		const notes = new Map<string, string>();
 		const { d } = deps(notes, {}, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug(), d);
-		expect(notes.get(today)).toBe("## Triage\n#bug p2 Heatmap vide ^t7f3a\n");
+		expect(notes.get(today)).toBe("## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n");
 	});
 
 	it("leaves the meeting notes of the day alone", async () => {
@@ -208,14 +208,14 @@ describe("runTriage into today's Daily note", () => {
 		const { d } = deps(notes, {}, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug(), d);
 		expect(notes.get(meeting)).toBe("## Triage\n");
-		expect(notes.get(today)).toBe("## Triage\n#bug p2 Heatmap vide ^t7f3a\n");
+		expect(notes.get(today)).toBe("## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n");
 	});
 
 	it("writes the Project as the body's first line, a link by the note's name", async () => {
 		const notes = new Map([[widget, "---\nsuivi_id: p1abc\n---\n# Widget"]]);
 		const { d, bases } = deps(notes);
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug({ project: { path: widget, id: "p1abc" } }), d);
-		expect(notes.get(today)).toBe("## Triage\n#bug p2 Heatmap vide ^t7f3a\n\t[[Widget]]\n\tRien ne s'affiche\n");
+		expect(notes.get(today)).toBe("## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n\t[[Widget]]\n\tRien ne s'affiche\n");
 		expect(bases.t7f3a).toEqual({
 			path: today,
 			fields: { title: "Heatmap vide", type: "bug", step: false, priority: 2, done: false, project_id: "p1abc", description: "Rien ne s'affiche" },
@@ -229,7 +229,7 @@ describe("runTriage into today's Daily note", () => {
 		]);
 		const { d, bases } = deps(notes, {}, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug({ project: { path: widget, id: null } }), d);
-		expect(notes.get(today)).toBe("## Triage\n#bug p2 Heatmap vide ^t7f3a\n\t[[2.projects/Widget]]\n");
+		expect(notes.get(today)).toBe("## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n\t[[2.projects/Widget]]\n");
 		expect(bases.t7f3a!.fields).toMatchObject({ project_id: null, description: "" });
 	});
 
@@ -239,14 +239,14 @@ describe("runTriage into today's Daily note", () => {
 		await runTriage({ id: "t1abc", title: "Marge" }, { type: "quick", priority: "pq", project: null }, d);
 		await runTriage({ id: "t2abc", title: "Plus tard" }, { type: "task", priority: "pz", project: null }, d);
 		expect(sent.map(([, as]) => (as.as === "task" ? as.priority : null))).toEqual(["pq", "pz"]);
-		expect(notes.get(today)).toBe("## Triage\n#quick Marge ^t1abc\n#task pz Plus tard ^t2abc\n");
+		expect(notes.get(today)).toBe("## Triage\n\n#quick Marge ^t1abc\n\n#task pz Plus tard ^t2abc\n");
 	});
 
 	it("writes the Description one tab in, blank lines kept empty, and sends it as the vault reads it", async () => {
 		const notes = new Map<string, string>();
 		const { d, bases } = deps(notes, {}, "Rien ne s'affiche\r\n\r\n  - sur Chrome\n![](/uploads/u1.png)\n\n");
 		await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug(), d);
-		expect(notes.get(today)).toBe("## Triage\n#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n\t  - sur Chrome\n\t![](https://suivi.test/uploads/u1.png)\n");
+		expect(notes.get(today)).toBe("## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n\tRien ne s'affiche\n\n\t  - sur Chrome\n\t![](https://suivi.test/uploads/u1.png)\n");
 		expect(bases.t7f3a!.fields.description).toBe("Rien ne s'affiche\n\n  - sur Chrome\n![](https://suivi.test/uploads/u1.png)");
 	});
 
@@ -268,14 +268,14 @@ describe("runTriage into today's Daily note", () => {
 		const notes = new Map<string, string>();
 		const { d } = deps(notes, { localImage: async () => null }, "![](/uploads/u1.png)");
 		expect(await runTriage({ id: "t7f3a", title: "Heatmap vide" }, bug(), d)).toMatchObject({ ok: true, missingImages: 1 });
-		expect(notes.get(today)).toBe("## Triage\n#bug p2 Heatmap vide ^t7f3a\n\t![](https://suivi.test/uploads/u1.png)\n");
+		expect(notes.get(today)).toBe("## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n\t![](https://suivi.test/uploads/u1.png)\n");
 	});
 
 	it("keeps the title on one line", async () => {
 		const notes = new Map<string, string>();
 		const { d } = deps(notes, {}, "");
 		await runTriage({ id: "t7f3a", title: "Heatmap\n  vide " }, { type: "task", priority: 0, project: null }, d);
-		expect(notes.get(today)).toBe("## Triage\n#task p0 Heatmap vide ^t7f3a\n");
+		expect(notes.get(today)).toBe("## Triage\n\n#task p0 Heatmap vide ^t7f3a\n");
 	});
 
 	it("writes nothing when the app refuses", async () => {

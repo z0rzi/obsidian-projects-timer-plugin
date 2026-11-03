@@ -128,7 +128,7 @@ describe("The Deck writes at the end of the session", () => {
 			{ kind: "failed", error: "Suivi unreachable" },
 			{ kind: "skipped" },
 		]);
-		expect(w.files.get(today)).toBe("## Triage\n#bug p3 Ticket t1 ^t1\n");
+		expect(w.files.get(today)).toBe("## Triage\n\n#bug p3 Ticket t1 ^t1\n");
 		expect(w.files.get(daily)).toBe("## Triage\n#bug pz Export vide ^s0001\n");
 		expect(w.files.get(widget)).toContain("## Tasks\n- [ ] #task p4 Relancer JMJ ^s0002\n");
 		expect(w.app.archivedWith).toEqual([["t3", "Doublon"]]);
