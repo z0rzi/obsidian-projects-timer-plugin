@@ -1,8 +1,10 @@
 import { Notice, type Plugin, type WorkspaceLeaf } from "obsidian";
+import type { CommentTarget } from "../comments/commentTarget";
 import type { VaultProject } from "../inbox/inboxStore";
 import type { TriageDeps } from "../inbox/triage";
 import type { PushOutcome } from "../sync/runPush";
 import type { Remote } from "../remote/remote";
+import { localDay } from "../localDate";
 import { confirmDiscard } from "../ui/DiscardModal";
 import { DECK_VIEW_TYPE, DeckView } from "../views/DeckView";
 import { archiveTicket, writeTicket } from "./deckRun";
@@ -25,6 +27,8 @@ export interface DeckDeps {
 	/** The Sweep's vault side, read when a session starts; null when it can't run (no projects location). */
 	sweep(): SweepDeps | null;
 	appUrl(): string;
+	/** The Deck's current item's comment thread (null: none), for the comments panel. */
+	showThread(target: CommentTarget | null): void;
 }
 
 /**
@@ -52,7 +56,7 @@ export function registerDeck(plugin: Plugin, deps: DeckDeps): () => void {
 		unloading = true;
 	});
 
-	/** The closing Push of what the Sweep wrote since the last one; null when there was nothing. Throws when it can't run. */
+	/** The closing Push of what the Sweep wrote (and the Tickets written done) since the last one; null when there was nothing. Throws when it can't run. */
 	async function pushSwept(): Promise<PushOutcome | null> {
 		const lines = swept;
 		swept = [];
@@ -117,6 +121,13 @@ export function registerDeck(plugin: Plugin, deps: DeckDeps): () => void {
 			new DeckView(leaf, {
 				load,
 				write: (ticket, choice) => deps.exclusive(() => writeTicket(ticket, choice, deps.triage())),
+				done: (ticket, choice) =>
+					deps.exclusive(async () => {
+						const result = await writeTicket(ticket, { ...choice, doneOn: localDay() }, deps.triage());
+						// Its Done goes to the app with the closing Push, as the Sweep's lines.
+						if (result.outcome.kind === "written") swept.push(ticket.id);
+						return result;
+					}),
 				archive: (ticket, comment) => deps.exclusive(() => archiveTicket(ticket, comment, remote)),
 				frigo: (tasks) =>
 					sweepWrite(
@@ -136,6 +147,7 @@ export function registerDeck(plugin: Plugin, deps: DeckDeps): () => void {
 				notify: (message) => void new Notice(message, 10_000),
 				appUrl: deps.appUrl,
 				fetchImage: (path) => remote.image(path),
+				showThread: deps.showThread,
 			}),
 	);
 

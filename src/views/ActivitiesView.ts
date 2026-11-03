@@ -1,3 +1,4 @@
+import { openAtLine } from "../ui/openAtLine";
 import { ItemView, WorkspaceLeaf, setIcon, TFile } from "obsidian";
 import type ProjectsTimerPlugin from "../main";
 import { Activity } from "../types";
@@ -278,9 +279,7 @@ export class ActivitiesView extends ItemView {
 		row.addEventListener("click", () => {
 			const leaf = this.app.workspace.getLeaf(false);
 			if (leaf) {
-				leaf.openFile(item.file, {
-					eState: { line: item.line },
-				});
+				void openAtLine(leaf, item.file, item.line);
 			}
 		});
 

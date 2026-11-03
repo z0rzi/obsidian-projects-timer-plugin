@@ -1,3 +1,4 @@
+import { openAtLine } from "../ui/openAtLine";
 import { ItemView, WorkspaceLeaf, TFile, MarkdownView } from "obsidian";
 import "jkanban";
 import type ProjectsTimerPlugin from "../main";
@@ -311,7 +312,7 @@ export class TasksKanbanView extends ItemView {
 		const leaf = existingLeaf ?? this.app.workspace.getLeaf(false);
 		if (!leaf) return;
 		void this.app.workspace.revealLeaf(leaf);
-		void leaf.openFile(file, line !== undefined ? { eState: { line } } : undefined);
+		void openAtLine(leaf, file, line);
 	}
 
 	async onClose() {

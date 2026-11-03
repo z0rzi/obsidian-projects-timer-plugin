@@ -29,6 +29,11 @@ export interface TriageChoice {
 	project: { path: string; id: string | null } | null;
 	/** The Zone's id, null for none; absent: the one the Client suggested stays. */
 	zone?: number | null;
+	/**
+	 * `YYYY-MM-DD`: already done that day, the line written `#done <date>` (no type nor token). The app triages it
+	 * open as chosen, and the base sent is that open Task, so the next Push sends its Done.
+	 */
+	doneOn?: string;
 }
 
 export interface TriageDeps extends AppDescriptionDeps {
@@ -74,7 +79,7 @@ export function notToTriage(e: unknown): boolean {
 /**
  * Triage: the app turns the item into a Task first (the call most likely to
  * fail), then the Tag task line `#<type> p<n> <title> ^<id>` (no token for a
- * Rapide) goes at the end of the `deps.heading` section of today's Daily
+ * Rapide; `#done <date>` for one already done) goes at the end of the `deps.heading` section of today's Daily
  * note, a blank line above it, with the Project's link as its body's first line and the Description
  * below. Its base is sent to the app as the Push reads the note back, so the
  * next Push sees no change. The same app item stays: description and comments
@@ -101,7 +106,8 @@ export async function runTriage(
 	}
 	const path = deps.dailyNote;
 	const token = lineToken(choice.priority);
-	const line = `${token === null ? `#${choice.type}` : `#${choice.type} ${token}`} ${oneLine(item.title)} ^${item.id}`;
+	const head = choice.doneOn ? `#done ${choice.doneOn}` : token === null ? `#${choice.type}` : `#${choice.type} ${token}`;
+	const line = `${head} ${oneLine(item.title)} ^${item.id}`;
 	const { text: description, missing } = await descriptionForVault(response.fields.description, deps);
 	const link = choice.project ? [`\t[[${deps.linkText(choice.project.path, path)}]]`] : [];
 	// A blank line above, always, so each triaged Task stands apart.
@@ -117,6 +123,7 @@ export async function runTriage(
 	const read = readTagTasks(path, content, noteProject(deps.projects, path, content), projectOfLink(deps.projects, path)).find(
 		(t) => t.blockId === item.id,
 	);
+	// A done line keeps the app's open fields as its base: its Done is a change the next Push sends.
 	const fields = { ...response.fields, title: read?.title ?? oneLine(item.title), description: read?.description ?? "" };
 	const sent = await sendBase({ id: item.id }, { path, fields }, line, missing, deps);
 	return sent.ok ? sent : { ...sent, triaged: true };

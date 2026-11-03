@@ -4,6 +4,7 @@ import { openView } from "../ui/openView";
 import type { ProjectsTimerSettings } from "../settings";
 import type { PluginData } from "../sync/pluginData";
 import { COMMENT_PANEL_VIEW_TYPE, CommentPanelView } from "../views/CommentPanelView";
+import { DECK_VIEW_TYPE } from "../views/DeckView";
 import { commentTargetAt, type CommentTarget } from "./commentTarget";
 import { ThreadSession, type ThreadState } from "./threadSession";
 
@@ -12,8 +13,9 @@ const CURSOR_POLL_MS = 500;
 
 /**
  * Comment side panel: follows the cursor in the active note and shows the
- * Client app thread of the Task or Project there. Network calls only while
- * the panel is open.
+ * Client app thread of the Task or Project there; while the Deck is the
+ * active tab, the thread of its current item (the Ticket, the Sweep's focused
+ * line once pushed). Network calls only while the panel is open.
  */
 export function registerComments(plugin: Plugin, data: PluginData<ProjectsTimerSettings>) {
 	const { app } = plugin;
@@ -28,8 +30,15 @@ export function registerComments(plugin: Plugin, data: PluginData<ProjectsTimerS
 
 	/** Last cursor position looked at, to skip re-reading an unchanged note. */
 	let last = "";
+	/** The Deck's current item (null: none with a thread), as the Deck last told it. */
+	let deckItem: CommentTarget | null = null;
 	async function followCursor() {
 		if (app.workspace.getLeavesOfType(COMMENT_PANEL_VIEW_TYPE).length === 0) return;
+		if (app.workspace.getMostRecentLeaf()?.view.getViewType() === DECK_VIEW_TYPE) {
+			// Back on a note later, its cursor is read again.
+			last = "";
+			return session.show(deckItem);
+		}
 		// While typing in the panel the note isn't active: keep the thread shown.
 		const view = app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view?.file) return;
@@ -54,6 +63,11 @@ export function registerComments(plugin: Plugin, data: PluginData<ProjectsTimerS
 	plugin.addRibbonIcon("messages-square", "Open Suivi comments", () => void openPanel());
 
 	return {
+		/** The Deck's current item changed (null: none with a thread): shown while the Deck is the active tab. */
+		deckShows(target: CommentTarget | null) {
+			deckItem = target;
+			void followCursor();
+		},
 		/** Opens the panel on `target`'s thread (put the cursor on its line first so the panel keeps it). */
 		async openThread(target: CommentTarget) {
 			await openPanel();

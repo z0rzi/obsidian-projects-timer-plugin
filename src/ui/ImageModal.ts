@@ -1,6 +1,6 @@
 import { type App, Modal } from "obsidian";
 
-/** An image of a Ticket full size, from its thumbnail on the Deck; Escape (or a click outside) closes it, then `done`. */
+/** An image full size, from a Ticket's thumbnail on the Deck or a comment in the comments panel; Escape (or a click outside) closes it, then `done`. */
 export class ImageModal extends Modal {
 	constructor(
 		app: App,

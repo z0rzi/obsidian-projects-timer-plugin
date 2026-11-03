@@ -259,6 +259,7 @@ describe("Deck card: the legend", () => {
 			"j k champ",
 			"h l valeur",
 			"Enter écrire",
+			"d déjà fait",
 			"x archiver",
 			"s passer",
 			". comme le précédent",

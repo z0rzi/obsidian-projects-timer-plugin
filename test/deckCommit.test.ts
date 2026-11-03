@@ -61,6 +61,7 @@ async function world(tickets: InboxTicket[]) {
 	const notices: string[] = [];
 	const deps = {
 		write: (t: InboxTicket, choice: Parameters<typeof writeTicket>[1]) => writeTicket(t, choice, triage),
+		done: (t: InboxTicket, choice: Parameters<typeof writeTicket>[1]) => writeTicket(t, { ...choice, doneOn: "2026-10-28" }, triage),
 		archive: (t: InboxTicket, comment: string | null) => archiveTicket(t, comment, w.app.remote),
 		frigo: (tasks: SweepCandidate[]) => frigoTasks(tasks, w.vault),
 		move: (task: SweepCandidate, project: { path: string; id: string }) => moveTask(task, project, w.vault),
@@ -136,6 +137,20 @@ describe("The Deck writes at the end of the session", () => {
 		expect(w.app.held.get("t2")!.triaged).toBe(false);
 		expect(w.app.held.get("t5")!.triaged).toBe(false);
 		expect(w.app.deck.at).not.toBeNull();
+	});
+
+	it("writes a Ticket done with d as a #done line of today, its Done the only change the next Push sends", async () => {
+		const w = await world([ticket("t0001"), ticket("t0002")]);
+		const s = after(startSession(ticketItems([ticket("t0001"), ticket("t0002")]), { projects: [], zones: [] }), "d", "Enter");
+		const end = await commit(s, w.deps);
+		expect(end.results).toEqual([{ kind: "done" }, { kind: "written" }]);
+		expect(w.files.get(today)).toBe("## Triage\n\n#done 2026-10-28 Ticket t0001 ^t0001\n\n#bug p0 Ticket t0002 ^t0002\n");
+		expect(w.app.held.get("t0001")!.triaged).toBe(true);
+		expect(w.app.held.get("t0001")!.fields.done).toBe(false);
+		const plan = await w.plan();
+		expect(plan.map((c) => c.id)).toEqual(["t0001"]);
+		expect((await w.push()).failed).toEqual([]);
+		expect(w.app.held.get("t0001")!.fields).toMatchObject({ done: true, done_on: "2026-10-28", priority: null });
 	});
 
 	it("keeps a Sweep line kept, and goes on past a line gone from its note", async () => {

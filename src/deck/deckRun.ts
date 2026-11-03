@@ -11,7 +11,7 @@ import type { DeckChoice } from "./ticketLine";
  * (it is no longer À trier), the failure in `notice`, as the images that
  * stayed app links.
  */
-export async function writeTicket(ticket: InboxTicket, choice: DeckChoice, deps: TriageDeps): Promise<{ outcome: DeckOutcome; notice?: string }> {
+export async function writeTicket(ticket: InboxTicket, choice: DeckChoice & { doneOn?: string }, deps: TriageDeps): Promise<{ outcome: DeckOutcome; notice?: string }> {
 	const result = await runTriage(ticket, choice, deps);
 	if (!result.ok && result.triaged) return { outcome: { kind: "written" }, notice: `${ticket.title} : ${result.error}` };
 	if (!result.ok) return { outcome: result.stale ? { kind: "stale" } : { kind: "failed", error: result.error } };

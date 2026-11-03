@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	DECK_KEYS,
+	currentThread,
 	decisionCount,
 	press,
 	recordArchive,
@@ -211,6 +212,23 @@ describe("Deck keys", () => {
 		expect(state.decisions).toEqual([{ kind: "write", choice }, null]);
 	});
 
+	it("records the current choice as already done with d, its line restored on going back, repeated by .", () => {
+		const s = session(ticket({ type: "bug", urgency: "genant", project_id: "p1abc" }), ticket({ title: "Export lent" }));
+		const done = after(s, "2", "d");
+		const choice = { type: "bug", priority: 2, project: { path: widget.path, id: widget.id }, zone: null };
+		expect(done).toMatchObject({ index: 1, field: "type" });
+		expect(done.decisions).toEqual([{ kind: "done", choice }, null]);
+		expect(current(after(done, "."))).toEqual(choice);
+		expect(current(after(done, "u"))).toEqual(choice);
+	});
+
+	it("gives the comments panel the current Ticket's thread, none on the end screen", () => {
+		const first = ticket({ title: "Export lent" });
+		const s = session(first);
+		expect(currentThread(s)).toEqual({ kind: "task", id: first.id, title: "Export lent" });
+		expect(currentThread(after(s, "s"))).toBeNull();
+	});
+
 	it("repeats the previous Ticket's choices with ., to record with Enter", () => {
 		const s = session(ticket({ type: "bug", urgency: "genant", project_id: "p1abc" }), ticket({ type: "task", urgency: "plus_tard" }));
 		expect(after(s, ".")).toEqual(s);
@@ -303,7 +321,7 @@ describe("Deck keys", () => {
 	});
 
 	it("has a key for every choice of the spec", () => {
-		expect(DECK_KEYS).toEqual(["j", "k", "h", "l", "b", "q", "t", "w", "i", "0", "1", "2", "3", "4", "5", "z", "p", "o", "x", "Enter", ".", "s", "u", "m"]);
+		expect(DECK_KEYS).toEqual(["j", "k", "h", "l", "b", "q", "t", "w", "i", "0", "1", "2", "3", "4", "5", "z", "p", "o", "d", "x", "Enter", ".", "s", "u", "m"]);
 	});
 });
 

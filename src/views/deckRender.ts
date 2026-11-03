@@ -185,6 +185,7 @@ export const DECK_LEGEND: { keys: DeckKey[]; label: string }[] = [
 	{ keys: ["j", "k"], label: "champ" },
 	{ keys: ["h", "l"], label: "valeur" },
 	{ keys: ["Enter"], label: "écrire" },
+	{ keys: ["d"], label: "déjà fait" },
 	{ keys: ["x"], label: "archiver" },
 	{ keys: ["s"], label: "passer" },
 	{ keys: ["."], label: "comme le précédent" },
@@ -222,16 +223,24 @@ export function deckLegend(state: DeckState): { keys: DeckKey[]; label: string }
 }
 
 /** A Ticket's decisions as the card and the end screen say them, with the end screen's icon. */
-export const TICKET_ACTIONS: Record<Extract<DeckDecision, { kind: "write" | "archive" | "skip" }>["kind"], { icon: string; word: string }> = {
+export const TICKET_ACTIONS: Record<Extract<DeckDecision, { kind: "write" | "done" | "archive" | "skip" }>["kind"], { icon: string; word: string }> = {
 	write: { icon: "✎", word: "écrire" },
+	done: { icon: "✓", word: "écrire terminée" },
 	archive: { icon: "🗄", word: "archiver" },
 	skip: { icon: "⏭", word: "passer" },
 };
 
-/** What a Ticket's recorded decision does, in words: « écrire », « archiver (« déjà fait ») », « passer ». */
+/** What a Ticket's recorded decision does, in words: « écrire », « écrire terminée », « archiver (« déjà fait ») », « passer ». */
 function decisionWords(decision: DeckDecision): string {
 	if (decision.kind === "archive" && decision.comment) return `${TICKET_ACTIONS.archive.word} (« ${decision.comment} »)`;
-	return decision.kind === "archive" || decision.kind === "skip" ? TICKET_ACTIONS[decision.kind].word : TICKET_ACTIONS.write.word;
+	switch (decision.kind) {
+		case "archive":
+		case "skip":
+		case "done":
+			return TICKET_ACTIONS[decision.kind].word;
+		default:
+			return TICKET_ACTIONS.write.word;
+	}
 }
 
 /** The current card's recorded decision (« Décision : écrire »), null when it has none. */

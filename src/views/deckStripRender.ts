@@ -13,7 +13,7 @@ export function itemTitle(item: DeckItem): string {
 
 /**
  * What a card's dot on the progress strip shows of its recorded decision (`data-mark`): none yet, written (in its
- * Priority's colour), to the Frigo (a Ticket written `pz` too), archived, skipped, kept, moved.
+ * Priority's colour), written done, to the Frigo (a Ticket written `pz` too), archived, skipped, kept, moved.
  */
 export type DotMark = "none" | DoneKind;
 
@@ -50,6 +50,7 @@ function dotMark(decision: DeckDecision | null): Pick<StripDot, "mark" | "priori
 /** What was decided or done, in words, one and many: the tally (in this order), the report, the end screen's Sweep groups. */
 export const DONE_WORDS: Record<DoneKind, { one: string; many: string }> = {
 	written: { one: "écrite", many: "écrites" },
+	done: { one: "terminée", many: "terminées" },
 	frigo: { one: "au frigo", many: "au frigo" },
 	archived: { one: "archivée", many: "archivées" },
 	skipped: { one: "passée", many: "passées" },

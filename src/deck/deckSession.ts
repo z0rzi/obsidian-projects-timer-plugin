@@ -1,3 +1,4 @@
+import type { CommentTarget } from "../comments/commentTarget";
 import type { InboxTicket } from "../remote/api";
 import { pressOnEnd } from "./deckEnd";
 import type { PushReport } from "./pushReport";
@@ -16,7 +17,7 @@ import { pressOnTicket, withChoice } from "./ticketSession";
  *
  * A session has three screens, in this order, each skipped when empty
  * (`deckScreen`): the Sweep list, the Tickets one card at a time, the end
- * screen. Deciding writes nothing: Enter, `x`, `s` (and the Sweep's keys)
+ * screen. Deciding writes nothing: Enter, `d`, `x`, `s` (and the Sweep's keys)
  * record the card's decision and go on; `u` goes back a card, its decision
  * shown and replaced by deciding again; `goTo` (a click on the progress strip)
  * goes to any card already reached. The end screen lists the decisions, a row
@@ -42,11 +43,12 @@ export type DeckItem = { kind: "ticket"; ticket: InboxTicket } | { kind: "sweep"
 
 /**
  * What a card will do once the session commits: a Ticket written with its
- * line, archived with its comment (null: none) or skipped; a Sweep line sent
+ * line, written with it as already done (`#done <today>`, its Done pushed by the closing Push), archived with its comment (null: none) or skipped; a Sweep line sent
  * to the Frigo, moved into a Project note or kept until a day.
  */
 export type DeckDecision =
 	| { kind: "write"; choice: DeckChoice }
+	| { kind: "done"; choice: DeckChoice }
 	| { kind: "archive"; comment: string | null }
 	| { kind: "skip" }
 	| { kind: "frigo" }
@@ -59,6 +61,7 @@ export type DeckDecision =
  */
 export const DONE_KIND = {
 	write: "written",
+	done: "done",
 	archive: "archived",
 	skip: "skipped",
 	frigo: "frigo",
@@ -158,7 +161,7 @@ export function startSession(items: DeckItem[], context: DeckContext): DeckState
 }
 
 /** Every key the session knows, in the legend's order. */
-export const DECK_KEYS = ["j", "k", "h", "l", "b", "q", "t", "w", "i", "0", "1", "2", "3", "4", "5", "z", "p", "o", "x", "Enter", ".", "s", "u", "m"] as const;
+export const DECK_KEYS = ["j", "k", "h", "l", "b", "q", "t", "w", "i", "0", "1", "2", "3", "4", "5", "z", "p", "o", "d", "x", "Enter", ".", "s", "u", "m"] as const;
 
 export type DeckKey = (typeof DECK_KEYS)[number];
 
@@ -196,6 +199,14 @@ export function deckScreen(state: DeckState): DeckScreen {
 export function currentItem(state: DeckState): DeckItem | undefined {
 	if (state.sweeping && state.index >= sweepCount(state)) return undefined;
 	return state.items[state.index];
+}
+
+/** Whose comment thread goes with the current item: the Ticket, a Sweep line once pushed; null for none. */
+export function currentThread(state: DeckState): CommentTarget | null {
+	const item = currentItem(state);
+	if (item?.kind === "ticket") return { kind: "task", id: item.ticket.id, title: item.ticket.title };
+	if (item?.kind === "sweep" && item.task.id) return { kind: "task", id: item.task.id, title: item.task.title };
+	return null;
 }
 
 /**
@@ -240,7 +251,7 @@ export function backFromCard(state: DeckState): DeckState | null {
 export function moveTo(state: DeckState, index: number, sweeping = false): DeckState {
 	const left = currentItem(state);
 	const decision = state.decisions[state.index];
-	const restored = left?.kind === "ticket" && decision?.kind === "write" ? withChoice(state, left.ticket, decision.choice) : state;
+	const restored = left?.kind === "ticket" && (decision?.kind === "write" || decision?.kind === "done") ? withChoice(state, left.ticket, decision.choice) : state;
 	return { ...restored, index, sweeping, endRow: null, field: DECK_FIELDS[0], message: null };
 }
 

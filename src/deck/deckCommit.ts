@@ -16,6 +16,8 @@ import type { SweepCandidate } from "./sweep";
 export interface CommitDeps {
 	/** Triage of `ticket` into today's Daily note; `notice`: something to tell (images not copied). */
 	write(ticket: InboxTicket, choice: DeckChoice): Promise<{ outcome: DeckOutcome; notice?: string }>;
+	/** Triage of `ticket` written as done today (`#done <date>`), its Done left to the closing Push. */
+	done(ticket: InboxTicket, choice: DeckChoice): Promise<{ outcome: DeckOutcome; notice?: string }>;
 	/** `ticket` archived in the app with `comment` (null: none). */
 	archive(ticket: InboxTicket, comment: string | null): Promise<DeckOutcome>;
 	/** `pz` on the lines of `tasks`. */
@@ -42,6 +44,12 @@ async function commitCard({ item, decision }: DeckCard, deps: CommitDeps): Promi
 				const { outcome, notice } = await deps.write(item.ticket, decision.choice);
 				if (notice) deps.notify(notice);
 				return resultOf(outcome);
+			}
+			case "done": {
+				const { outcome, notice } = await deps.done(item.ticket, decision.choice);
+				if (notice) deps.notify(notice);
+				const result = resultOf(outcome);
+				return result.kind === "written" ? { kind: DONE_KIND.done } : result;
 			}
 			case "archive":
 				return resultOf(await deps.archive(item.ticket, decision.comment));

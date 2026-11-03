@@ -4,7 +4,8 @@ import { clientLine, clientProject, DECK_FIELDS, stepValue, withPriority, withTy
 
 /**
  * The keys on a Ticket's card (`deckSession.ts`), pure: `j`/`k` a field, `h`/`l` a value, the type and
- * Priority keys, `p`/`o` the pickers (their choice back with `choose`), `x` the archive, Enter the line, `.`
+ * Priority keys, `p`/`o` the pickers (their choice back with `choose`), `x` the archive, Enter the line, `d` the
+ * line already done, `.`
  * the previous Ticket's, `s` a skip.
  */
 
@@ -20,11 +21,11 @@ export function withChoice(state: DeckState, ticket: InboxTicket, choice: DeckCh
 	return { ...state, choices: { ...state.choices, [ticket.id]: choice }, picks: { ...state.picks, [ticket.id]: { project, zone } } };
 }
 
-/** The line of the nearest Ticket before the current one recorded to be written, for `.`; null when none. */
+/** The line of the nearest Ticket before the current one recorded to be written (done or not), for `.`; null when none. */
 function previousChoice(state: DeckState): DeckChoice | null {
 	for (let i = state.index - 1; i >= 0; i--) {
 		const decision = state.decisions[i];
-		if (state.items[i]?.kind === "ticket" && decision?.kind === "write") return decision.choice;
+		if (state.items[i]?.kind === "ticket" && (decision?.kind === "write" || decision?.kind === "done")) return decision.choice;
 	}
 	return null;
 }
@@ -55,6 +56,8 @@ export function pressOnTicket(state: DeckState, ticket: InboxTicket, key: DeckKe
 		}
 		case "Enter":
 			return { state: decide(state, { kind: "write", choice }), effects: [] };
+		case "d":
+			return { state: decide(state, { kind: "done", choice }), effects: [] };
 		case ".": {
 			const previous = previousChoice(state);
 			if (!previous) return { state, effects: [] };

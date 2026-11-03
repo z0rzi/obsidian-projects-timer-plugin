@@ -29,6 +29,8 @@ import { badgeText, toastText } from "./signals";
 export interface InboxDeps {
 	/** Opens the comment panel on an item's thread. */
 	openThread(target: CommentTarget): Promise<void>;
+	/** The Deck's current item's thread (null: none), shown by the comments panel while the Deck is active. */
+	deckShows(target: CommentTarget | null): void;
 }
 
 /**
@@ -176,6 +178,7 @@ export function registerInbox(plugin: Plugin, data: PluginData<ProjectsTimerSett
 		finished: () => void store.refresh(),
 		appUrl: () => data.settings.suiviUrl,
 		sweep: () => obsidianSweep(app, data.settings, remote),
+		showThread: (target) => deps.deckShows(target),
 	});
 
 	/** Creates the folder of the note at `path` when missing (a Daily notes folder not made yet). */

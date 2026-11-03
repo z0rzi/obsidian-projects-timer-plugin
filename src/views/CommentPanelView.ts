@@ -3,6 +3,7 @@ import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
 import type { ThreadSession, ThreadState } from "../comments/threadSession";
 import type { Comment } from "../remote/api";
+import { ImageModal } from "../ui/ImageModal";
 
 export const COMMENT_PANEL_VIEW_TYPE = "suivi-comments-view";
 
@@ -12,7 +13,7 @@ const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle:
 
 /**
  * Side panel with the Client app thread of the Task or Project under the
- * cursor (fed by registerComments). Reads, replies, edits and deletes own
+ * cursor (fed by registerComments). Its images open full size on a click. Reads, replies, edits and deletes own
  * comments through the Remote; never writes to the vault.
  */
 export class CommentPanelView extends ItemView {
@@ -59,6 +60,12 @@ export class CommentPanelView extends ItemView {
 		this.headerEl = root.createDiv({ cls: "suivi-comments-header" });
 		this.errorEl = root.createDiv({ cls: "suivi-comments-error mod-warning" });
 		this.listEl = root.createDiv({ cls: "suivi-comments-list" });
+		// A comment's image full size on a click, as the Deck's thumbnails.
+		this.registerDomEvent(this.listEl, "click", (e) => {
+			if (!(e.target instanceof HTMLImageElement) || !e.target.closest(".suivi-comment-body")) return;
+			e.preventDefault();
+			new ImageModal(this.app, e.target.src, e.target.alt, () => {}).open();
+		});
 		this.replyEl = root.createDiv({ cls: "suivi-comments-reply" });
 		this.replyInput = this.replyEl.createEl("textarea", { attr: { rows: "4", placeholder: "Reply (markdown)" } });
 		this.replyInput.style.width = "100%";

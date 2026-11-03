@@ -1,8 +1,10 @@
 import { Component, ItemView, MarkdownRenderer, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
 import { commitCards, type CommitDeps } from "../deck/deckCommit";
+import type { CommentTarget } from "../comments/commentTarget";
 import {
 	currentItem,
+	currentThread,
 	deckScreen,
 	decisionCount,
 	goTo,
@@ -45,6 +47,8 @@ export interface DeckViewDeps extends CommitDeps {
 	closedWithDecisions(state: DeckState): void;
 	appUrl(): string;
 	fetchImage: ConstructorParameters<typeof AppImages>[0];
+	/** The current item's comment thread changed (null: none), for the comments panel; also null when the view closes. */
+	showThread(target: CommentTarget | null): void;
 }
 
 /**
@@ -60,7 +64,8 @@ export interface DeckViewDeps extends CommitDeps {
  * last card, the end screen lists the decisions; « Tout écrire » writes them
  * all, each row then showing its result, and the screen becomes the report
  * (the closing Push's result, « Fermer », « Réessayer les échecs »). With
- * nothing to triage, « Rien à trier ». Escape, or closing the tab, with
+ * nothing to triage, « Rien à trier ». The comments panel, when open, shows the
+ * current item's thread while the Deck is the active tab. Escape, or closing the tab, with
  * decisions recorded asks before dropping them. A thin view: keys go to the
  * session (`deck/deckSession.ts`), the effects it returns are run here.
  */
@@ -79,6 +84,8 @@ export class DeckView extends ItemView {
 	private legend: HTMLElement | null = null;
 	/** What the legend is for (the screen and the phase), so it is redrawn only when that changes. */
 	private legendFor: string | null = null;
+	/** The id of the thread last told to `showThread`; undefined before any. */
+	private threadId: string | null | undefined = undefined;
 	/** The decisions were dropped on purpose (Escape, then « Abandonner »): closing asks nothing. */
 	private discarded = false;
 	/** `run` on the next tick (or after `ms`), unless the view unloads first: the pickers' cancel, a brief message's end. Set on open, before any key. */
@@ -127,6 +134,7 @@ export class DeckView extends ItemView {
 	}
 
 	async onClose() {
+		this.deps.showThread(null);
 		this.releaseRenderScope();
 		this.images.clear();
 		const state = this.state;
@@ -291,6 +299,11 @@ export class DeckView extends ItemView {
 		if (this.strip) drawStrip(this.strip, state);
 		this.showLegend(state, screen);
 		if (screen === "sweep" && entered) void this.readSweepLines();
+		const thread = currentThread(state);
+		if ((thread?.id ?? null) !== this.threadId) {
+			this.threadId = thread?.id ?? null;
+			this.deps.showThread(thread);
+		}
 	}
 
 	/** The Sweep list, the end screen (or report), « Rien à trier ». */

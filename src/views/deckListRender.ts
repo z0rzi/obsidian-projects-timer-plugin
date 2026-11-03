@@ -119,7 +119,7 @@ export interface EndTicketRow {
 	/** The type it is written with; null when it is not written. */
 	type: string | null;
 	priority: PriorityChip | null;
-	/** What will happen: « ✎ écrire · Widget », « 🗄 archiver « déjà fait » », « ⏭ passer ». */
+	/** What will happen: « ✎ écrire · Widget », « ✓ écrire terminée », « 🗄 archiver « déjà fait » », « ⏭ passer ». */
 	action: string;
 	status: RowStatus;
 	focused: boolean;
@@ -165,11 +165,14 @@ export function endScreen(state: DeckState): EndScreen {
 		if (item.kind !== "ticket" || !decision) return [];
 		const status = rowStatus(state, index);
 		const base = { index, title: item.ticket.title, status, focused: focused() };
-		if (decision.kind === "write") {
+		if (decision.kind === "write" || decision.kind === "done") {
 			const { type, priority, project } = decision.choice;
-			const write = `${TICKET_ACTIONS.write.icon} ${TICKET_ACTIONS.write.word}`;
+			const { icon, word } = TICKET_ACTIONS[decision.kind];
+			const write = `${icon} ${word}`;
 			const action = project ? `${write} · ${projectTitle(state, project.path)}` : write;
-			return [{ ...base, type, priority: { key: priorityKey(priority), label: priorityLabel(priority) }, action }];
+			// A done line has no Priority.
+			const chip = decision.kind === "done" ? null : { key: priorityKey(priority), label: priorityLabel(priority) };
+			return [{ ...base, type, priority: chip, action }];
 		}
 		const { icon, word } = TICKET_ACTIONS[decision.kind === "archive" ? "archive" : "skip"];
 		const action = decision.kind === "archive" && decision.comment ? `${icon} ${word} « ${decision.comment} »` : `${icon} ${word}`;

@@ -445,6 +445,7 @@
 }
 
 .suivi-deck-dot[data-mark="written"] { --dot-color: var(--priority-color); background: var(--dot-color); }
+.suivi-deck-dot[data-mark="done"] { --dot-color: var(--color-green); background: var(--dot-color); }
 .suivi-deck-dot[data-mark="frigo"] { --dot-color: var(--suivi-frigo); background: var(--dot-color); }
 .suivi-deck-dot[data-mark="archived"] { --dot-color: var(--text-faint); background: var(--dot-color); }
 .suivi-deck-dot[data-mark="skipped"] { --dot-color: var(--text-muted); border-style: dashed; }
@@ -982,4 +983,9 @@
 /* The archive's comment modal */
 .suivi-deck-archive-comment {
 	width: 100%;
+}
+
+/* Comments panel: an image opens full size on a click */
+.suivi-comment-body img {
+	cursor: zoom-in;
 }
