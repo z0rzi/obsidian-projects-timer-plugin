@@ -1,6 +1,7 @@
 import type { TaskStateFields, TriagePriority, TriageTaskType } from "../remote/api";
 import { RemoteError, type Remote } from "../remote/remote";
 import { deindent, readTagTasks } from "../sync/sharedTask";
+import { BODY_INDENT } from "../editor/taskBodyIndent";
 import { lineToken } from "../lineWriter";
 import { appendToSection } from "../noteSections";
 import { readIndentedBody } from "../taskParser";
@@ -109,7 +110,7 @@ export async function runTriage(
 	const head = choice.doneOn ? `#done ${choice.doneOn}` : token === null ? `#${choice.type}` : `#${choice.type} ${token}`;
 	const line = `${head} ${oneLine(item.title)} ^${item.id}`;
 	const { text: description, missing } = await descriptionForVault(response.fields.description, deps);
-	const link = choice.project ? [`\t[[${deps.linkText(choice.project.path, path)}]]`] : [];
+	const link = choice.project ? [`${BODY_INDENT}[[${deps.linkText(choice.project.path, path)}]]`] : [];
 	// A blank line above, always, so each triaged Task stands apart.
 	const written = ["", line, ...link, ...taskBody(description)].join("\n");
 	let content: string;
@@ -216,11 +217,11 @@ async function writeTask(
 	return sendBase(item, { path, fields: { ...fields, title, description } }, line, missing, deps);
 }
 
-/** The Description as Task body lines: one tab in, blank lines empty, none at the edges. */
+/** The Description as Task body lines: `BODY_INDENT` in, blank lines empty, none at the edges. */
 function taskBody(description: string): string[] {
 	const text = description.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();
 	if (!text) return [];
-	return text.split(/\r?\n/).map((l) => (l.trim() ? `\t${l}` : ""));
+	return text.split(/\r?\n/).map((l) => (l.trim() ? `${BODY_INDENT}${l}` : ""));
 }
 
 type Pos = { line: number; ch: number };

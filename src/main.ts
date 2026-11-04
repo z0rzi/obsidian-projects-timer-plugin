@@ -39,6 +39,7 @@ import {
 	ProjectsListView,
 } from "./views/ProjectsListView";
 import { ACTIVITIES_VIEW_TYPE, ActivitiesView } from "./views/ActivitiesView";
+import { taskBodyKeymap } from "./editor/taskBodyKeymap";
 
 function makeTaskHash(task: Task) {
 	return [
@@ -256,6 +257,8 @@ export default class ProjectsTimerPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+
+		this.registerEditorExtension(taskBodyKeymap);
 
 		this.app.workspace.onLayoutReady(async () => {
 			await this.buildTimeSourceCache();

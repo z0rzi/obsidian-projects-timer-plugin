@@ -42,6 +42,8 @@ In any note, write:
 
 The token after the tag is the Priority: `p0`–`p5`, `pr` (À valider) or `pz` (hibernating, in the Client app's Frigo). Without one, a `#quick` line is Rapide (never ranked: `pz`, or `pr` while it waits for the Client's Answer, are the only tokens it takes) and any other line P1.
 
+The lines indented under a Task line are its body. Indent them with two spaces: after a blank line, a tab (or 4 spaces) makes Markdown render the body as a code block. In the editor, Tab and Shift+Tab under a Task line add or take off those two spaces (on every selected line); elsewhere Tab does what it always does.
+
 A Task belongs to a project by the first link to a project note on its line (`#bug p1 Legend overlaps [[Algorithme Turpe]]`), else by a link alone on the first line of its body, else by its note: the `project` frontmatter link, or the project note itself. A link deeper in the body is only a mention; two different projects named on one Task is an error the Push review shows on that line.
 
 ## Commands

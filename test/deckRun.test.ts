@@ -92,7 +92,7 @@ describe("The Deck's writes, against the fake app", () => {
 		const effect = recorded(press(w.session, "Enter").state);
 		const { outcome } = await writeTicket(effect.ticket, effect.choice, w.deps);
 		expect(outcome).toEqual({ kind: "written" });
-		expect(w.notes.get(today)).toBe("## Triage\n\n#bug pz Heatmap vide ^t1aaa\n\t[[Widget]]\n\tRien ne s'affiche\n");
+		expect(w.notes.get(today)).toBe("## Triage\n\n#bug pz Heatmap vide ^t1aaa\n  [[Widget]]\n  Rien ne s'affiche\n");
 		const held = (await w.app.remote.state()).find((i) => i.id === "t1aaa")!;
 		expect(held).toMatchObject({ triaged: true, fields: { type: "bug", priority: "pz", project_id: "p1abc", zone_id: 3 } });
 	});
@@ -114,14 +114,14 @@ describe("The Deck's writes, against the fake app", () => {
 		const next = recorded(both, 1);
 		await writeTicket(next.ticket, next.choice, w.deps);
 		expect(w.app.held.get("t2bbb")!).toMatchObject({ triaged: true, fields: { type: "bug", priority: "pz" } });
-		expect(w.notes.get(today)).toBe("## Triage\n\n#task p4 Heatmap vide ^t1aaa\n\tRien ne s'affiche\n\n#bug pz Heatmap vide ^t2bbb\n\tRien ne s'affiche\n");
+		expect(w.notes.get(today)).toBe("## Triage\n\n#task p4 Heatmap vide ^t1aaa\n  Rien ne s'affiche\n\n#bug pz Heatmap vide ^t2bbb\n  Rien ne s'affiche\n");
 	});
 
 	it("writes a Rapide without a token", async () => {
 		const w = world([ticket("t1aaa", { type: "quick" })]);
 		const effect = recorded(press(w.session, "Enter").state);
 		await writeTicket(effect.ticket, effect.choice, w.deps);
-		expect(w.notes.get(today)).toBe("## Triage\n\n#quick Heatmap vide ^t1aaa\n\tRien ne s'affiche\n");
+		expect(w.notes.get(today)).toBe("## Triage\n\n#quick Heatmap vide ^t1aaa\n  Rien ne s'affiche\n");
 	});
 
 	it("answers stale, writing nothing, for a Ticket triaged or withdrawn meanwhile", async () => {

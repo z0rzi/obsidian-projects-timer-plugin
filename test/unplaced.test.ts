@@ -67,7 +67,7 @@ describe("Unplaced items", () => {
 			appUrl: "https://suivi.test",
 		});
 		expect(result).toMatchObject({ ok: true, line: "#done 2026-10-01 Old fix ^t0del" });
-		expect(w.files.get(meeting)).toBe("# Notes\n#done 2026-10-01 Old fix ^t0del\n\tFait\n\t\tdétail\n");
+		expect(w.files.get(meeting)).toBe("# Notes\n#done 2026-10-01 Old fix ^t0del\n  Fait\n  \tdétail\n");
 		expect((await w.pull()).unplaced).toEqual([]);
 		expect(await w.plan()).toEqual([]);
 	});

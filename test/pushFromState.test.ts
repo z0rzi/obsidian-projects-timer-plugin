@@ -227,7 +227,7 @@ describe("Push planned against the app's state", () => {
 
 		expect(result).toMatchObject({ ok: true });
 		expect(w.files.get("1.meetings/2026-10-20.md")).toBe(
-			"## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n\tVoir ![[u1.png]] [doc.pdf](https://suivi.test/uploads/d.pdf)\n",
+			"## Triage\n\n#bug p2 Heatmap vide ^t7f3a\n  Voir ![[u1.png]] [doc.pdf](https://suivi.test/uploads/d.pdf)\n",
 		);
 		expect(await w.plan()).toEqual([]);
 	});
@@ -242,7 +242,7 @@ describe("Push planned against the app's state", () => {
 		const choice = { type: "bug" as const, priority: "pz" as const, project: { path: widget, id: "p0002" }, zone: 3 };
 		expect(await runTriage({ id: "t7f3a", title: "Heatmap vide" }, choice, triageDeps(w))).toMatchObject({ ok: true });
 
-		expect(w.files.get("1.meetings/2026-10-20.md")).toBe("# Lundi\n\n## Triage\n\n#bug pz Heatmap vide ^t7f3a\n\t[[Widget]]\n\tRien ne s'affiche\n");
+		expect(w.files.get("1.meetings/2026-10-20.md")).toBe("# Lundi\n\n## Triage\n\n#bug pz Heatmap vide ^t7f3a\n  [[Widget]]\n  Rien ne s'affiche\n");
 		expect(w.files.get(meeting)).toBe("## Triage\n");
 		expect(w.app.held.get("t7f3a")!.fields).toMatchObject({ project_id: "p0002", priority: "pz", zone_id: 3 });
 		expect(await w.plan()).toEqual([]);
