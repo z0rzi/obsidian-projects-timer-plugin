@@ -176,7 +176,7 @@ describe("HTTP remote, inbox", () => {
 	it("uploads an image as multipart field `file` and returns its URL", async () => {
 		const { sent, transport } = fakeTransport(200, { url: "/uploads/abc.png" });
 		const png = new Uint8Array([137, 80, 78, 71]).buffer;
-		expect(await remoteWith(transport).upload(png, "capture 1.png")).toBe("/uploads/abc.png");
+		expect(await remoteWith(transport).upload(png, "capture 1.png", "t7f3a")).toBe("/uploads/abc.png");
 		const req = sent[0]!;
 		expect(req).toMatchObject({ url: "https://suivi.test/api/uploads", method: "POST" });
 		const type = req.headers["Content-Type"]!;
@@ -188,6 +188,16 @@ describe("HTTP remote, inbox", () => {
 		expect(file.name).toBe("capture 1.png");
 		expect(file.type).toBe("image/png");
 		expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([137, 80, 78, 71]);
+		expect(form.get("item_id")).toBe("t7f3a");
+	});
+
+	it("uploads without an item_id field when no item is given", async () => {
+		const { sent, transport } = fakeTransport(200, { url: "/uploads/abc.png" });
+		await remoteWith(transport).upload(new Uint8Array([1]).buffer, "a.png");
+		const req = sent[0]!;
+		const form = await new Response(req.body as ArrayBuffer, { headers: { "content-type": req.headers["Content-Type"]! } }).formData();
+		expect(form.get("item_id")).toBeNull();
+		expect(form.get("file")).toBeInstanceOf(File);
 	});
 
 	it("fetches an uploaded image with the bearer token (uploads are not public)", async () => {

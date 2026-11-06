@@ -1,9 +1,11 @@
-import { Component, ItemView, MarkdownRenderer, setIcon, type WorkspaceLeaf } from "obsidian";
+import { Component, ItemView, MarkdownRenderer, Notice, setIcon, type WorkspaceLeaf } from "obsidian";
 import { AppImages } from "../comments/appImages";
 import { highlightMentions, uploadedImages, withAppUrls } from "../comments/commentMarkdown";
+import { imagePasteHandler } from "../comments/pasteImages";
 import type { ThreadSession, ThreadState } from "../comments/threadSession";
 import type { Comment } from "../remote/api";
 import { ImageModal } from "../ui/ImageModal";
+import type { Remote } from "../remote/remote";
 
 export const COMMENT_PANEL_VIEW_TYPE = "suivi-comments-view";
 
@@ -13,8 +15,10 @@ const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: "short", timeStyle:
 
 /**
  * Side panel with the Client app thread of the Task or Project under the
- * cursor (fed by registerComments). Its images open full size on a click. Reads, replies, edits and deletes own
- * comments through the Remote; never writes to the vault.
+ * cursor (fed by registerComments). Its images open full size on a click.
+ * Images pasted in a draft (Ctrl+V) are uploaded to the app and linked. Reads,
+ * replies, edits and deletes own comments through the Remote; never writes to
+ * the vault.
  */
 export class CommentPanelView extends ItemView {
 	private headerEl!: HTMLElement;
@@ -35,10 +39,11 @@ export class CommentPanelView extends ItemView {
 		private readonly session: ThreadSession,
 		private readonly subscribe: (listener: (state: ThreadState) => void) => () => void,
 		private readonly appUrl: () => string,
-		fetchImage: ConstructorParameters<typeof AppImages>[0],
+		/** The app's files: images of the thread read, pasted ones uploaded. */
+		private readonly remote: Pick<Remote, "image" | "upload">,
 	) {
 		super(leaf);
-		this.images = new AppImages(fetchImage);
+		this.images = new AppImages((path) => remote.image(path));
 	}
 
 	getViewType(): string {
@@ -67,12 +72,13 @@ export class CommentPanelView extends ItemView {
 			new ImageModal(this.app, e.target.src, e.target.alt, () => {}).open();
 		});
 		this.replyEl = root.createDiv({ cls: "suivi-comments-reply" });
-		this.replyInput = this.replyEl.createEl("textarea", { attr: { rows: "4", placeholder: "Reply (markdown)" } });
+		this.replyInput = this.replyEl.createEl("textarea", { attr: { rows: "4", placeholder: "Reply (markdown, paste images)" } });
 		this.replyInput.style.width = "100%";
+		const uploads = this.withImagePaste(this.replyInput, this);
 		const send = this.replyEl.createEl("button", { text: "Send", cls: "mod-cta" });
 		const submit = async () => {
 			send.disabled = true;
-			if (await this.session.reply(this.replyInput.value)) this.replyInput.value = "";
+			if ((await uploads.settled()) && (await this.session.reply(this.replyInput.value))) this.replyInput.value = "";
 			send.disabled = false;
 		};
 		send.onclick = () => void submit();
@@ -91,6 +97,20 @@ export class CommentPanelView extends ItemView {
 		this.unsubscribe = null;
 		this.releaseRenderScope();
 		this.images.clear();
+	}
+
+	/**
+	 * Pasted images uploaded into `textarea`'s draft, filed under the shown
+	 * item; a failed upload is a Notice (the panel keeps the draft). The
+	 * listener lives as long as `owner`.
+	 */
+	private withImagePaste(textarea: HTMLTextAreaElement, owner: Component) {
+		const uploads = imagePasteHandler({
+			upload: (data, name) => this.remote.upload(data, name, this.session.current.target?.id),
+			report: (message) => new Notice(`Suivi: ${message}`),
+		});
+		owner.registerDomEvent(textarea, "paste", (e) => uploads.onPaste(textarea, e));
+		return uploads;
 	}
 
 	private releaseRenderScope() {
@@ -162,8 +182,11 @@ export class CommentPanelView extends ItemView {
 			input.style.width = "100%";
 			input.value = c.body;
 			input.focus();
-			actions.createEl("button", { text: "Save", cls: "mod-cta" }).onclick = () =>
-				void this.session.edit(c.id, input.value);
+			const uploads = this.withImagePaste(input, scope);
+			const save = async () => {
+				if (await uploads.settled()) await this.session.edit(c.id, input.value);
+			};
+			actions.createEl("button", { text: "Save", cls: "mod-cta" }).onclick = () => void save();
 			actions.createEl("button", { text: "Cancel" }).onclick = () => this.render(this.session.current);
 		};
 		del.onclick = () => {

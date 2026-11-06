@@ -51,8 +51,11 @@ export interface Remote {
 	activity(before?: number, days?: number): Promise<ActivityResponse>;
 	/** Marks every Client event up to `id` included read. */
 	markReadUpTo(id: number): Promise<void>;
-	/** Uploads an image (PNG, JPEG, GIF, WebP); returns its path in the app (`/uploads/<name>`), the existing one when the app already has that content. */
-	upload(data: ArrayBuffer, name: string): Promise<string>;
+	/**
+	 * Uploads an image (PNG, JPEG, GIF, WebP); returns its path in the app (`/uploads/<name>`), the existing one when
+	 * the app already has that content. `itemId` files it under that item (its quota), as the app's own forms do.
+	 */
+	upload(data: ArrayBuffer, name: string, itemId?: string): Promise<string>;
 	/**
 	 * An uploaded image (`/uploads/<name>`, as comment bodies hold it), fetched
 	 * with the token: uploads need a session or token, so the panel shows a local copy.
@@ -198,8 +201,8 @@ export function createHttpRemote(config: RemoteConfig, transport: Transport): Re
 		async markReadUpTo(id) {
 			await call<MarkReadResponse>("POST", "/events/read", { upto: id });
 		},
-		async upload(data, name) {
-			return (await call<UploadResponse>("POST", "/uploads", undefined, multipart(data, name))).url;
+		async upload(data, name, itemId) {
+			return (await call<UploadResponse>("POST", "/uploads", undefined, multipart(data, name, itemId))).url;
 		},
 		async image(path) {
 			if (!UPLOAD_PATH.test(path)) throw new RemoteError("config", `Not a Suivi upload: ${path}`);
@@ -240,14 +243,15 @@ const MIME: Record<string, string> = {
 	webp: "image/webp",
 };
 
-/** A `multipart/form-data` body with one field `file` (built by hand: `requestUrl` takes no FormData). */
-function multipart(data: ArrayBuffer, name: string): Multipart {
+/** A `multipart/form-data` body: field `file`, and `item_id` when given (built by hand: `requestUrl` takes no FormData). */
+function multipart(data: ArrayBuffer, name: string, itemId?: string): Multipart {
 	const boundary = `----suivi${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 	const type = MIME[name.slice(name.lastIndexOf(".") + 1).toLowerCase()] ?? "application/octet-stream";
 	const safeName = name.replace(/["\r\n\\]/g, "_");
 	const enc = new TextEncoder();
+	const item = itemId ? `--${boundary}\r\nContent-Disposition: form-data; name="item_id"\r\n\r\n${itemId}\r\n` : "";
 	const head = enc.encode(
-		`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${safeName}"\r\nContent-Type: ${type}\r\n\r\n`,
+		`${item}--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${safeName}"\r\nContent-Type: ${type}\r\n\r\n`,
 	);
 	const tail = enc.encode(`\r\n--${boundary}--\r\n`);
 	const body = new Uint8Array(head.length + data.byteLength + tail.length);

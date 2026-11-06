@@ -25,7 +25,7 @@ export function registerComments(plugin: Plugin, data: PluginData<ProjectsTimerS
 
 	plugin.registerView(
 		COMMENT_PANEL_VIEW_TYPE,
-		(leaf: WorkspaceLeaf) => new CommentPanelView(leaf, session, subscribe, () => data.settings.suiviUrl, (path) => remote.image(path)),
+		(leaf: WorkspaceLeaf) => new CommentPanelView(leaf, session, subscribe, () => data.settings.suiviUrl, remote),
 	);
 
 	/** Last cursor position looked at, to skip re-reading an unchanged note. */
