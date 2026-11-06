@@ -989,3 +989,11 @@
 .suivi-comment-body img {
 	cursor: zoom-in;
 }
+
+/* Comments panel: comment text selectable, to copy it (Obsidian makes panels unselectable) */
+.suivi-comments .suivi-comment-meta,
+.suivi-comments .suivi-comment-body {
+	-webkit-user-select: text;
+	user-select: text;
+	cursor: text;
+}
